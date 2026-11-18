@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import fsPromises from 'node:fs/promises'
@@ -182,7 +182,8 @@ test('local metadata listings open only the selected file and fileOnly reuses th
   try {
     const initial = await local({ path })
     assert.equal(initial.status, 200)
-    assert.deepEqual(reads, [path], 'listing metadata never opens contained file content')
+    // The Host resolves real paths; Windows CI reports TEMP in its 8.3 short form.
+    assert.deepEqual(reads, [await realpath(path)], 'listing metadata never opens contained file content')
     const initialScans = scans.length
     assert.equal(initialScans, 2)
     const selected = await local({ path, file: 'references/one.md', fileOnly: true })
