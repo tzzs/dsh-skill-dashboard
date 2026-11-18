@@ -1,8 +1,8 @@
 /**
  * Read-only sweep over the real user skill roots, plus a live registry probe.
  *
- * Run with the DSH runtime:
- *   C:\Users\itanz\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe real-skills.test.mjs
+ * Run with Node.js 20 or later:
+ *   node test/real-skills.test.mjs
  *
  * This script never writes to `~/.agents/skills` or to the real `$DSH_HOME`:
  * frontmatter edits are applied in memory, and every install, provenance

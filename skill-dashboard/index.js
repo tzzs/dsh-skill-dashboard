@@ -1782,8 +1782,6 @@ export function apply(ctx) {
     if (typeof process.resourcesPath === 'string' && process.resourcesPath.length > 0) roots.add(dirname(process.resourcesPath))
     if (typeof process.execPath === 'string' && process.execPath.length > 0) roots.add(dirname(process.execPath))
     if (process.env.DSH_INSTALL_DIR) roots.add(process.env.DSH_INSTALL_DIR)
-    // The documented install location of this profile, kept as the last resort.
-    roots.add('D:\\apps\\DeepSeek Harness')
     return [...roots]
   }
 

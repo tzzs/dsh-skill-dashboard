@@ -1,8 +1,8 @@
 /**
  * Throwaway assertions for the pure helpers of `skill-dashboard/index.js`.
  *
- * Run with the DSH runtime:
- *   C:\Users\itanz\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe helpers.test.mjs
+ * Run with Node.js 20 or later:
+ *   node test/helpers.test.mjs
  *
  * Nothing here touches the profile, the Host, or the network.
  */
@@ -330,7 +330,7 @@ test('isProtectedInstallPath blocks the installation and any .asar', () => {
   const roots = ['D:\\apps\\DeepSeek Harness']
   assert.equal(isProtectedInstallPath('D:\\apps\\DeepSeek Harness\\resources\\app.asar\\dsh\\skills\\x\\SKILL.md', roots), true)
   assert.equal(isProtectedInstallPath('D:\\apps\\DeepSeek Harness\\skills\\x\\SKILL.md', roots), true)
-  assert.equal(isProtectedInstallPath('C:\\Users\\itanz\\.agents\\skills\\x\\SKILL.md', roots), false)
+  assert.equal(isProtectedInstallPath('C:\\Users\\you\\.agents\\skills\\x\\SKILL.md', roots), false)
   assert.equal(isProtectedInstallPath('D:\\apps\\DeepSeek Harness2\\x\\SKILL.md', roots), false)
   assert.equal(isProtectedInstallPath('\\\\?\\D:\\x\\app.asar\\y.md', roots), true)
   assert.equal(isProtectedInstallPath('', roots), true)

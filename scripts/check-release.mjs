@@ -21,7 +21,12 @@ assert.equal(lock.version, pkg.version, 'lockfile version must match package ver
 assert.equal(lock.packages[''].version, pkg.version, 'lockfile root must match package version');
 assert.equal(lock.name, pkg.name);
 assert.equal(pkg.private, true, 'this flow packages GitHub assets, not a public npm package');
-for (const path of ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/zh.json', 'locale/en.json']) {
+assert.equal(pkg.license, 'MIT', 'the package must declare the repository license');
+for (const path of ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/zh.json', 'locale/en.json', 'LICENSE', 'README.md', 'README.zh.md']) {
   await access(new URL('skill-dashboard/' + path, root));
 }
+// The repository is public: both language entry points and the license must resolve.
+for (const path of ['LICENSE', 'README.md', 'README.zh.md']) await access(new URL(path, root));
+const license = await readFile(new URL('LICENSE', root), 'utf8');
+assert.match(license, /^MIT License\n/, 'the repository license file must stay MIT');
 console.log(`Release metadata is consistent: ${pkg.name}@${pkg.version}`);

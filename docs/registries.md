@@ -10,9 +10,9 @@ All HTTP shapes below are **observed**, not inferred. Truncations marked `…`.
 | full-ASCII scan of `app.asar` (213,202,918 B) for `find-skills`, `skills.sh`, `skillhub` | **0 hits each** |
 | `SKILL.md` entries inside `app.asar` | 12, all under `agent-experience`, `cordis-*`, `editing-cordis-compositions`, `*assets/office-*` |
 | extracted asar tree `_dsh_src/…\dsh-agent-preset\skills\` (unpacked by a teammate) | only 4 skills; glob `**/find-skills/**` in `_dsh_src` → 0 files |
-| `C:\Users\itanz\.dsh\settings.yaml` (36,502 B) grep `skill|registry|source|mirror|market|hub` | **0 matches** |
-| `C:\Users\itanz\.dsh\.env` | exactly one key: `MAGPIE_GATEWAY_KEY` (value not read) |
-| `C:\Users\itanz\.dsh\skills` | does not exist |
+| `$DSH_HOME/settings.yaml` grep `skill|registry|source|mirror|market|hub` | **0 matches** |
+| `$DSH_HOME/.env` | no skill or registry configuration |
+| `$DSH_HOME/skills` | does not exist |
 
 ⇒ **This build ships no built-in "skills.sh source" and no configured registry.** There is nothing to reuse; the plugin must own both sources.
 
@@ -22,11 +22,11 @@ All HTTP shapes below are **observed**, not inferred. Truncations marked `…`.
 |100|`project-dsh`|`<projectRoot>/.dsh/skills`|
 |200|`project-agents`|`<projectRoot>/.agents/skills`|
 |300|`custom`|`Config.customSkillDirs`|
-|400|`user-dsh`|`$DSH_HOME/skills` → `C:\Users\itanz\.dsh\skills`|
+|400|`user-dsh`|`$DSH_HOME/skills` → `~/.dsh/skills`|
 |500|`user-agents`|`$DSH_AGENTS_HOME/skills` → `~/.agents/skills`|
 |600|`bundled`|`$DSH_BUNDLED_SKILL_DIR`|
 
-Env observed: `DSH_HOME=C:\Users\itanz\.dsh`, `DSH_PROFILE=desktop`, `DSH_PROFILE_DIR=C:\Users\itanz\.dsh\profiles\desktop`. `dshHome` defaults to `$DSH_HOME` or `~/.dsh`; roots are **watched** (`watch: true`) so a written skill appears without restart.
+Env observed: `DSH_HOME=~/.dsh`, `DSH_PROFILE=desktop`, `DSH_PROFILE_DIR=$DSH_HOME/profiles/desktop`. `dshHome` defaults to `$DSH_HOME` or `~/.dsh`; roots are **watched** (`watch: true`) so a written skill appears without restart.
 
 ---
 

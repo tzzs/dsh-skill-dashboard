@@ -2,8 +2,8 @@
  * Throwaway integration harness: runs `apply(ctx)` against a fake Host context
  * and drives the three HTTP handlers over temp fixtures.
  *
- * Run with the DSH runtime:
- *   C:\Users\itanz\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe apply.test.mjs
+ * Run with Node.js 20 or later:
+ *   node test/apply.test.mjs
  *
  * Nothing here touches the real profile, the real Host, or the network.
  */

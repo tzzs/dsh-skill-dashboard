@@ -26,10 +26,10 @@ Package name: `@local/dsh-skill-dashboard`. Client factory id must equal the pac
 
 ## 2. Runtime environment facts (verified)
 
-- Installed DSH: `D:\apps\DeepSeek Harness\resources\app.asar\dsh`. Sidebar panel ids
+- Installed DSH: `<install>/resources/app.asar/dsh`. Sidebar panel ids
   already taken: `plugins` (order 0), `schedules` (order 10). Use a fresh id.
-- User skills live in `C:\Users\itanz\.agents\skills\<name>\SKILL.md` (source label
-  `user-agents`, ~150 real skills today) and optionally `C:\Users\itanz\.dsh\skills`
+- User skills live in `$DSH_AGENTS_HOME/skills/<name>/SKILL.md` (source label
+  `user-agents`, usually `~/.agents/skills`) and optionally `$DSH_HOME/skills`
   (`user-dsh`). Project roots: `<projectRoot>/.dsh/skills`, `<projectRoot>/.agents/skills`.
   Bundled skills resolve from inside `app.asar` (read-only). A skill is either
   `<root>/<name>/SKILL.md` or a flat `<root>/<name>.md`; discovery is one level deep.
@@ -56,7 +56,7 @@ Package name: `@local/dsh-skill-dashboard`. Client factory id must equal the pac
 
 No generated Remote namespace is available to a plain-JS bundle. Use **exact HTTP routes on
 the Host** plus same-origin `fetch` from the Client — the pattern proven by the installed
-`dsh-idle-power` plugin (`C:\Users\itanz\.dsh\profiles\desktop\node_modules\dsh-idle-power\`).
+`dsh-idle-power` plugin (`<profile>/node_modules/dsh-idle-power/`).
 
 Host: `ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/skill-dashboard/state', handler }), label)`
 and the same for the other two paths. Every handler starts with the trust fence:
@@ -99,8 +99,8 @@ All responses are `application/json`. Failures use a nonzero HTTP status and
       "whenToUse": "…",                     // optional
       "source": "user-agents",              // SkillSummary.source verbatim
       "provider": "filesystem",
-      "path": "C:\\Users\\itanz\\.agents\\skills\\code-review\\SKILL.md",
-      "dir": "C:\\Users\\itanz\\.agents\\skills\\code-review",  // null for flat .md skills
+      "path": "C:\\Users\\you\\.agents\\skills\\code-review\\SKILL.md",
+      "dir": "C:\\Users\\you\\.agents\\skills\\code-review",  // null for flat .md skills
       "agents": ["default"],                // agent ids whose catalog resolves this skill
       "modelInvocable": false,              // resolved: false if disabled for the model
       "userInvocable": true,
