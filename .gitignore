@@ -1,0 +1,22 @@
+# Local verification captures, fixtures, extracted host code and downloaded tools
+/_verify/
+
+# Dependencies and generated packages
+node_modules/
+/dist/
+*.tgz
+coverage/
+*.log
+
+# Local settings and credentials
+.env
+.env.*
+!.env.example
+
+# Python / editor / OS caches
+__pycache__/
+*.py[cod]
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
