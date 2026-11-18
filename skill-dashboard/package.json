@@ -3,6 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "check": "node --check index.js && node --check client.js",
+    "test": "node --test test/client.test.mjs test/helpers.test.mjs test/apply.test.mjs test/preview.test.mjs test/usage-periods.test.mjs",
+    "test:live": "node test/real-skills.test.mjs",
+    "ci": "npm run check && npm test"
+  },
   "description": "Skill dashboard: manage, install, update and switch off agent skills for every agent preset, with per-skill usage statistics.",
   "exports": {
     ".": "./index.js",

@@ -1,0 +1,80 @@
+name: Release please
+
+on:
+  workflow_call:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: release-please-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Skip obsolete main runs
+        id: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          if [[ "$current" == "$GITHUB_SHA" ]]; then
+            echo 'current=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'current=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create or update release PR and GitHub release
+        if: steps.head.outputs.current == 'true'
+        id: release
+        uses: googleapis/release-please-action@8b8fd2cc23b2e18957157a9d923d75aa0c6f6ad5 # v4
+        with:
+          token: ${{ github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - name: Run CI for release PRs created by GITHUB_TOKEN
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+        shell: bash
+        run: |
+          jq -r '.[].number' <<< "$RELEASE_PRS" | while read -r number; do
+            branch=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$number" --jq '.head.ref')
+            gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
+          done
+      - name: Check out the exact released commit
+        if: steps.release.outputs['skill-dashboard--release_created'] == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ steps.release.outputs['skill-dashboard--sha'] }}
+          persist-credentials: false
+      - name: Set up Node for release packaging
+        if: steps.release.outputs['skill-dashboard--release_created'] == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Verify and package the released plugin
+        if: steps.release.outputs['skill-dashboard--release_created'] == 'true'
+        shell: bash
+        run: |
+          npm ci --prefix skill-dashboard --ignore-scripts --no-audit --no-fund
+          npm run ci --prefix skill-dashboard
+          node scripts/check-release.mjs
+          mkdir -p dist
+          npm pack ./skill-dashboard --pack-destination dist --ignore-scripts
+          (cd dist && sha256sum ./*.tgz > SHA256SUMS)
+      - name: Attach plugin archive and checksums
+        if: steps.release.outputs['skill-dashboard--release_created'] == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs['skill-dashboard--tag_name'] }}
+        shell: bash
+        run: gh release upload "$RELEASE_TAG" dist/*.tgz dist/SHA256SUMS --repo "$GITHUB_REPOSITORY"
