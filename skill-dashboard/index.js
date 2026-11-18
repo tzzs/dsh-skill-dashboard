@@ -2243,9 +2243,12 @@ export function apply(ctx) {
    */
   const findWritableRoot = async (roots, absolute, real) => {
     for (const candidate of roots) {
-      if (!isInsidePath(candidate, absolute) && !isInsidePath(candidate, real)) continue
       const resolved = await resolvedPath(candidate)
-      if (isInsidePath(resolved, absolute) || isInsidePath(resolved, real)) return candidate
+      // The resolved spellings decide containment: a root and its target may
+      // name the same directory differently, and only the resolved forms of
+      // both sides are comparable.
+      if (isInsidePath(resolved, real) || isInsidePath(resolved, absolute)) return candidate
+      if (isInsidePath(candidate, real) || isInsidePath(candidate, absolute)) return candidate
     }
     return undefined
   }
