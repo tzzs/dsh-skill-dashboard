@@ -1729,6 +1729,25 @@ export function apply(ctx) {
       ? process.env.DSH_AGENTS_HOME
       : join(homedir(), '.agents')
 
+  /**
+   * The real spelling of one path, when it can be resolved.
+   *
+   * Windows exposes a directory through both its 8.3 short form and its long
+   * form, and the catalog may report either. Comparing a resolved target
+   * against an unresolved root would then fail to recognise the same
+   * directory, so every containment check compares resolved spellings.
+   *
+   * @param {string} path - a path to resolve.
+   * @returns {Promise<string>} the resolved path, or the input when it cannot be resolved.
+   */
+  const resolvedPath = async (path) => {
+    try {
+      return await realpath(path)
+    } catch {
+      return path
+    }
+  }
+
   const usageStore = createJsonStore({
     path: join(dshHome, 'skill-dashboard', 'usage.json'),
     empty: emptyUsageStore,
@@ -1766,6 +1785,29 @@ export function apply(ctx) {
     // The documented install location of this profile, kept as the last resort.
     roots.add('D:\\apps\\DeepSeek Harness')
     return [...roots]
+  }
+
+  /**
+   * Installation roots in their real spelling.
+   *
+   * Windows names one directory both by its 8.3 short form and by its long
+   * form, and `realpath` returns the long one. Comparing a resolved target
+   * against unresolved roots would miss the installation, so roots are
+   * resolved before any containment check.
+   *
+   * @returns {Promise<string[]>} resolved installation roots.
+   */
+  const resolvedInstallRoots = async () => {
+    const roots = []
+    for (const root of installRoots()) {
+      try {
+        roots.push(await realpath(root))
+      } catch {
+        // A root that cannot be resolved is still compared by name.
+        roots.push(root)
+      }
+    }
+    return roots
   }
 
   /** Working directory the Host serves, when the profile mounts that service. */
@@ -1992,7 +2034,7 @@ export function apply(ctx) {
       const real = await realpath(path)
       const info = await stat(real)
       if (!info.isFile()) return false
-      return !isProtectedInstallPath(real, installRoots())
+      return !isProtectedInstallPath(real, await resolvedInstallRoots())
     } catch {
       return false
     }
@@ -2187,7 +2229,35 @@ export function apply(ctx) {
   }
 
   /**
+   * The writable root that owns one target, comparing resolved spellings.
+   *
+   * A root and the target may name the same directory through different
+   * Windows spellings, so both sides are resolved before containment is
+   * checked. The unresolved root is returned because it is the path the
+   * caller should report.
+   *
+   * @param {readonly string[]} roots - candidate writable roots.
+   * @param {string} absolute - the requested path, resolved.
+   * @param {string} real - the requested path with symlinks resolved.
+   * @returns {Promise<string | undefined>} the owning root, if any.
+   */
+  const findWritableRoot = async (roots, absolute, real) => {
+    for (const candidate of roots) {
+      if (!isInsidePath(candidate, absolute) && !isInsidePath(candidate, real)) continue
+      const resolved = await resolvedPath(candidate)
+      if (isInsidePath(resolved, absolute) || isInsidePath(resolved, real)) return candidate
+    }
+    return undefined
+  }
+
+  /**
    * Verify that one absolute path may be edited or deleted by this plugin.
+   *
+   * Windows reports the same directory through two spellings — the 8.3 short
+   * form and the long form — and `realpath` returns the long one. Comparing a
+   * resolved target against unresolved roots would therefore reject skills the
+   * plugin itself installed, so every root is resolved before the comparison.
+   *
    * @param {string} requested - absolute path from the request body.
    * @returns {Promise<{ ok: true, real: string, target: string, kind: 'file'|'directory', root: string } |
    *   { ok: false, status: number, code: string, message: string }>} resolved target or a refusal.
@@ -2212,11 +2282,11 @@ export function apply(ctx) {
     } catch {
       return { ok: false, status: 404, code: 'not-found', message: 'the skill file cannot be resolved' }
     }
-    if (isProtectedInstallPath(real, installRoots())) {
+    if (isProtectedInstallPath(real, await resolvedInstallRoots())) {
       return { ok: false, status: 403, code: 'read-only', message: 'this skill is part of the DSH installation' }
     }
     const roots = writableSkillRoots()
-    const root = roots.find((candidate) => isInsidePath(candidate, absolute) && isInsidePath(candidate, real))
+    const root = await findWritableRoot(roots, absolute, real)
     if (root === undefined) {
       return {
         ok: false,

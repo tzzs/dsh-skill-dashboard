@@ -9,7 +9,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rename as fsRename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rename as fsRename, rm, symlink as fsSymlink, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -269,6 +269,31 @@ await check('POST action restores the byte-identical original file', async () =>
   })
   assert.equal(response.status, 200)
   assert.equal(response.body.skill.modelInvocable, true)
+  assert.equal(await readFile(demoPath, 'utf8'), demoOriginal)
+})
+
+await check('set-invocation accepts another spelling of the same directory', async () => {
+  // Windows names one directory both by its 8.3 short form and by its long
+  // form, and the Host resolves the target before comparing it with the
+  // writable roots. A second spelling of the same directory must stay
+  // editable, otherwise a skill the dashboard installed looks read-only.
+  const alias = join(workspace, 'agents-alias')
+  try { await fsSymlink(agentsSkills, alias, process.platform === 'win32' ? 'junction' : 'dir') }
+  catch (error) { if (error.code === 'EPERM') return; throw error }
+  const aliased = join(alias, 'demo-skill', 'SKILL.md')
+  const response = await call(first.routes.get('/skill-dashboard/action'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'set-invocation', path: aliased, modelInvocable: false }),
+  })
+  assert.equal(response.status, 200)
+  assert.equal(response.body.skill.modelInvocable, false)
+  const restore = await call(first.routes.get('/skill-dashboard/action'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'set-invocation', path: aliased, modelInvocable: true }),
+  })
+  assert.equal(restore.status, 200)
   assert.equal(await readFile(demoPath, 'utf8'), demoOriginal)
 })
 
