@@ -170,7 +170,7 @@ const SEARCH_CACHE_MS = 60_000
 const PAYLOAD_CACHE_MS = 10 * 60_000
 const TREE_CACHE_MS = 10 * 60_000
 
-const USER_AGENT = 'dsh-skill-dashboard/1.0 (+https://github.com/tzzz/dsh-skill-dashboard)'
+const USER_AGENT = 'dsh-skill-dashboard/1.0 (+https://github.com/tzzs/dsh-skill-dashboard)'
 
 /** Kebab-case skill names, identical to the registry's `SKILL_NAME`. */
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
