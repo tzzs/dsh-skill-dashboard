@@ -99,6 +99,20 @@ test('period projection counts retained daily calls instead of cumulative or rec
   assert.equal(old.total, 28); assert.equal(old.rows[0].count, 28); assert.equal(old.bounded, true);
 });
 
+test('a skill named all has a distinct trend from the aggregate', () => {
+  const { usagePeriodProjection: project } = loadClient();
+  const date = '2026-11-18';
+  const data = {
+    skills: [{ name: 'all' }, { name: 'other' }],
+    usage: {
+      history: [{ date, count: 5 }],
+      skillUsage: [{ name: 'all', count: 2, dayBuckets: [{ date, count: 2 }] }],
+    },
+  };
+  assert.equal(project(data).trendTotal, 5);
+  assert.equal(project(data, { selected: 'all' }).trendTotal, 2);
+});
+
 test('preview hierarchy retains paths and cached file-only responses retain the tree', () => {
   const { previewFileTree, rememberPreview, cachedPreview, PREVIEW_MEMORY } = loadClient();
   const files = ['SKILL.md', 'references/nested/guide.md', 'references/quick.md', '__proto__/safe.txt'].map((path) => ({ path, kind: 'text' }));
