@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.0.1...v1.1.0) (2026-11-20)
+
+
+### Features
+
+* **skill-dashboard:** modernise the panel controls and page proportions ([c03c44a](https://github.com/tzzs/dsh-skill-dashboard/commit/c03c44a77e053adb8bee8d13e7cffb34d967c385))
+
 ## [1.0.1](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.0.0...v1.0.1) (2026-11-18)
 
 
