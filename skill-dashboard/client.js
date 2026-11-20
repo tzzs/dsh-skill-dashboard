@@ -220,7 +220,7 @@ window.__ModuleLoader__.load({
       'overview.agents': 'Agent 预设',
       'overview.calls': '累计调用',
       'installed.title': '已安装技能',
-      'installed.body': '查找和筛选技能，按需调整 Agent 的调用权限。',
+      'installed.body': '查找、筛选技能并管理调用权限。',
       'installed.search': '搜索已安装技能',
       'installed.placeholder': '搜索技能名称、描述或来源…',
       'installed.results': '显示 {count} / {total} 个技能',
@@ -242,6 +242,9 @@ window.__ModuleLoader__.load({
       'discover.body': '浏览社区技能，为 Agent 添加合适的能力。',
       'discover.popular': '浏览热门技能',
       'discover.results': '{count} 个搜索结果',
+      'discover.queryScope': '{source} · 关键词：{query}',
+      'discover.unavailableTitle': '暂无可用技能源',
+      'discover.unavailableBody': '刷新看板以重新检查技能源。',
       'usage.title': '使用概览',
       'usage.body': '查看所有 Agent 的调用趋势与最近活动。',
       'usage.breakdown': '逐日调用明细',
@@ -425,7 +428,7 @@ window.__ModuleLoader__.load({
       'overview.agents': 'Agent presets',
       'overview.calls': 'Total calls',
       'installed.title': 'Installed skills',
-      'installed.body': 'Find and filter skills, then manage what each agent can use.',
+      'installed.body': 'Find and filter skills, then manage invocation permissions.',
       'installed.search': 'Search installed skills',
       'installed.placeholder': 'Search by name, description, or source…',
       'installed.results': 'Showing {count} of {total} skills',
@@ -447,6 +450,9 @@ window.__ModuleLoader__.load({
       'discover.body': 'Find community skills to extend what your agents can do.',
       'discover.popular': 'Browse popular skills',
       'discover.results': '{count} search results',
+      'discover.queryScope': '{source} · Search for “{query}”',
+      'discover.unavailableTitle': 'No sources available',
+      'discover.unavailableBody': 'Refresh the dashboard to check the sources again.',
       'usage.title': 'Usage overview',
       'usage.body': 'Call trends and recent activity across all agents.',
       'usage.breakdown': 'Daily call details',
@@ -483,8 +489,6 @@ window.__ModuleLoader__.load({
 .skd-tab:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:transparent}
 .skd-tab[aria-selected=true]{color:var(--skd-accent);font-weight:600}
 .skd-tab[aria-selected=true]:after{background:var(--skd-accent)}
-.skd-tabCount{display:inline-flex;align-items:center;justify-content:center;min-width:24px;padding:1px 7px;border-radius:6px;background:var(--skd-soft);color:var(--skd-muted);font-size:0.6875rem;font-weight:500;line-height:1.636}
-.skd-tab[aria-selected=true] .skd-tabCount{background:color-mix(in srgb,var(--skd-accent) 10%,var(--skd-bg));color:var(--skd-accent-label)}
 .skd-scroll{flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable;--dsh-scrollbar-width:9px;--dsh-scrollbar-thumb-border:2px}
 .skd-content{padding-top:28px;padding-bottom:48px}
 .skd-panel{display:flex;flex-direction:column;gap:20px;min-width:0}
@@ -634,7 +638,7 @@ window.__ModuleLoader__.load({
 .skd-page .skd-menuItem:focus-visible{outline-offset:-2px}
 @media (hover:hover){.skd-tab:hover,.skd-segment:not(:disabled):hover{color:var(--skd-fg)}.skd-row:hover,.skd-menuItem:not(:disabled):hover,.skd-iconButton:not(:disabled):hover,.skd-button:not(:disabled):hover{background:var(--skd-soft)}.skd-button[data-variant=primary]:not(:disabled):hover{background:color-mix(in srgb,var(--skd-accent) 88%,var(--skd-fg))}.skd-card:hover{border-color:color-mix(in srgb,var(--skd-fg) 30%,var(--skd-bg))}.skd-input:hover,.skd-select:hover{border-color:var(--skd-muted)}}
 @container dashboard (max-width:800px){.skd-wrap{padding-inline:24px}.skd-row{padding-inline:8px;gap:16px}.skd-rowRail{gap:12px}.skd-tableHeading{padding-inline:8px;gap:12px}.skd-overviewItem{padding:16px}.skd-cardList{grid-template-columns:minmax(0,1fr)}.skd-header{align-items:flex-start}.skd-headerTools .skd-button{padding-inline:10px}}
-@container dashboard (max-width:600px){.skd-wrap{padding-inline:18px}.skd-header{gap:16px;padding-top:24px;padding-bottom:20px;flex-wrap:wrap}.skd-title{font-size:1.625rem}.skd-headerTools{width:100%;justify-content:space-between}.skd-subtitle{font-size:0.8125rem}.skd-tabbar{gap:24px}.skd-content{padding-top:20px}.skd-overview{grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:24px}.skd-overviewItem:nth-child(2){border-inline-end:0}.skd-overviewItem:nth-child(-n+2){border-bottom:1px solid var(--skd-line)}.skd-overviewValue{font-size:1.5rem}.skd-sectionTitle{font-size:1.125rem}.skd-sectionHead{align-items:flex-start}.skd-tableHeading{display:none}.skd-row{grid-template-columns:minmax(0,1fr);padding:18px 0}.skd-rowRail{justify-content:space-between;width:100%}.skd-metric{width:auto;align-items:flex-start}.skd-metric .skd-micro{display:block}.skd-switchGroup{width:auto;flex:1;max-width:220px;border:0;padding:0;gap:8px}.skd-switchRow{min-height:36px}.skd-iconButton{width:44px;height:44px}.skd-input,.skd-button,.skd-select,.skd-segment{min-height:44px}.skd-select{min-width:0;width:100%}.skd-searchRow>.skd-segmented{width:100%}.skd-searchRow .skd-segment{flex:1;max-width:none}.skd-toolbar{padding:12px}.skd-stats{grid-template-columns:minmax(0,1fr);gap:12px}.skd-statCard{display:grid;grid-template-columns:1fr auto;gap:4px;padding:18px}.skd-statValue{grid-column:2;grid-row:1 / 3;font-size:1.875rem}.skd-panelCard,.skd-card{padding:18px}.skd-chart{gap:5px;height:160px}.skd-footerStats>span:first-child{display:none}.skd-footerNote{max-width:65%}.skd-activityRow{align-items:flex-start}.skd-activityTime{font-size:0.6875rem}.skd-panel{gap:16px}.skd-menuItem{min-height:44px}}
+@container dashboard (max-width:600px){.skd-wrap{padding-inline:18px}.skd-header{gap:16px;padding-top:24px;padding-bottom:20px;flex-wrap:wrap}.skd-title{font-size:1.625rem}.skd-headerTools{width:100%;justify-content:space-between}.skd-subtitle{font-size:0.8125rem}.skd-tabbar{gap:24px}.skd-content{padding-top:20px}.skd-overview{grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:24px}.skd-overviewItem:nth-child(2){border-inline-end:0}.skd-overviewItem:nth-child(-n+2){border-bottom:1px solid var(--skd-line)}.skd-overviewValue{font-size:1.5rem}.skd-sectionTitle{font-size:1.125rem}.skd-sectionHead{align-items:flex-start}.skd-tableHeading{display:none}.skd-row{grid-template-columns:minmax(0,1fr);padding:18px 0}.skd-rowRail{justify-content:space-between;width:100%}.skd-metric{width:auto;align-items:flex-start}.skd-metric .skd-micro{display:block}.skd-switchGroup{width:auto;flex:1;max-width:220px;border:0;padding:0;gap:8px}.skd-switchRow{min-height:36px}.skd-iconButton{width:44px;height:44px}.skd-input,.skd-button,.skd-select,.skd-segment{min-height:44px}.skd-select{min-width:0;width:100%}.skd-searchRow>.skd-segmented{width:100%}.skd-searchRow .skd-segment{flex:1;max-width:none}.skd-toolbar{padding:12px}.skd-stats{grid-template-columns:minmax(0,1fr);gap:12px}.skd-statCard{display:grid;grid-template-columns:1fr auto;gap:4px;padding:18px}.skd-statValue{grid-column:2;grid-row:1 / 3;font-size:1.875rem}.skd-panelCard,.skd-card{padding:18px}.skd-chart{gap:5px;height:160px}.skd-footerNote{max-width:65%}.skd-activityRow{align-items:flex-start}.skd-activityTime{font-size:0.6875rem}.skd-panel{gap:16px}.skd-menuItem{min-height:44px}}
 @container dashboard (max-width:600px){.skd-header{flex-wrap:nowrap;padding-top:20px;gap:12px}.skd-eyebrow{font-size:0.625rem;margin-bottom:6px}.skd-headerTools{width:auto;align-items:flex-start;gap:8px}.skd-headerTools .skd-buttonLabel{display:none}.skd-headerTools .skd-button{width:44px;padding:0}.skd-headerTools .skd-iconButton{width:44px;height:44px}.skd-overviewItem{flex-direction:row;align-items:center;justify-content:space-between;gap:8px;padding:12px}.skd-overviewLabel{font-size:0.6875rem}.skd-overviewValue{font-size:1.375rem;line-height:1.364}}
 @media (prefers-reduced-motion:reduce){.skd-page *,.skd-page *:before,.skd-page *:after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
 
@@ -673,7 +677,6 @@ window.__ModuleLoader__.load({
 .skd-tab{gap:7px;min-height:32px;padding:5px 13px;border-radius:5px;font-size:.8125rem;color:var(--muted-foreground)}
 .skd-tab:after{display:none}
 .skd-tab[aria-selected=true]{background:var(--background);color:var(--foreground);font-weight:500;box-shadow:0 1px 3px color-mix(in srgb,var(--foreground) 10%,transparent)}
-.skd-tabCount,.skd-tab[aria-selected=true] .skd-tabCount{min-width:0;padding:0 4px;background:none;color:var(--muted-foreground);font-size:.6875rem}
 .skd-tabIcon{display:flex;align-items:center;opacity:.85}
 .skd-content{padding-top:20px}
 .skd-panel{gap:14px}
@@ -701,7 +704,8 @@ window.__ModuleLoader__.load({
 .skd-cardIdentity{display:flex;gap:12px;align-items:center;min-width:0;flex:1}
 .skd-skillMark{display:grid;place-items:center;flex:none;inline-size:36px;block-size:36px;border:1px solid var(--border);border-radius:8px;background:var(--muted);color:var(--muted-foreground)}
 .skd-cardTitleWrap{display:block;min-width:0}
-.skd-cardName{font-size:.875rem;line-height:1.6;font-weight:600;letter-spacing:-.015em;margin:0;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.skd-cardName{font-size:.875rem;line-height:1.6;font-weight:600;letter-spacing:-.015em;margin:0}
+.skd-cardName .skd-nameButton{display:-webkit-box;max-inline-size:100%;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:clip}
 .skd-cardVersion{flex:none;padding-top:3px;color:var(--muted-foreground);font-size:.6875rem}
 .skd-cardDesc{font-size:.8125rem;line-height:1.8;-webkit-line-clamp:3;line-clamp:3;color:var(--muted-foreground)}
 .skd-cardFoot{padding-top:13px;gap:12px;border-top:1px solid var(--border)}
@@ -748,8 +752,7 @@ window.__ModuleLoader__.load({
 @media(forced-colors:active){.skd-page{--primary:ButtonText;--primary-foreground:ButtonFace}.skd-tab[aria-selected=true]{border:1px solid Highlight}.skd-card,.skd-input,.skd-select{box-shadow:none}.skd-button[data-variant=primary]{background:ButtonFace;color:ButtonText}.skd-tabIcon{opacity:1}}
 .skd-nameButton{display:inline;padding:0;border:0;background:none;color:inherit;font:inherit;font-weight:600;text-align:start;cursor:pointer;text-decoration:none;border-radius:3px}
 .skd-nameButton:hover{color:var(--skd-accent-label);text-decoration:underline;text-underline-offset:3px}
-.skd-cardName.skd-nameButton{display:-webkit-box;width:100%}
-.skd-previewActions{display:flex;align-items:center;gap:6px;flex:none}
+.skd-cardName .skd-nameButton{color:var(--skd-accent-label);text-decoration:underline;text-decoration-color:var(--skd-control-line);text-underline-offset:.2em;overflow-wrap:anywhere}
 .skd-previewDialog{box-sizing:border-box;inline-size:min(1120px,calc(100vw - 48px));block-size:min(800px,calc(100dvh - 48px));max-inline-size:none;max-block-size:none;padding:0;border:1px solid var(--dsw-alias-border-l2,#d5d7dc);border-radius:14px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#20252d);box-shadow:0 24px 90px #0004;overflow:auto;font:inherit}
 .skd-previewDialog:modal{overscroll-behavior:contain}
 .skd-previewDialog::backdrop{background:#10141c66;backdrop-filter:blur(3px);overflow:hidden;overscroll-behavior:contain}
@@ -795,7 +798,7 @@ window.__ModuleLoader__.load({
 .skd-previewFiles .skd-previewNotice{margin:10px;font-size:.6875rem;flex:none}
 .skd-previewFooter{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;flex:none;padding:10px 20px;border-top:1px solid var(--skd-line);font-size:.6875rem;color:var(--skd-muted);line-height:1.5}
 .skd-previewFooter>span:first-child{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@media(max-width:700px){.skd-previewDialog{inline-size:calc(100vw - 16px);block-size:calc(100dvh - 16px);border-radius:10px}.skd-previewHeader{padding:16px;gap:12px}.skd-previewTitle{font-size:1.125rem}.skd-previewDescription{max-height:3.2em}.skd-previewLayout{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(100px,24%) minmax(0,1fr)}.skd-previewFiles{border-right:0;border-bottom:1px solid var(--skd-line)}.skd-previewFilesHead{padding:8px 14px}.skd-fileList{padding-bottom:8px}.skd-fileButton{min-height:44px;padding-block:10px}.skd-previewViewerHead{padding:8px 14px;min-height:48px}.skd-previewContent{padding:18px}.skd-previewHeader .skd-iconButton{min-width:44px;min-height:44px}.skd-previewFooter{padding:8px 14px}.skd-previewViewerHead .skd-segment{min-height:36px}.skd-previewActions .skd-button{min-height:44px}}
+@media(max-width:700px){.skd-previewDialog{inline-size:calc(100vw - 16px);block-size:calc(100dvh - 16px);border-radius:10px}.skd-previewHeader{padding:16px;gap:12px}.skd-previewTitle{font-size:1.125rem}.skd-previewDescription{max-height:3.2em}.skd-previewLayout{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(100px,24%) minmax(0,1fr)}.skd-previewFiles{border-right:0;border-bottom:1px solid var(--skd-line)}.skd-previewFilesHead{padding:8px 14px}.skd-fileList{padding-bottom:8px}.skd-fileButton{min-height:44px;padding-block:10px}.skd-previewViewerHead{padding:8px 14px;min-height:48px}.skd-previewContent{padding:18px}.skd-previewHeader .skd-iconButton{min-width:44px;min-height:44px}.skd-previewFooter{padding:8px 14px}.skd-previewViewerHead .skd-segment{min-height:44px}}
 @media(max-height:480px){.skd-previewDialog{block-size:calc(100dvh - 16px)}.skd-previewHeader{padding-block:12px}.skd-previewDescription,.skd-previewFooter{display:none}}
 @media(forced-colors:active){.skd-previewDialog{border-color:CanvasText;box-shadow:none}.skd-previewDialog::backdrop{backdrop-filter:none}.skd-fileButton[aria-pressed=true]{outline:1px solid Highlight}.skd-nameButton{text-decoration:underline}}
 .skd-previewDialog{inline-size:min(1440px,94vw);block-size:92dvh;min-inline-size:min(680px,calc(100vw - 24px));min-block-size:min(420px,calc(100dvh - 24px));max-inline-size:calc(100vw - 24px);max-block-size:calc(100dvh - 24px);resize:both}
@@ -815,29 +818,97 @@ window.__ModuleLoader__.load({
 .skd-treeChildren .skd-fileButton{padding-inline:8px}
 @media(max-width:700px){.skd-previewDialog{inline-size:calc(100vw - 16px);block-size:calc(100dvh - 16px);max-inline-size:calc(100vw - 16px);max-block-size:calc(100dvh - 16px);min-inline-size:0;resize:none}.skd-windowTools{gap:4px}.skd-windowTools .skd-sizeStep{display:none}.skd-previewHeader .skd-iconButton{min-width:36px;min-height:44px;width:36px}.skd-folderLabel{min-height:44px}.skd-previewHeader{padding:14px;gap:8px}.skd-previewDescription{font-size:.75rem}.skd-previewTitle{font-size:1rem}}
 @media(forced-colors:active){.skd-treeChildren{border-color:CanvasText}.skd-folderLabel:hover{outline:1px solid Highlight}}
-/* INTEGRATION: append inside existing CSS template, after current dashboard rules. */
-.skd-periodControls{display:flex;flex-direction:row;flex-wrap:wrap;align-items:flex-end;justify-content:flex-start;gap:14px}
-.skd-periodField{display:flex;flex-direction:column;align-items:stretch;gap:6px;min-inline-size:0;font-size:.75rem;color:var(--skd-muted)}
-.skd-periodField .skd-input,.skd-periodField .skd-select{max-inline-size:100%;color:var(--skd-fg)}
+.skd-top{background:color-mix(in srgb,var(--skd-soft) 50%,var(--skd-bg))}
+.skd-header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.skd-headText{min-inline-size:0}
+.skd-title{overflow-wrap:anywhere}
+.skd-headerTools{width:auto}
+.skd-sectionHead{flex-wrap:wrap;gap:.5rem 1rem}
+.skd-sectionTitle{font-size:1.125rem}
+.skd-sectionBody{font-size:.8125rem}
+.skd-tab[aria-selected=true]{font-weight:650}
+.skd-tab[aria-selected=true] .skd-tabIcon{color:var(--skd-accent-label)}
+.skd-libraryResults,.skd-discoverResults{justify-content:space-between;flex-wrap:wrap;overflow-wrap:anywhere;min-block-size:1.5rem}
+.skd-libraryResults .skd-button[data-variant=text]{color:var(--skd-accent-label);margin-inline-start:auto}
+.skd-searchBox{min-inline-size:0}
+.skd-searchBox>svg{left:auto;inset-inline-start:.75rem}
+.skd-searchBox .skd-input{padding-left:.75rem;padding-inline-start:2.375rem}
+.skd-previewFilesToggle{display:none}
+@container dashboard (max-width:600px){
+  .skd-header{padding-block:.75rem;gap:.75rem}
+  .skd-headerTools{width:auto}
+  .skd-pageMark{inline-size:2rem;block-size:2rem}
+  .skd-subtitle{display:none}
+  .skd-tabbar{margin-block-end:.75rem}
+  .skd-tab{min-block-size:2.75rem;min-inline-size:0;white-space:normal;overflow-wrap:anywhere;text-align:center}
+  .skd-content{padding-block-start:1rem}
+  .skd-filterBar{grid-template-columns:repeat(auto-fit,minmax(min(100%,7.5rem),1fr));padding-inline:0}
+  .skd-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem 1rem;margin-block-end:1rem;padding-block-end:.75rem}
+  .skd-overviewItem{flex-direction:row;align-items:baseline;justify-content:space-between;gap:.25rem .5rem}
+  .skd-overviewValue{font-size:1rem}
+  .skd-searchRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.75rem}
+  .skd-searchRow>.skd-sourceField{grid-column:1 / -1}
+  .skd-searchRow>.skd-searchField{grid-column:1}
+}
+@media(max-width:700px){
+  .skd-previewLayout{grid-template-rows:auto minmax(0,1fr)}
+  .skd-previewLayout[data-files-expanded]{grid-template-rows:auto auto minmax(0,1fr)}
+  .skd-previewLayout:not([data-files-expanded]) .skd-previewFiles{display:none}
+  .skd-previewFiles{max-block-size:min(38dvh,18rem);overflow:auto}
+  .skd-previewFiles .skd-fileList{overflow:visible}
+  .skd-previewFilesHead{display:none}
+  .skd-previewFilesToggle{display:flex;align-items:center;justify-content:flex-start;border-width:0 0 1px;border-color:var(--skd-line);border-radius:0;padding-inline:.875rem;min-block-size:2.75rem}
+  .skd-previewFilesToggle .skd-micro{margin-inline-start:auto}
+  .skd-previewFilesToggle:focus-visible{outline-offset:-3px}
+  .skd-previewHeader .skd-iconButton{inline-size:2.75rem;min-inline-size:2.75rem}
+}
+.skd-periodControls{display:flex;flex-direction:row;flex-wrap:wrap;align-items:flex-end;justify-content:flex-start;gap:12px}
+.skd-periodField{display:flex;flex-direction:column;align-items:stretch;gap:6px;min-inline-size:0;font-size:.8125rem;color:var(--skd-muted)}
+.skd-periodField .skd-input,.skd-periodField .skd-select{min-inline-size:0;max-inline-size:100%;color:var(--skd-fg)}
 .skd-periodRange{flex:1 1 16rem;margin:0 0 8px;text-align:end}
+.skd-periodValidation{flex-basis:100%}
+.skd-periodValidation:empty{position:absolute;inline-size:1px;block-size:1px;clip-path:inset(50%)}
+.skd-usagePanel .skd-statValue{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.skd-usagePanel .skd-panelCard>h3{margin:0 0 12px;color:var(--skd-fg);font-size:.875rem;font-weight:600}
+.skd-usagePanel .skd-panelCard>.skd-periodField{margin-block-end:6px}
+.skd-usagePanel .skd-activityName{white-space:normal;overflow-wrap:anywhere}
+.skd-cardTitleRow>.skd-periodField{max-inline-size:min(100%,18rem)}
+.skd-periodTrendTitle{scroll-margin-block-start:16px;border-radius:3px;overflow-wrap:anywhere}
+.skd-periodTrendTitle:focus,.skd-periodTableScroll:focus-visible{outline:2px solid var(--skd-accent);outline-offset:3px}
 .skd-periodChart{gap:clamp(2px,.5vw,8px)}
-.skd-periodTableScroll{max-inline-size:100%;overflow:auto;overscroll-behavior-inline:contain;border:1px solid var(--skd-line);border-radius:8px;margin-block-start:14px;max-block-size:32rem}
-.skd-periodTableScroll:focus-visible{outline:2px solid var(--skd-accent);outline-offset:3px}
-.skd-periodTable{inline-size:100%;min-inline-size:32rem;border-collapse:separate;border-spacing:0;font-size:.8125rem;text-align:start}
-.skd-periodTable caption{padding:12px;text-align:start;color:var(--skd-muted);font-size:.75rem}
-.skd-periodTable th,.skd-periodTable td{padding:12px;border-block-end:1px solid var(--skd-line);text-align:start;font-weight:400}
-.skd-periodTable thead th{position:sticky;inset-block-start:0;z-index:2;background:var(--skd-bg);font-weight:600}
-.skd-periodTable tbody th{position:sticky;inset-inline-start:0;z-index:1;background:var(--skd-bg);max-inline-size:24rem;overflow-wrap:anywhere}
-.skd-periodTable th:has(>.skd-periodSort){padding:0}
+.skd-periodTableScroll{max-inline-size:100%;overflow:auto;overscroll-behavior-inline:contain;border:1px solid var(--skd-line);border-radius:8px;margin-block-start:12px;max-block-size:32rem;scroll-padding-block-start:3.5rem}
+.skd-periodTable{--skd-cell-padding:12px;inline-size:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-size:.8125rem;line-height:1.45;text-align:start}
+.skd-periodTable caption{padding:12px;text-align:start;color:var(--skd-muted);font-size:.75rem;overflow-wrap:anywhere}
+.skd-periodTable th,.skd-periodTable td{padding:8px var(--skd-cell-padding);border-block-end:1px solid var(--skd-line);text-align:start;font-weight:400;overflow-wrap:anywhere}
+.skd-periodTable thead th{position:sticky;inset-block-start:0;z-index:2;background:var(--skd-soft);font-weight:600;padding:0}
+.skd-periodTable thead th:first-child{inline-size:50%}
 .skd-periodTable th:not(:first-child),.skd-periodTable td{text-align:end;font-variant-numeric:tabular-nums}
-.skd-periodSort{display:flex;justify-content:space-between;align-items:center;gap:12px;inline-size:100%;min-block-size:44px;padding:12px;border:0;background:transparent;color:inherit;font:inherit;font-weight:600;text-align:inherit;cursor:pointer}
-.skd-periodSkill{border:0;background:transparent;color:var(--skd-accent-label,var(--skd-accent));font:inherit;text-align:start;cursor:pointer;padding:4px 0;min-block-size:32px;overflow-wrap:anywhere}
-.skd-periodSkill[aria-pressed=true]{text-decoration:underline;text-underline-offset:4px}
-.skd-periodSkill+.skd-badge{margin-inline-start:8px}
-.skd-periodSkill:focus-visible,.skd-periodSort:focus-visible{outline:2px solid var(--skd-accent);outline-offset:-2px}
+.skd-periodTable td[colspan]{text-align:start}
+.skd-periodSort{display:flex;justify-content:flex-end;align-items:center;gap:8px;inline-size:100%;min-block-size:44px;padding:8px var(--skd-cell-padding);border:0;background:transparent;color:inherit;font:inherit;font-weight:600;text-align:inherit;cursor:pointer}
+.skd-periodTable th:first-child .skd-periodSort{justify-content:space-between}
+.skd-periodSort>span:first-child{min-inline-size:0;overflow-wrap:anywhere}
+.skd-periodSort>span:last-child{flex:none}
+.skd-periodSort:hover{background:var(--skd-bg)}
+.skd-periodSkill{display:block;max-inline-size:100%;border:0;background:transparent;color:var(--skd-accent-label,var(--skd-accent));font:inherit;font-weight:500;text-align:start;cursor:pointer;padding:4px;min-block-size:32px;overflow-wrap:anywhere}
+.skd-periodSkill:hover,.skd-periodSkill[aria-pressed=true]{text-decoration:underline;text-underline-offset:4px}
+.skd-periodSkill+.skd-badge{max-inline-size:100%;margin:3px 0 0 4px;white-space:normal;overflow-wrap:anywhere}
+.skd-periodSkill:focus-visible,.skd-periodSort:focus-visible{outline:2px solid var(--skd-accent);outline-offset:-2px;border-radius:4px}
 .skd-periodTable tbody tr:last-child>*{border-block-end:0}
-@container dashboard (max-width:600px){.skd-periodControls>.skd-periodField{flex:1 1 100%}.skd-periodRange{text-align:start;margin:0}.skd-periodControls .skd-input,.skd-periodControls .skd-select{inline-size:100%}.skd-periodTable{min-inline-size:28rem}.skd-periodSkill{min-block-size:44px}.skd-cardTitleRow>.skd-periodField{flex:1 1 100%}.skd-periodChart{gap:2px}}
-@media(forced-colors:active){.skd-periodSkill{color:LinkText}.skd-periodTable thead th,.skd-periodTable tbody th{background:Canvas}.skd-periodSkill[aria-pressed=true]{outline:1px solid Highlight}}
+@container dashboard (max-width:600px){
+  .skd-periodControls>.skd-periodField{flex:1 1 8rem}
+  .skd-periodControls>.skd-periodField:first-child,.skd-periodRange{flex-basis:100%}
+  .skd-periodRange{text-align:start;margin:0}
+  .skd-periodControls .skd-input,.skd-periodControls .skd-select{inline-size:100%}
+  .skd-usagePanel .skd-panelCard{padding:14px}
+  .skd-cardTitleRow>.skd-periodField{flex:1 1 100%;max-inline-size:100%}
+  .skd-periodChart{gap:2px}
+  .skd-periodTableScroll{scroll-padding-block-start:5rem}
+  .skd-periodTable{--skd-cell-padding:8px}
+  .skd-periodTable thead th:first-child{inline-size:44%}
+  .skd-periodSort{gap:4px}
+  .skd-periodSkill{min-block-size:44px}
+}
+@media(forced-colors:active){.skd-periodSkill{color:LinkText}.skd-periodTable thead th{background:Canvas}.skd-periodSkill[aria-pressed=true]{outline:1px solid Highlight}}
 `;
     // ---------------------------------------------------------------- util
     /** A string field, or the empty string; missing fields are tolerated. */
@@ -1487,13 +1558,12 @@ window.__ModuleLoader__.load({
         },
           el('span', { className: 'skd-tabIcon', 'aria-hidden': true }, el(Glyph, { name: tab.id === 'installed' ? 'library' : tab.id === 'discover' ? 'compass' : 'chart', size: 15 })),
           tab.label,
-          tab.count > 0 && el('span', { className: 'skd-tabCount' }, String(tab.count)),
         )),
       );
     }
 
     /** Native top-layer menu with feature-detected focus, invoker and positioning fallbacks. */
-    function RowMenu({ skill, t, name, disabled, canUpdate, busy, pathShown, onUpdate, onAskRemove, onTogglePath, returnFocusRef }) {
+    function RowMenu({ skill, t, name, disabled, canUpdate, pathShown, onUpdate, onAskRemove, onTogglePath, returnFocusRef }) {
       const [open, setOpen] = useState(false);
       const internalTrigger = useRef(null);
       const triggerRef = returnFocusRef ?? internalTrigger;
@@ -1589,7 +1659,7 @@ window.__ModuleLoader__.load({
         el(Button, {
           type: 'button', ref: triggerRef, id: id + '-trigger', className: 'skd-iconButton',
           'aria-label': menuLabel, 'aria-haspopup': 'menu', 'aria-expanded': open, 'aria-controls': id,
-          title: menuLabel, 'data-open': open ? '' : undefined, disabled: busy === true,
+          title: menuLabel, 'data-open': open ? '' : undefined,
           commandfor: nativePopover ? id : undefined, command: nativePopover ? 'toggle-popover' : undefined,
           onKeyDown: (event) => {
             if (event.key === 'ArrowDown') { event.preventDefault(); enter(); }
@@ -1632,8 +1702,8 @@ window.__ModuleLoader__.load({
           ref: groupRef, className: 'skd-menuGroup', focusgroup: 'menu nomemory',
           role: nativeFocusGroup ? undefined : 'menu', 'aria-labelledby': id + '-trigger',
         },
-          canUpdate && el(Button, { ...itemProps, disabled: disabled || busy, onClick: choose(onUpdate) }, t('skill.menu.update')),
-          el(Button, { ...itemProps, 'data-danger': '', disabled: disabled || busy, onClick: choose(onAskRemove) }, t('skill.menu.remove')),
+          canUpdate && el(Button, { ...itemProps, disabled, onClick: choose(onUpdate) }, t('skill.menu.update')),
+          el(Button, { ...itemProps, 'data-danger': '', disabled, onClick: choose(onAskRemove) }, t('skill.menu.remove')),
           path !== '' && el(Button, { ...itemProps, onClick: choose(onTogglePath) }, t(pathShown ? 'skill.menu.hidePath' : 'skill.menu.showPath')),
         )),
       );
@@ -1752,6 +1822,8 @@ window.__ModuleLoader__.load({
         return { status: cached ? 'ready' : 'loading', data: cached, error: null };
       });
       const [maximized, setMaximized] = useState(false);
+      const [filesExpanded, setFilesExpanded] = useState(false);
+      const filesToggleRef = useRef(null);
       const normalSize = useRef(null);
       const refreshPreview = useRef(false);
       const closeRef = useRef(onClose);
@@ -1803,6 +1875,11 @@ window.__ModuleLoader__.load({
             const data = await response.json().catch(() => null);
             if (!active) return;
             if (!response.ok || !data || data.ok !== true) {
+              if (file && data?.code === 'file-not-found') {
+                PREVIEW_MEMORY.delete(identity);
+                setFile('');
+                return;
+              }
               setSnapshot((current) => ({ status: 'error', data: current.data, error: { code: data?.code ?? (response.status === 404 ? 'preview-unavailable' : 'preview-failed') } }));
               return;
             }
@@ -1837,6 +1914,13 @@ window.__ModuleLoader__.load({
       const name = textOf(skill.name) || textOf(target.title) || textOf(target.name);
       const errorKey = 'error.' + textOf(snapshot.error?.code);
       const error = t(errorKey) !== errorKey ? t(errorKey) : t('preview.failed');
+      const selectFile = (path) => {
+        setFile(path);
+        if (window.matchMedia('(max-width: 700px)').matches) {
+          filesToggleRef.current?.focus({ preventScroll: true });
+          setFilesExpanded(false);
+        }
+      };
       if (!dialog) return null;
       return createPortal(el('div', { className: 'skd-page skd-previewRoot' },
         el('header', { className: 'skd-previewHeader' },
@@ -1851,21 +1935,27 @@ window.__ModuleLoader__.load({
           ),
           el('div', { className: 'skd-windowTools' },
             el(Button, { className: 'skd-iconButton', 'aria-label': t('preview.refresh'), title: t('preview.refresh'), onClick: () => {
-              refreshPreview.current = true; setFile(''); setRetry((value) => value + 1);
+              refreshPreview.current = true;
+              setRetry((value) => value + 1);
             } }, el(Glyph, { name: 'refresh', size: 16 })),
             el(Button, { className: 'skd-iconButton skd-sizeStep', 'aria-label': t('preview.shrink'), title: t('preview.shrink'), onClick: () => changeSize(-1) }, el(Glyph, { name: 'minus', size: 16 })),
             el(Button, { className: 'skd-iconButton skd-sizeStep', 'aria-label': t('preview.grow'), title: t('preview.grow'), onClick: () => changeSize(1) }, el(Glyph, { name: 'plus', size: 16 })),
-            el(Button, { className: 'skd-iconButton', 'aria-label': t(maximized ? 'preview.restore' : 'preview.maximize'), title: t(maximized ? 'preview.restore' : 'preview.maximize'), onClick: toggleMaximized },
+            el(Button, { className: 'skd-iconButton skd-sizeStep', 'aria-label': t(maximized ? 'preview.restore' : 'preview.maximize'), title: t(maximized ? 'preview.restore' : 'preview.maximize'), onClick: toggleMaximized },
               el(Glyph, { name: maximized ? 'restore' : 'maximize', size: 16 })),
             el('form', { method: 'dialog' }, el(Button, {
               type: 'submit', autoFocus: true, className: 'skd-iconButton', 'aria-label': t('preview.close'), title: t('preview.close'),
             }, el(Glyph, { name: 'close', size: 20 })))), 
         ),
-        el('div', { className: 'skd-previewLayout' },
-          el('aside', { className: 'skd-previewFiles', 'aria-label': t('preview.files') },
+        el('div', { className: 'skd-previewLayout', 'data-files-expanded': filesExpanded ? '' : undefined },
+          el(Button, {
+            className: 'skd-button skd-previewFilesToggle', ref: filesToggleRef,
+            'aria-expanded': filesExpanded, 'aria-controls': titleId + '-files',
+            onClick: () => setFilesExpanded((value) => !value),
+          }, el(Glyph, { name: 'folder', size: 16 }), t('preview.files'), el('span', { className: 'skd-micro' }, formatNumber(files.length))),
+          el('aside', { className: 'skd-previewFiles', id: titleId + '-files', 'aria-label': t('preview.files') },
             el('div', { className: 'skd-previewFilesHead' }, el('h3', null, t('preview.files')),
               el('span', { className: 'skd-micro' }, String(files.length))),
-            files.length > 0 && el(PreviewFiles, { files, selected: file || selected?.path, onSelect: setFile, t }),
+            files.length > 0 && el(PreviewFiles, { files, selected: file || selected?.path, onSelect: selectFile, t }),
             !target.path && el('p', { className: 'skd-noteLine skd-previewNotice' }, t('preview.remoteNotice')),
             data?.truncatedFiles === true && el('p', { className: 'skd-noteLine skd-previewNotice' }, t('preview.filesLimited')),
             snapshot.status !== 'loading' && files.length === 0 && el('p', { className: 'skd-noteLine skd-previewNotice' }, t('preview.noFiles')),
@@ -1897,7 +1987,7 @@ window.__ModuleLoader__.load({
     /** One installed skill: identity, description, calls, both switches, and its menu. */
     function SkillRow(props) {
       const {
-        skill, t, frequent, busy, pathShown, confirming,
+        skill, t, frequent, busy, writesLocked, pathShown, confirming,
         onToggle, onUpdate, onAskRemove, onConfirmRemove, onCancelRemove, onTogglePath, onPreview,
       } = props;
       const name = textOf(skill?.name) !== '' ? textOf(skill.name) : '—';
@@ -1956,7 +2046,7 @@ window.__ModuleLoader__.load({
             el('div', { className: 'skd-switchRow' },
               el(Switch, {
                 checked: modelInvocable,
-                disabled: writable === false || busy === true,
+                disabled: writable === false || writesLocked,
                 busy,
                 label: t('skill.modelSwitchAria', { name }),
                 onChange: (next) => onToggle(skill, { modelInvocable: next }),
@@ -1965,7 +2055,7 @@ window.__ModuleLoader__.load({
             el('div', { className: 'skd-switchRow' },
               el(Switch, {
                 checked: userInvocable,
-                disabled: writable === false || busy === true,
+                disabled: writable === false || writesLocked,
                 busy,
                 label: t('skill.userSwitchAria', { name }),
                 onChange: (next) => onToggle(skill, { userInvocable: next }),
@@ -1977,9 +2067,8 @@ window.__ModuleLoader__.load({
             skill,
             t,
             name,
-            disabled: writable === false,
+            disabled: writable === false || writesLocked,
             canUpdate,
-            busy,
             pathShown,
             onUpdate: () => onUpdate(skill),
             onAskRemove: () => onAskRemove(skill),
@@ -1999,8 +2088,12 @@ window.__ModuleLoader__.load({
             type: 'button',
             className: 'skd-button',
             'data-variant': 'danger',
-            disabled: busy === true,
-            onClick: () => onConfirmRemove(skill),
+            disabled: writesLocked,
+            onClick: (event) => {
+              const item = event.currentTarget.closest('li');
+              const next = (item?.nextElementSibling ?? item?.previousElementSibling)?.querySelector('.skd-nameButton');
+              onConfirmRemove(skill, next);
+            },
           }, t('skill.removeConfirmAction')),
           el(Button, {
             type: 'button',
@@ -2046,6 +2139,7 @@ window.__ModuleLoader__.load({
             && calls >= MIN_FREQUENT_CALLS
             && calls >= frequentRule.threshold,
           busy,
+          writesLocked: pending !== null,
           pathShown: path !== '' && expandedPath === path,
           confirming: path !== '' && confirmingPath === path,
           onToggle,
@@ -2065,7 +2159,7 @@ window.__ModuleLoader__.load({
      * (`name`, the kebab slug) always appears as the mono sub-label, so a card can never
      * hide what would actually be installed.
      */
-    function DiscoverCard({ item, t, installing, onInstall, onPreview }) {
+    function DiscoverCard({ item, t, installing, writesLocked, onInstall, onPreview }) {
       const slug = textOf(item?.name);
       const heading = textOf(item?.title) !== '' ? textOf(item.title) : slug !== '' ? slug : '—';
       const description = textOf(item?.description);
@@ -2087,9 +2181,9 @@ window.__ModuleLoader__.load({
         el('div', { className: 'skd-cardHead' },
           el('div', { className: 'skd-cardIdentity' },
             el('span', { className: 'skd-skillMark', 'aria-hidden': true }, el(Glyph, { name: 'library', size: 18 })),
-            el('div', { className: 'skd-cardTitleWrap' }, el('h3', { className: 'skd-cardName', title: heading }, el(Button, {
-              className: 'skd-nameButton', 'aria-label': t('preview.open', { name: heading }),
-              onClick: () => onPreview(item),
+            el('div', { className: 'skd-cardTitleWrap' }, el('h3', { className: 'skd-cardName' }, el(Button, {
+              className: 'skd-nameButton', title: t('preview.open', { name: heading }),
+              'aria-label': t('preview.open', { name: heading }), onClick: () => onPreview(item),
             }, heading)))),
           version !== '' && el('span', { className: 'skd-cardVersion' }, t('discover.version', { version })),
         ),
@@ -2102,37 +2196,39 @@ window.__ModuleLoader__.load({
             installs > 0 && el('span', { className: 'skd-cardDownloads' }, t('discover.installs', { count: formatNumber(installs) })),
             updatedAt !== '' && el('span', { className: 'skd-micro' }, t('discover.updated', { date: updatedAt })),
           ),
-          el('div', { className: 'skd-previewActions' },
-          el(Button, { className: 'skd-button', 'aria-label': t('preview.open', { name: heading }),
-            onClick: () => onPreview(item) }, t('preview.action')),
           el(Button, {
             type: 'button', className: 'skd-button',
             'data-variant': 'outline',
             'data-done': installed ? '' : undefined,
             'aria-label': buttonLabel, 'aria-busy': installing || undefined,
             title: blocked ? buttonLabel : undefined,
-            disabled: installed || installing || blocked,
+            disabled: installed || blocked || writesLocked,
             onClick: () => onInstall(item),
           }, !installed && !installing && !blocked && el(Glyph, { name: 'plus', size: 14 }),
-          installed ? t('discover.installed') : installing ? t('discover.installing') : t('discover.install'))),
+          installed ? t('discover.installed') : installing ? t('discover.installing') : t('discover.install')),
         ),
       );
     }
 
     /** Discover: pick a source, search it, install a result; every state is explicit. */
     function DiscoverTab(props) {
-      const { t, discover, sources, queryDraft, onDraft, onSearch, onSelectSource, onInstall, onPreview, pending } = props;
+      const { t, discover, sources, queryDraft, onDraft, onSearch, onRetry, onSelectSource, onInstall, onPreview, pending } = props;
       const items = Array.isArray(discover.items) ? discover.items : [];
       const error = objectOf(discover.error);
       const note = discoverNoteOf(discover.note, t);
       const other = sources.find((source) => source.id !== discover.source && source.disabled === false);
+      const sourceLabel = sources.find((source) => source.id === discover.source)?.label ?? textOf(discover.source);
+      const submittedQuery = textOf(discover.query);
+      const resultScope = submittedQuery !== ''
+        ? t('discover.queryScope', { source: sourceLabel, query: submittedQuery })
+        : sourceLabel;
       const installingName = pending !== null && pending.kind === 'install' ? textOf(pending.target) : '';
       const searchId = 'skd-discover-query-' + useId();
 
       let body;
       if (discover.status === 'loading') {
         body = el('div', { className: 'skd-state', 'aria-busy': true },
-          el('h2', { className: 'skd-stateTitle' }, t('discover.loading')),
+          el('h3', { className: 'skd-stateTitle' }, t('discover.loading')),
           el('div', { className: 'skd-skeleton' },
             el('div', { className: 'skd-skeletonRow' }),
             el('div', { className: 'skd-skeletonRow' }),
@@ -2141,29 +2237,29 @@ window.__ModuleLoader__.load({
         );
       } else if (discover.status === 'error') {
         body = el('div', { className: 'skd-state', role: 'alert' },
-          el('h2', { className: 'skd-stateTitle' }, t('discover.error.title')),
+          el('h3', { className: 'skd-stateTitle' }, t('discover.error.title')),
           el('p', { className: 'skd-stateBody' },
             error !== null && error.offline === true
               ? t('status.offlineInline')
               : describeFailure(error?.code ?? null, error?.message ?? null, t),
           ),
-          el('p', { className: 'skd-stateBody' }, t('discover.error.hint')),
+          el('p', { className: 'skd-stateBody' }, resultScope),
           el('div', { className: 'skd-stateActions' },
             other !== undefined && el(Button, {
               type: 'button',
               className: 'skd-button',
-              onClick: () => onSelectSource(other.id, queryDraft),
+              onClick: () => onSelectSource(other.id),
             }, t('discover.otherSource', { source: other.label })),
             el(Button, {
               type: 'button',
               className: 'skd-button',
-              onClick: () => onSearch(),
+              onClick: onRetry,
             }, t('action.retry')),
           ),
         );
       } else if (discover.status === 'ready' && items.length === 0) {
         body = el('div', { className: 'skd-state' },
-          el('h2', { className: 'skd-stateTitle' }, t('discover.empty.title')),
+          el('h3', { className: 'skd-stateTitle' }, t('discover.empty.title')),
           el('p', { className: 'skd-stateBody' }, t('discover.empty.body')),
         );
       } else if (discover.status === 'ready') {
@@ -2174,10 +2270,16 @@ window.__ModuleLoader__.load({
             item,
             t,
             installing: installingName !== '' && textOf(item?.name) === installingName,
+            writesLocked: pending !== null,
             onInstall: (entry) => onInstall(entry, discover.source),
             onPreview: (entry) => onPreview({ ...entry, source: discover.source }),
           });
         }));
+      } else if (!sources.some((source) => !source.disabled)) {
+        body = el('div', { className: 'skd-state' },
+          el('h3', { className: 'skd-stateTitle' }, t('discover.unavailableTitle')),
+          el('p', { className: 'skd-stateBody' }, t('discover.unavailableBody')),
+        );
       } else {
         body = el('div', { className: 'skd-state' },
           el('span', { className: 'skd-stateIcon' }, el(Glyph, { name: 'search', size: 24 })),
@@ -2211,12 +2313,12 @@ window.__ModuleLoader__.load({
             })),
             value: discover.source,
             label: t('discover.source'),
-            onChange: (id) => onSelectSource(id, queryDraft),
+            onChange: onSelectSource,
           })),
           el(Input, { type: 'hidden', name: 'source', value: textOf(discover.source) }),
           el('div', { className: 'skd-searchField' },
             el('label', { className: 'skd-fieldLabel', htmlFor: searchId }, t('discover.searchLabel')),
-            el(Input, {
+            el('div', { className: 'skd-searchBox' }, el(Glyph, { name: 'search' }), el(Input, {
               id: searchId, name: 'query', className: 'skd-input', type: 'search', value: queryDraft,
               placeholder: t('discover.placeholder'), autoCorrect: 'off', autoCapitalize: 'none', spellCheck: false, enterKeyHint: 'search',
               disabled: discover.source === null,
@@ -2225,14 +2327,15 @@ window.__ModuleLoader__.load({
                 // Let normal Enter use native form submission; suppress only IME confirmation.
                 if (event.key === 'Enter' && (event.nativeEvent?.isComposing || event.nativeEvent?.keyCode === 229)) event.preventDefault();
               },
-            })),
+            }))),
           el(Button, {
             type: 'submit', className: 'skd-button', 'data-variant': 'primary',
             disabled: discover.source === null || discover.status === 'loading',
           }, t('action.search')),
         )),
-        discover.status === 'ready' && el('div', { className: 'skd-resultLine', role: 'status' },
-          t('discover.results', { count: items.length })),
+        discover.status === 'ready' && el('div', { className: 'skd-resultLine skd-discoverResults', role: 'status' },
+          el('span', null, resultScope),
+          el('span', null, t('discover.results', { count: items.length }))),
         // A Host hint about how these results were chosen (an empty query falls back to a listing).
         discover.status === 'ready' && note !== '' && el('p', { className: 'skd-noteLine', role: 'note' }, note),
         body,
@@ -2261,7 +2364,7 @@ window.__ModuleLoader__.load({
       return [...counts].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([date, count]) => ({ date, count }));
     }
     /** Pure projection: query affects rows only; selected affects trend only; summaries cover all skills. */
-    function usagePeriodProjection(data, { period = '7', start = '', end = '', query = '', selected = 'all' } = {}) {
+    function usagePeriodProjection(data, { period = '7', start = '', end = '', query = '', selected = '' } = {}) {
       const root = objectOf(data) || {};
       const usage = objectOf(root.usage) || {};
       const newHost = Array.isArray(usage.history);
@@ -2311,36 +2414,37 @@ window.__ModuleLoader__.load({
       });
       const needle = textOf(query).trim().toLocaleLowerCase();
       const rows = allRows.filter((row) => row.name.toLocaleLowerCase().includes(needle));
-      const selectedRow = selected === 'all' ? null : allRows.find((row) => row.name === selected) || null;
+      const selectedRow = allRows.find((row) => row.name === selected);
       const trend = selectedRow ? selectedRow.buckets : buckets;
       return { newHost, min, max, from, to, requestedStart, requestedEnd, error, bounded, buckets, trend,
         total, active: allRows.filter((row) => row.count > 0).length, rows, allRows,
-        selected: selectedRow ? selectedRow.name : 'all',
+        selected: selectedRow?.name ?? '',
         trendTotal: trend.reduce((sum, bucket) => sum + bucket.count, 0),
         peak: trend.reduce((peak, bucket) => Math.max(peak, bucket.count), 0) };
     }
 
-    function UsageTab({ data, t }) {
+    function UsageTab({ data, t, view, setView }) {
       const id = 'skd-period-' + useId();
-      const [period, setPeriod] = useState('7');
-      const [start, setStart] = useState('');
-      const [end, setEnd] = useState('');
-      const [query, setQuery] = useState('');
-      const [selected, setSelected] = useState('all');
-      const [sort, setSort] = useState({ key: 'count', direction: 'descending' });
-      const tableRef = useRef(null);
-      const nativeSort = typeof HTMLButtonElement !== 'undefined' && 'commandForElement' in HTMLButtonElement.prototype;
-      useEffect(() => {
-        if (!nativeSort) return;
-        const table = tableRef.current;
-        const command = (event) => {
-          const key = event.source?.dataset.sortKey;
-          if (event.command === '--sort' && ['name', 'count', 'share'].includes(key)) switchSort(key);
-        };
-        table?.addEventListener('command', command);
-        return () => table?.removeEventListener('command', command);
-      }, [nativeSort]);
-      const p = usagePeriodProjection(data, { period, start, end, query, selected });
+      const { period, start, end, query, sort } = view;
+      const trendHeading = useRef(null);
+      const focusTrend = useRef(false);
+      useLayoutEffect(() => {
+        if (!focusTrend.current) return;
+        focusTrend.current = false;
+        trendHeading.current?.focus({ preventScroll: true });
+        trendHeading.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
+      }, [view]);
+      const p = usagePeriodProjection(data, view);
+      const updateView = (fields) => setView((current) => ({ ...current, ...fields }));
+      const changePeriod = (value) => setView((current) => ({
+        ...current,
+        period: value,
+        ...(value === 'custom' ? { start: current.start || p.from || p.min, end: current.end || p.max } : {}),
+      }));
+      const selectFromTable = (name) => {
+        focusTrend.current = true;
+        updateView({ selected: name });
+      };
       const usage = objectOf(objectOf(data)?.usage) || {};
       const agents = Array.isArray(data?.agents) ? data.agents : [];
       const recent = (Array.isArray(usage.recent) ? usage.recent : []).map(objectOf).filter(Boolean);
@@ -2349,41 +2453,49 @@ window.__ModuleLoader__.load({
         const comparison = sort.key === 'name' ? collator.compare(a.name, b.name) : a[sort.key] - b[sort.key];
         return (sort.direction === 'ascending' ? 1 : -1) * comparison || collator.compare(a.name, b.name);
       });
-      const switchSort = (key) => setSort((current) => ({ key, direction: current.key === key && current.direction === 'ascending' ? 'descending' : 'ascending' }));
+      const switchSort = (key) => setView((current) => ({
+        ...current,
+        sort: { key, direction: current.sort.key === key && current.sort.direction === 'ascending' ? 'descending' : 'ascending' },
+      }));
       const range = p.from && p.to ? p.from + ' – ' + p.to : '—';
-      const subject = p.selected === 'all' ? t('usage.allSkills') : p.selected;
+      const subject = p.selected || t('usage.allSkills');
       const axes = p.trend.filter((_, index) => index === 0 || index === Math.floor((p.trend.length - 1) / 2) || index === p.trend.length - 1);
       const number = (value) => p.error ? '—' : formatNumber(value);
-      const field = (label, control) => el('label', { className: 'skd-field skd-periodField' }, el('span', null, label), React.cloneElement(control, { 'aria-label': label }));
-      const select = (value, onChange, options, extra = {}) => el('select', { className: 'skd-select', value, onChange: (event) => onChange(event.target.value), ...extra },
+      const field = (name, label, control) => {
+        const controlId = id + '-' + name;
+        return el('div', { className: 'skd-field skd-periodField' },
+          el('label', { htmlFor: controlId }, label), React.cloneElement(control, { id: controlId }));
+      };
+      const select = (value, onChange, options) => el('select', { className: 'skd-select', value, onChange: (event) => onChange(event.target.value) },
         options.map(([value, label]) => el('option', { key: value, value }, label)));
       const agentTitle = (value) => {
         const agent = agents.map(objectOf).find((entry) => entry && textOf(entry.id) === textOf(value));
         return textOf(agent?.title) || textOf(value) || t('usage.unknownAgent');
       };
       const heading = (key, label) => el('th', { scope: 'col', 'aria-sort': sort.key === key ? sort.direction : undefined },
-        el(Button, { className: 'skd-periodSort', ...(nativeSort ? { command: '--sort', commandfor: id + '-table', 'data-sort-key': key } : { onClick: () => switchSort(key) }) }, label,
-          el('span', { 'aria-hidden': true }, sort.key === key ? (sort.direction === 'ascending' ? ' ↑' : ' ↓') : ' ↕')));
-      return el('div', { className: 'skd-panel' },
+        el(Button, { className: 'skd-periodSort', onClick: () => switchSort(key) }, el('span', null, label),
+          el('span', { 'aria-hidden': true }, sort.key === key ? (sort.direction === 'ascending' ? '↑' : '↓') : '↕')));
+      return el('div', { className: 'skd-panel skd-usagePanel' },
         el(SectionHeading, { title: t('usage.title'), body: t('usage.periodBody') }),
         el('div', { className: 'skd-toolbar skd-periodControls' },
-          field(t('usage.period'), select(period, (value) => { setPeriod(value); if (value === 'custom') { setStart(start || p.from || p.min); setEnd(end || p.max); } },
+          field('period', t('usage.period'), select(period, changePeriod,
             [['1', t('usage.period.today')], ['7', t('usage.period.7')], ['14', t('usage.period.14')], ['30', t('usage.period.30')], ['60', t('usage.period.60')], ['custom', t('usage.period.custom')]])),
-          period === 'custom' && field(t('usage.startDate'), el(Input, { type: 'date', value: start, min: p.min, max: p.max, required: true,
-            'aria-invalid': Boolean(p.error), 'aria-describedby': id + '-validation', onChange: (event) => setStart(event.target.value) })),
-          period === 'custom' && field(t('usage.endDate'), el(Input, { type: 'date', value: end, min: start && start >= p.min ? start : p.min, max: p.max, required: true,
-            'aria-invalid': Boolean(p.error), 'aria-describedby': id + '-validation', onChange: (event) => setEnd(event.target.value) })),
+          period === 'custom' && field('start', t('usage.startDate'), el(Input, { type: 'date', value: start, min: p.min, max: p.max, required: true,
+            'aria-invalid': Boolean(p.error), 'aria-describedby': id + '-validation', onChange: (event) => updateView({ start: event.target.value }) })),
+          period === 'custom' && field('end', t('usage.endDate'), el(Input, { type: 'date', value: end, min: start && start >= p.min ? start : p.min, max: p.max, required: true,
+            'aria-invalid': Boolean(p.error), 'aria-describedby': id + '-validation', onChange: (event) => updateView({ end: event.target.value }) })),
           el('p', { className: 'skd-noteLine skd-periodRange' }, t('usage.availableRange', { start: p.min || '—', end: p.max || '—' })),
+          el('p', { id: id + '-validation', className: 'skd-noteLine skd-periodValidation', role: 'status' },
+            p.error ? t('usage.rangeError.' + p.error, { start: p.min, end: p.max }) : p.bounded ? t('usage.boundedRange', { start: p.min, end: p.max }) : ''),
         ),
-        el('p', { id: id + '-validation', className: 'skd-noteLine', role: 'status' },
-          p.error ? t('usage.rangeError.' + p.error, { start: p.min, end: p.max }) : p.bounded ? t('usage.boundedRange', { start: p.min, end: p.max }) : ''),
         el('div', { className: 'skd-stats' },
           [[t('usage.periodCalls'), p.total, range], [t('usage.periodActive'), p.active, t('usage.periodActiveHint')], [t('usage.total'), countOf(usage.totalCount), t('usage.totalHint')]].map(([label, value, hint], index) =>
             el('div', { className: 'skd-statCard', key: label }, el('span', { className: 'skd-micro' }, label),
               el('span', { className: 'skd-statValue' }, index === 2 ? formatNumber(value) : number(value)), el('span', { className: 'skd-statHint' }, hint)))),
-        el('figure', { className: 'skd-panelCard' },
-          el('figcaption', { className: 'skd-cardTitleRow' }, el('h3', { className: 'skd-micro' }, t('usage.periodTrend')),
-            field(t('usage.trendSkill'), select(p.selected, setSelected, [['all', t('usage.allSkills')], ...p.allRows.map((row) => [row.name, row.name + (row.removed ? ' · ' + t('usage.removed') : '')])]))),
+        el('figure', { className: 'skd-panelCard', id: id + '-trend' },
+          el('figcaption', { className: 'skd-cardTitleRow' },
+            el('h3', { className: 'skd-micro skd-periodTrendTitle', ref: trendHeading, tabIndex: -1, 'aria-describedby': id + '-summary' }, t('usage.periodTrend')),
+            field('trend-skill', t('usage.trendSkill'), select(p.selected, (value) => updateView({ selected: value }), [['', t('usage.allSkills')], ...p.allRows.map((row) => [row.name, row.name + (row.removed ? ' · ' + t('usage.removed') : '')])]))),
           el('p', { className: 'skd-noteLine skd-chartSummary', id: id + '-summary' }, t('usage.periodChartSummary', { name: subject, range, count: number(p.trendTotal), peak: number(p.peak) })),
           el('div', { className: 'skd-chart skd-periodChart', role: 'img', 'aria-label': t('usage.chart'), 'aria-describedby': id + '-summary' },
             p.trend.map((bucket) => el('div', { key: bucket.date, className: 'skd-chartCol', 'aria-hidden': true, 'data-count': bucket.count,
@@ -2397,15 +2509,15 @@ window.__ModuleLoader__.load({
                 el('tbody', null, p.trend.map((bucket) => el('tr', { key: bucket.date }, el('th', { scope: 'row' }, bucket.date), el('td', null, formatNumber(bucket.count))))))))),
         el('section', { className: 'skd-panelCard', 'aria-labelledby': id + '-skills' },
           el('h3', { className: 'skd-micro', id: id + '-skills' }, t('usage.perSkill')),
-          field(t('usage.searchSkills'), el(Input, { type: 'search', value: query, placeholder: t('usage.searchPlaceholder'), 'aria-describedby': id + '-searchHint', onChange: (event) => setQuery(event.target.value) })),
+          field('search', t('usage.searchSkills'), el(Input, { type: 'search', value: query, placeholder: t('usage.searchPlaceholder'), 'aria-describedby': id + '-searchHint', onChange: (event) => updateView({ query: event.target.value }) })),
           el('p', { className: 'skd-noteLine', id: id + '-searchHint' }, t('usage.searchTableOnly')),
           el('p', { className: 'skd-noteLine', role: 'status' }, t('usage.tableResults', { count: rows.length, total: p.allRows.length, column: t('usage.column.' + sort.key), direction: t('usage.sort.' + sort.direction) })),
           el('div', { className: 'skd-periodTableScroll', role: 'region', tabIndex: 0, 'aria-labelledby': id + '-caption' },
-            el('table', { className: 'skd-periodTable', id: id + '-table', ref: tableRef }, el('caption', { id: id + '-caption' }, t('usage.tableCaption', { range })),
+            el('table', { className: 'skd-periodTable', id: id + '-table' }, el('caption', { id: id + '-caption' }, t('usage.tableCaption', { range })),
               el('thead', null, el('tr', null, heading('name', t('usage.column.name')), heading('count', t('usage.column.count')), heading('share', t('usage.column.share')))),
               el('tbody', null, rows.length ? rows.map((row) => el('tr', { key: row.name },
                 el('th', { scope: 'row' }, el(Button, { className: 'skd-periodSkill', 'aria-pressed': p.selected === row.name,
-                  title: t('usage.showTrend', { name: row.name }), onClick: () => setSelected(row.name) }, row.name),
+                  'aria-controls': id + '-trend', title: t('usage.showTrend', { name: row.name }), onClick: () => selectFromTable(row.name) }, row.name),
                   row.removed && el('span', { className: 'skd-badge' }, t('usage.removed'))),
                 el('td', null, number(row.count)), el('td', null, p.error ? '—' : (row.share * 100).toFixed(1) + '%')))
                 : el('tr', null, el('td', { colSpan: 3 }, t('usage.noMatchingSkills'))))))),
@@ -2443,13 +2555,39 @@ window.__ModuleLoader__.load({
       const [libraryQuery, setLibraryQuery] = useState('');
       const [invocationFilter, setInvocationFilter] = useState('all');
       const [sort, setSort] = useState('usage');
+      const [usageView, setUsageView] = useState({ period: '7', start: '', end: '', query: '', selected: '', sort: { key: 'count', direction: 'descending' } });
       const scrollRef = useRef(null);
       const libraryInputRef = useRef(null);
       const contentRef = useRef(null);
+      const scrollPositions = useRef(new Map());
+      const focusNextPage = useRef(false);
       const pageId = 'skd-' + useId().replace(/[^a-zA-Z0-9_-]/g, '');
       const libraryInputId = pageId + '-query';
 
-      useEffect(() => { scrollRef.current?.scrollTo?.({ top: 0 }); }, [tab, agentFilter, libraryQuery, invocationFilter, sort]);
+      const scrollContainer = () => {
+        const scroller = scrollRef.current;
+        if (!scroller) return null;
+        return getComputedStyle(scroller).overflowY === 'visible' ? scroller.parentElement : scroller;
+      };
+      const changeTab = (next, focusPanel = false) => {
+        if (next === tab) return;
+        scrollPositions.current.set(tab, scrollContainer()?.scrollTop ?? 0);
+        focusNextPage.current = focusPanel;
+        setTab(next);
+      };
+      useLayoutEffect(() => {
+        if (focusNextPage.current) {
+          focusNextPage.current = false;
+          contentRef.current?.focus({ preventScroll: true });
+          scrollContainer()?.scrollTo({ top: 0 });
+        } else {
+          scrollContainer()?.scrollTo({ top: scrollPositions.current.get(tab) ?? 0 });
+        }
+      }, [tab]);
+
+      useEffect(() => {
+        if (tab === 'installed') scrollRef.current?.scrollTo({ top: 0 });
+      }, [agentFilter, libraryQuery, invocationFilter, sort]);
 
       // One read drives the panel; a later tab switch only refreshes a stale snapshot.
       useEffect(() => {
@@ -2526,7 +2664,8 @@ window.__ModuleLoader__.load({
       const toggleInvocation = (skill, changes) => { void setInvocation(skill, changes); };
       const askRemove = (skill) => { setConfirmingPath(textOf(skill?.path)); };
       const cancelRemove = () => { setConfirmingPath(''); };
-      const confirmRemove = (skill) => {
+      const confirmRemove = (skill, next) => {
+        (next ?? libraryInputRef.current)?.focus({ preventScroll: true });
         setConfirmingPath('');
         void removeSkill(skill);
       };
@@ -2535,16 +2674,17 @@ window.__ModuleLoader__.load({
         if (typeof query === 'string') setQueryDraft(query);
         void runDiscover(discover.source, (typeof query === 'string' ? query : queryDraft).trim());
       };
-      const selectDiscoverSource = (id, draft) => {
+
+      const changeDiscoverSource = (id) => {
+        if (id === discover.source) return;
         selectSource(id);
-        const query = textOf(draft).trim();
-        if (query !== '') void runDiscover(id, query);
+        if (discover.status !== 'idle') void runDiscover(id, textOf(discover.query));
       };
 
       const tabs = [
-        { id: 'installed', label: t('tab.installed'), count: skills.length },
-        { id: 'discover', label: t('tab.discover'), count: discover.status === 'ready' && Array.isArray(discover.items) ? discover.items.length : 0 },
-        { id: 'usage', label: t('tab.usage'), count: 0 },
+        { id: 'installed', label: t('tab.installed') },
+        { id: 'discover', label: t('tab.discover') },
+        { id: 'usage', label: t('tab.usage') },
       ];
 
       const filters = [
@@ -2607,13 +2747,6 @@ window.__ModuleLoader__.load({
                 el('p', { className: 'skd-subtitle' }, t('panel.intro')),
               ),
               el('div', { className: 'skd-headerTools' },
-                tab !== 'discover' && el(Button, {
-                  type: 'button', className: 'skd-button', 'data-variant': tab === 'discover' ? 'outline' : 'primary',
-                  'aria-label': t(tab === 'discover' ? 'action.backLibrary' : 'action.discover'),
-                  title: t(tab === 'discover' ? 'action.backLibrary' : 'action.discover'),
-                  onClick: () => setTab(tab === 'discover' ? 'installed' : 'discover'),
-                }, el(Glyph, { name: tab === 'discover' ? 'library' : 'plus', size: 16 }),
-                el('span', { className: 'skd-buttonLabel' }, t(tab === 'discover' ? 'action.backLibrary' : 'action.discover'))),
                 el(Button, {
                   type: 'button',
                   className: 'skd-iconButton',
@@ -2625,7 +2758,7 @@ window.__ModuleLoader__.load({
                 }, el(RefreshGlyph, { size: 15 })),
               ),
             ),
-            el(TabBar, { tabs, value: tab, onChange: setTab, label: t('tab.list'), idPrefix: pageId }),
+            el(TabBar, { tabs, value: tab, onChange: changeTab, label: t('tab.list'), idPrefix: pageId }),
           ),
         ),
         status === 'offline' && el('div', { className: 'skd-wrap' },
@@ -2670,10 +2803,8 @@ window.__ModuleLoader__.load({
               tabIndex: 0,
             },
               tab === 'installed' && el(SectionHeading, { title: t('installed.title'), body: t('installed.body') },
-                el('div', { className: 'skd-resultLine' },
-                  el('span', null, t('installed.results', { count: visible.length, total: skills.length })),
-                  el('span', { className: 'skd-visuallyHidden', role: 'status', 'aria-atomic': true }, announcedResults),
-                  hasFilters && el(Button, { type: 'button', className: 'skd-button', 'data-variant': 'text', onClick: resetFilters }, t('installed.reset')))),
+                skills.length > 0 && el(Button, { className: 'skd-button', onClick: () => changeTab('discover', true) },
+                  el(Glyph, { name: 'plus', size: 16 }), t('action.discover'))),
               tab === 'installed' && el('search', { className: 'skd-toolbar skd-filterBar', 'aria-label': t('installed.search') },
                 el('div', { className: 'skd-searchField' },
                   el('label', { className: 'skd-fieldLabel', htmlFor: libraryInputId }, t('installed.search')),
@@ -2689,6 +2820,11 @@ window.__ModuleLoader__.load({
                   options: ['all', 'enabled', 'disabled', 'writable'].map((id) => ({ id, label: t('installed.' + id) })) }),
                 el(SelectField, { label: t('installed.sort'), value: sort, onChange: setSort,
                   options: ['usage', 'name', 'recent'].map((id) => ({ id, label: t('installed.sort.' + id) })) })),
+              tab === 'installed' && el('div', { className: 'skd-resultLine skd-libraryResults' },
+                el('span', null, t('installed.results', { count: visible.length, total: skills.length })),
+                el('span', { className: 'skd-visuallyHidden', role: 'status', 'aria-atomic': true }, announcedResults),
+                hasFilters && visible.length > 0 && el(Button, { className: 'skd-button', 'data-variant': 'text', onClick: resetFilters }, t('installed.reset'))),
+              tab === 'installed' && visible.length > 0 && el('p', { className: 'skd-noteLine' }, t('installed.hint')),
               tab === 'installed' && visible.length > 0 && el('div', { className: 'skd-tableHeading', 'aria-hidden': true },
                 el('span', null, t('overview.skills')), el('span', null, t('skill.callsLabel')),
                 el('span', null, t('installed.permissions')), el('span')),
@@ -2700,7 +2836,7 @@ window.__ModuleLoader__.load({
                 pending,
                 filtered: hasFilters,
                 onReset: resetFilters,
-                onDiscover: () => setTab('discover'),
+                onDiscover: () => changeTab('discover', true),
                 expandedPath,
                 confirmingPath,
                 onToggle: toggleInvocation,
@@ -2710,7 +2846,6 @@ window.__ModuleLoader__.load({
                 onCancelRemove: cancelRemove,
                 onTogglePath: togglePath,
               }),
-              tab === 'installed' && el('p', { className: 'skd-noteLine' }, t('installed.hint')),
               tab === 'discover' && el(DiscoverTab, {
                 t,
                 discover,
@@ -2719,11 +2854,12 @@ window.__ModuleLoader__.load({
                 pending,
                 onDraft: setQueryDraft,
                 onSearch: search,
-                onSelectSource: selectDiscoverSource,
+                onRetry: () => { void runDiscover(discover.source, textOf(discover.query)); },
+                onSelectSource: changeDiscoverSource,
                 onInstall: (item, source) => { void installSkill(item, source); },
                 onPreview: setPreviewTarget,
               }),
-              tab === 'usage' && el(UsageTab, { data, t }),
+              tab === 'usage' && el(UsageTab, { data, t, view: usageView, setView: setUsageView }),
             ),
             tabs.filter((entry) => entry.id !== tab).map((entry) => el('div', {
               key: entry.id, hidden: true, role: 'tabpanel',
@@ -2734,9 +2870,7 @@ window.__ModuleLoader__.load({
         el('footer', { className: 'skd-footer' },
           el('div', { className: 'skd-wrap skd-footerInner' },
             el('div', { className: 'skd-footerStats' },
-              el('span', null, t('status.counts', { skills: skills.length, agents: agents.length })),
-              fetchedAt > 0 && el('span', null, t('status.updatedAt', { time: formatClock(fetchedAt) })),
-            ),
+              fetchedAt > 0 && el('span', null, t('status.updatedAt', { time: formatClock(fetchedAt) }))),
             el('span', { className: 'skd-footerNote', 'data-tone': footerTone, role: 'status' },
               el('span', { className: 'skd-statusDot', 'data-tone': footerTone, 'aria-hidden': 'true' }),
               footerNote !== '' ? footerNote : t(status === 'offline' ? 'status.offlineInline' : 'status.ready'),

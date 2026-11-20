@@ -48,8 +48,8 @@ It adds a **技能看板 / Skill dashboard** entry to the Web UI's left rail, di
 
 ## Skill details and file preview
 
-Click an installed skill name to open its preview. Discover cards offer both a clickable
-name and a **预览 / Preview** button, so online contents can be inspected before installing.
+Click a skill name in Installed or Discover to open its preview. On a narrow screen,
+choose **Skill files** to browse the file tree. Refresh reloads the selected file if it is still available.
 The dialog shows the description, source, available version and local path, an expandable
 folder tree, and a reader that opens `SKILL.md` by default. Folder disclosures support native
 Enter/Space operation; file labels are short while their full relative paths remain available. Markdown supports basic headings, lists,
