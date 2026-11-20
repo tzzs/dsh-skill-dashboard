@@ -62,7 +62,7 @@
 
 执行 `node --test skill-dashboard/test/*.test.mjs`。客户端回归覆盖组合筛选、三种排序、来源切换时的成功/失败响应竞态、最新请求胜出及中英字典同步。
 
-隔离浏览器验证脚本位于 `_verify/browser-check.mjs`，使用本机已有 Playwright 与 Chrome，测试运行时只加载 `_verify` 中的 React UMD，不增加生产依赖。覆盖搜索、组合筛选、清除筛选、权限开关与只读状态、发现入口、逐日明细，检查 1440/768/375px 的三个视图、深色及低动态效果，共 11 组无横向溢出检查。隔离用例采用固定测试数据，不代表线上指标。
+隔离浏览器验证脚本位于 `_verify/browser-check.mjs`，使用本机已有 Playwright 与 Chrome，测试运行时只加载 `_verify` 中的 React UMD，不增加生产依赖。覆盖搜索、组合筛选、清除筛选、权限开关与只读状态、发现入口、逐日明细，检查 1440/768/375px 的三个视图、深色及低动态效果，共 11 组无横向溢出检查。`_verify/select-checks.mjs` 另有 10 项可定制 select 检查：能力探测、触发器计算样式、仅用键盘改值并驱动真实筛选、`selectOption` 契约、弹层开合、深色无重渲染重绘、语言切换保留选中值、聚焦状态下 axe 扫描。`_verify/layout-run.mjs` 另外核对表头与行轨道逐像素对齐、控制带同一行、375px 行堆叠与 44px 触摸目标、320px/200% 文字无溢出；`_verify/real-theme-run.mjs` 用从已安装 DSH 提取的真实令牌表与 `body[data-ds-dark-theme]` 验证浅深重绘与语言切换。隔离用例采用固定测试数据，不代表线上指标。
 
 第一轮视觉重设计已在实际桌面应用中刷新验证，能读取真实技能与调用记录；截图 `redesign-live-installed.png` 与 `redesign-live-usage.png` 位于 `_verify`。本轮 Modern Web Guidance 优化已通过下述浏览器验证，安装包使用工作区符号链接，最终改动随应用页面刷新生效。未对屏幕阅读器进行人工完整朗读验证，也未声明完整 WCAG 合规认证。
 
@@ -78,7 +78,9 @@
 | `ime-safe-enter-submit` | “Native implicit submission of a `<form>` from an `<input>` with no custom `Enter` handler needs no explicit handling” | 不再手工调用 Enter 搜索；只拦截组合输入和 229 确认键，正常 Enter 交给浏览器表单。 |
 | `switch` | “listen for `change` (or `input`) events and read `.checked` rather than `.value`.” | 开关使用原生 checkbox 的 checked 和 change，switch 属性作为增强；不支持时提供样式与语义回退。 |
 | `accessibility` | “Debounce frequently-changing regions” | 结果数量延迟朗读；补齐跳转链接、语义列表、图表摘要和带 caption 的表格，移除静态柱的冗余停靠点。 |
-| `color` | “Maintain a minimum contrast ratio of 3:1 for user interface component boundaries and states” | 独立控件边界令牌、修正浅底强调标签对比度；forced-colors 使用系统色、真实边框与可见状态标记。 |
+| `color` | “Maintain a minimum contrast ratio of 3:1 for user interface component boundaries and states” | 控件边界（输入框、下拉框、按钮）用 50% 前景混合令牌，浅色实测 3.1:1、深色 4.6:1；分区线与徽章用更轻的 16% 令牌，只承担装饰性分隔；forced-colors 使用系统色、真实边框与可见状态标记。 |
+| `branded-select-styling` | “Apply `appearance: base-select` to both the `<select>` element and the `::picker(select)` pseudo-element” | 触发器与弹层同时接管，弹层用宿主令牌绘制；option 内容保持纯文本，不支持时自动回退为系统下拉框。 |
+| `animated-select-picker` | “DO NOT set `overflow: hidden` on `::picker(select)`” | 弹层只做 opacity 与 translate 入场，保持可滚动，不引入 `interpolate-size`，不改宿主文档。 |
 | `typography` | “DON'T use `px` for font-size.” | 所有插件字号改成 rem，不更改宿主 html/:root 的字号。 |
 | `respect-os-text-scale` | “Use unitless values for line heights so they scale proportionally with each element's computed font size.” | 行高无单位，权限列用相对宽度，允许标签/页签换行，低高度模式整页滚动。 |
 
