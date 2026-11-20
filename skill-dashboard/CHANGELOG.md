@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.1.0...v1.2.0) (2026-11-20)
+
+
+### Features
+
+* **skill-dashboard:** improve dashboard navigation and layout ([61ca198](https://github.com/tzzs/dsh-skill-dashboard/commit/61ca1989b5a2468246760df093160ceb3d17b014))
+
 ## [1.1.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.0.1...v1.1.0) (2026-11-20)
 
 
