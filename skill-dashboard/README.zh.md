@@ -1,6 +1,6 @@
 # 技能看板（Skill dashboard）
 
-一个 DeepSeek Harness 插件：把每个 Agent 的 skill 集中到一处 —— 装了什么、哪个 Agent 预设能看到、
+一个 DeepSeek Harness 插件：把每个 Agent 的 skill 集中到一处 —— 装了什么、哪些编程 Agent 能看到、
 模型实际调用了多少次，以及一个开关，用来把过度频繁的 skill 从模型手里收回来。
 
 它会在 Web UI 左侧栏的 `插件`、`自动化任务` 下方新增一个 **技能看板** 入口，并在中央列新增整页面板
@@ -10,11 +10,16 @@
 
 **已安装** —— 所有 Agent 预设的 skill 放进一本账。
 
-- 顶部概览技能库、模型可调用数、Agent 预设与累计调用；按名称、描述或来源即时搜索。
+- 顶部概览技能库、模型可调用数、已检测 Agent 与累计调用；按名称、描述或来源即时搜索。
 - 组合 Agent 与调用状态筛选，按调用最多、名称或最近使用排序；空结果可一键清除筛选。
 
 - 逐个预设读取目录（`agentPresets` + `skills.list({ scope })`），只在某个预设可见的 skill 只出现一行，
   并用 `N 个 Agent` 标出可见范围，不会重复列。
+- 从各自的 skill 根目录检测真正会读取技能目录的编程 Agent —— Claude Code、Codex、Cursor、
+  Gemini CLI、GitHub Copilot、OpenCode、Amp、Cline、Droid、Kilo Code、Kimi Code CLI、Pi、Warp、
+  Zed、fx —— 并在每一行标出读取它的 Agent。清单对齐 `skills` CLI 的注册表
+  （`vercel-labs/skills/src/agents.ts`）：通用的 `.agents/skills` 根目录对所有读取它的 Agent 生效，
+  而 DSH 始终能看到全部 skill。
 - 显示来源（`user-agents`、`user-dsh`、`project-*`、`custom`、`bundled`）、调用次数；位于 DSH 安装目录
   （bundled 与 `app.asar` 内）的 skill 标 `只读`，插件不会去改它。
 - 每行两个开关：**模型可调用** 与 **`/name` 可调用**。
@@ -62,7 +67,8 @@ user-invocable: false            # 从 `/skill` 手势中隐藏
 - 因为它是一次文件编辑：`git diff` 看得见、重启后依然有效、也可以手工还原。重新开启不依赖本插件
   是否加载。
 
-被多个预设共享的 skill 文件会影响所有相关预设；行上的 `N 个 Agent` 就是改动前的影响范围。
+被多个预设共享的 skill 文件会影响所有相关预设；行上的 Agent 标记告诉你哪些编程 Agent 读取它，
+也就是改动前的影响范围。
 
 ## 数据源
 

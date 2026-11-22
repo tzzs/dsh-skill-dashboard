@@ -1,7 +1,7 @@
 # Skill dashboard
 
 A DeepSeek Harness plugin that puts every Agent skill in one place: what is installed, which
-Agent preset can see it, how often the model actually calls it — and one switch that takes an
+coding agent can see it, how often the model actually calls it — and one switch that takes an
 over-used skill away from the model again.
 
 It adds a **技能看板 / Skill dashboard** entry to the Web UI's left rail, directly below
@@ -13,6 +13,12 @@ It adds a **技能看板 / Skill dashboard** entry to the Web UI's left rail, di
 
 - Reads the catalog per preset (`agentPresets` + `skills.list({ scope })`), so a skill that only
   one preset can see is listed once with `N 个 Agent`, not duplicated.
+- Detects the coding agents that really read skill directories — Claude Code, Codex, Cursor,
+  Gemini CLI, GitHub Copilot, OpenCode, Amp, Cline, Droid, Kilo Code, Kimi Code CLI, Pi, Warp,
+  Zed, fx — from their own skill roots, and labels each row with the agents that read it.
+  The table mirrors the `skills` CLI registry (`vercel-labs/skills/src/agents.ts`); the
+  canonical `.agents/skills` roots count for every agent that reads them, and DSH always sees
+  every skill.
 - Shows source (`user-agents`, `user-dsh`, `project-*`, `custom`, `bundled`), call count and a
   `只读` badge for skills inside the DSH installation (bundled skills and `app.asar` entries),
   which the dashboard refuses to modify.
@@ -104,8 +110,8 @@ So the switch is a **byte-exact frontmatter edit**, nothing more:
 - Because the edit is a file edit, it is visible to `git diff`, survives restarts, and can be
   reverted by hand. Re-enabling never depends on this plugin being loaded.
 
-A skill file shared by several presets affects all of them; the row's `N 个 Agent` badge shows
-the blast radius before you flip the switch.
+A skill file shared by several presets affects all of them; the row's agent badge shows which
+coding agents read it before you flip the switch.
 
 ## Sources and endpoints
 

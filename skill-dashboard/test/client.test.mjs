@@ -14,22 +14,22 @@ function loadClient(fetch = async () => ({ ok: true, json: async () => ({ ok: tr
     fetch, AbortController, setTimeout, clearTimeout, console,
   };
   vm.runInNewContext(source.replace('    // ---------------------------------------------------------------- mount',
-    '    return { filterSkills, createRuntime, Segmented, TabBar, usagePeriodProjection, previewFileTree, cachedPreview, rememberPreview, PREVIEW_MEMORY, zh, en };\n    // ---------------------------------------------------------------- mount'), context);
+    '    return { filterSkills, runtimeBadge, createRuntime, Segmented, TabBar, usagePeriodProjection, previewFileTree, cachedPreview, rememberPreview, PREVIEW_MEMORY, zh, en };\n    // ---------------------------------------------------------------- mount'), context);
   return api;
 }
-const { filterSkills, zh, en } = loadClient();
+const { filterSkills, runtimeBadge, zh, en } = loadClient();
 const skills = [
-  { name: 'beta', description: 'PDF tools', source: 'user-agents', agents: ['a'], modelInvocable: true, writable: true, usage: { count: 12, lastUsedAt: 5 } },
-  { name: 'Alpha', description: '文档处理', source: 'bundled', agents: ['a', 'b'], modelInvocable: false, writable: false, usage: { count: 2, lastUsedAt: 20 } },
-  { name: 'gamma', description: '', source: 'custom', agents: ['b'], modelInvocable: true, writable: true, usage: null },
+  { name: 'beta', description: 'PDF tools', source: 'user-agents', agents: ['a'], runtimes: ['claude-code', 'codex', 'dsh'], modelInvocable: true, writable: true, usage: { count: 12, lastUsedAt: 5 } },
+  { name: 'Alpha', description: '文档处理', source: 'bundled', agents: ['a', 'b'], runtimes: ['codex', 'dsh'], modelInvocable: false, writable: false, usage: { count: 2, lastUsedAt: 20 } },
+  { name: 'gamma', description: '', source: 'custom', agents: ['b'], runtimes: ['dsh'], modelInvocable: true, writable: true, usage: null },
 ];
 const names = (items) => Array.from(items, (item) => item.name);
 
 test('library combines text, agent and permission filters without mutating its snapshot', () => {
-  assert.deepEqual(names(filterSkills(skills, { agent: 'a', query: '  pDf ', status: 'enabled' })), ['beta']);
+  assert.deepEqual(names(filterSkills(skills, { runtime: 'codex', query: '  pDf ', status: 'enabled' })), ['beta']);
   assert.deepEqual(names(filterSkills(skills, { query: '文档' })), ['Alpha']);
   assert.deepEqual(names(filterSkills(skills, { query: 'BUNDLED' })), ['Alpha']);
-  assert.deepEqual(names(filterSkills(skills, { agent: 'b', status: 'writable' })), ['gamma']);
+  assert.deepEqual(names(filterSkills(skills, { runtime: 'dsh', status: 'writable' })), ['beta', 'gamma']);
   assert.deepEqual(names(filterSkills(skills, { status: 'disabled' })), ['Alpha']);
   assert.equal(filterSkills(skills, { query: 'nothing' }).length, 0);
   assert.deepEqual(names(skills), ['beta', 'Alpha', 'gamma']);
@@ -39,6 +39,26 @@ test('library sorting handles usage, recency and missing counters', () => {
   assert.deepEqual(names(filterSkills(skills)), ['beta', 'Alpha', 'gamma']);
   assert.deepEqual(names(filterSkills(skills, { sort: 'name' })), ['Alpha', 'beta', 'gamma']);
   assert.deepEqual(names(filterSkills(skills, { sort: 'recent' })), ['Alpha', 'beta', 'gamma']);
+});
+
+test('the agent badge names the only agent, counts the rest, and stays away otherwise', () => {
+  const runtimes = [
+    { id: 'claude-code', title: 'Claude Code', skillCount: 1 },
+    { id: 'codex', title: 'Codex', skillCount: 2 },
+    { id: 'dsh', title: 'DSH', skillCount: 3 },
+  ];
+  const shared = runtimeBadge({ runtimes: ['claude-code', 'codex', 'dsh'] }, runtimes);
+  assert.equal(shared.kind, 'none', 'every agent reads it, so no badge');
+  const one = runtimeBadge({ runtimes: ['dsh'] }, runtimes);
+  assert.equal(one.kind, 'one');
+  assert.equal(one.agent, 'DSH');
+  const some = runtimeBadge({ runtimes: ['codex', 'dsh'] }, runtimes);
+  assert.equal(some.kind, 'some');
+  assert.equal(some.count, 2);
+  assert.equal(some.total, 3);
+  assert.equal(some.title, 'Codex · DSH', 'the title names every agent');
+  assert.equal(runtimeBadge({ runtimes: [] }, runtimes).kind, 'none');
+  assert.equal(runtimeBadge({ runtimes: ['dsh'] }, []).kind, 'none', 'without a detected agent there is no badge');
 });
 
 test('switching discovery source invalidates pending success and failure responses', async () => {
@@ -135,4 +155,20 @@ test('both shipped dictionaries stay synchronized with runtime strings', async (
     const disk = JSON.parse(await readFile(new URL(`../locale/${lang}.json`, import.meta.url), 'utf8'));
     for (const [key, value] of Object.entries(dictionary)) assert.equal(disk[key], value, `${lang}:${key}`);
   }
+});
+
+test('the detected agent strings exist in both dictionaries and the old badge is gone', () => {
+  for (const dictionary of [zh, en]) {
+    for (const key of ['filter.agentOption', 'skill.runtimesOne', 'skill.runtimesSome', 'overview.agents']) {
+      assert.equal(typeof dictionary[key], 'string', `${key} is missing`);
+      assert.equal(dictionary[key].length > 0, true, `${key} is empty`);
+    }
+    assert.equal(Object.hasOwn(dictionary, 'skill.agents'), false, 'the preset badge string is gone');
+  }
+  assert.equal(zh['skill.runtimesSome'], '{count}/{total} 个 Agent');
+  assert.equal(en['skill.runtimesSome'], '{count}/{total} agents');
+  assert.equal(zh['skill.runtimesOne'], '仅 {agent}');
+  assert.equal(en['skill.runtimesOne'], '{agent} only');
+  assert.equal(zh['overview.agents'], '已检测 Agent');
+  assert.equal(en['overview.agents'], 'Coding agents');
 });

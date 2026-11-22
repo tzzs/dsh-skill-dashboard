@@ -92,6 +92,10 @@ All responses are `application/json`. Failures use a nonzero HTTP status and
   "agents": [
     { "id": "default", "title": "Default", "description": "...", "isDefault": true }
   ],
+  "runtimes": [
+    { "id": "claude-code", "title": "Claude Code", "skillCount": 1 },
+    { "id": "dsh", "title": "DSH", "skillCount": 42 }
+  ],
   "skills": [
     {
       "name": "code-review",
@@ -102,6 +106,7 @@ All responses are `application/json`. Failures use a nonzero HTTP status and
       "path": "C:\\Users\\you\\.agents\\skills\\code-review\\SKILL.md",
       "dir": "C:\\Users\\you\\.agents\\skills\\code-review",  // null for flat .md skills
       "agents": ["default"],                // agent ids whose catalog resolves this skill
+      "runtimes": ["claude-code", "dsh"],   // coding agents that read this skill
       "modelInvocable": false,              // resolved: false if disabled for the model
       "userInvocable": true,
       "writable": true,                     // dashboard may edit this file
@@ -134,6 +139,18 @@ All responses are `application/json`. Failures use a nonzero HTTP status and
 Rules:
 - `skills` is the union over all agents by `name`; per-agent differences collapse into
   `agents`, and a name wins the summary of its highest-ranked resolution.
+- `agents` is the DSH **preset** dimension and stays as it was: usage records are keyed by
+  preset, and the bundled catalog comes from the preset-scoped reads.
+- `runtimes` is the independent **coding agent** dimension: the real agents (Claude Code,
+  Codex, Cursor, …) that read skill directories on this machine, detected from their own
+  skill roots. Only agents with at least one skill are listed, in registry order, `dsh`
+  last. The registry mirrors `vercel-labs/skills/src/agents.ts`.
+- `skills[].runtimes` lists the agents that read that skill and always contains `dsh`. A
+  universal agent (one that reads the canonical `.agents/skills` roots) sees a skill whose
+  resolved directory lies inside a canonical root; a non-universal agent only sees a skill
+  that resolves to an entry of its own root. Every path is resolved first, so a broken
+  junction claims nothing. A flat `.md` skill is never claimed by a non-universal agent.
+- The detection is cached for 30 seconds and invalidated together with the state cache.
 - `writable` is true only when `path` is a real file outside the DSH installation, i.e.
   reachable and not under `app.asar`.
 - Sort by `usage.count` desc, then `name` asc.
@@ -191,7 +208,7 @@ and `file` while omitting `files`/`truncatedFiles`; the Client merges its prior 
 ```jsonc
 {
   "ok": true,
-  "skill": { "name": "demo", "description": "…", "source": "custom", "path": "…/SKILL.md", "version": null, "readonly": false, "agents": ["default"] },
+  "skill": { "name": "demo", "description": "…", "source": "custom", "path": "…/SKILL.md", "version": null, "readonly": false, "agents": ["default"], "runtimes": ["dsh"] },
   "files": [{ "path": "SKILL.md", "size": 350, "kind": "text" }],
   "file": { "path": "SKILL.md", "size": 350, "kind": "text", "content": "…", "truncated": false },
   "truncatedFiles": false
@@ -260,11 +277,15 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
   switch only when older than 5 s. Show an inline error banner with a retry button when a
   request fails — never a blank panel.
 - Installed tab rows: skill name, description (2 lines, ellipsis), badges
-  (source label, `N 个 Agent`, `已调用 N 次`, `只读` when not writable), a switch for
+  (source label, the detected coding agent, `已调用 N 次`, `只读` when not writable), a switch for
   “模型可调用” (`modelInvocable`), a secondary “/name 可调用” switch (`userInvocable`,
   disabled when `!userInvocable && !modelInvocable` is not relevant — keep both operable),
   and a row menu with 更新 / 删除 / 查看路径. High usage must be visually flaggable:
   rows whose `usage.count` ≥ the panel's own 75th percentile get a subtle “高频” badge.
+- The agent filter offers the detected coding agents (`runtimes`), each with its skill
+  count, and hides itself when none was detected. A row badge names the agent when only
+  one reads the skill (`仅 {agent}`), counts them when only some do (`{count}/{total} 个
+  Agent`), and stays away when they all do.
 - Discover tab: source selector (skills.sh / 腾讯), search input with Enter-to-search,
   result cards with install button and installed state, plus loading / empty / error states.
 - Usage tab: summary cards (总调用, 活跃技能, 今日调用), a 14-day bar chart, and the recent

@@ -74,7 +74,7 @@ test('catalog preview returns details, default file, nested list and no writes',
   const response = await call()
   assert.equal(response.status, 200)
   assert.equal(response.headers['cache-control'], 'no-store')
-  assert.deepEqual(response.body.skill, { name: 'fixture-0', description: 'Catalog description.', path: main, source: 'custom', version: null, readonly: false, agents: ['default'] })
+  assert.deepEqual(response.body.skill, { name: 'fixture-0', description: 'Catalog description.', path: main, source: 'custom', version: null, readonly: false, agents: ['default'], runtimes: ['dsh'] })
   assert.equal(response.body.file.path, 'SKILL.md')
   assert.equal(response.body.file.content, markdown)
   assert.equal(response.body.truncatedFiles, false)

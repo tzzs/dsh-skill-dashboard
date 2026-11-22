@@ -8,11 +8,14 @@
  */
 
 import assert from 'node:assert/strict'
-import { join, sep } from 'node:path'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { isAbsolute, join, sep } from 'node:path'
 
 import {
   applyInvocationEdit,
   applyUsageEvent,
+  detectAgentRuntimes,
   foldDayBuckets,
   isInsidePath,
   isProtectedInstallPath,
@@ -20,6 +23,7 @@ import {
   normalizePathKey,
   parseSkillFrontmatter,
   pruneDayBuckets,
+  RUNTIME_REGISTRY,
   sanitizeSkillRelativePath,
   skillDirectoryOf,
   splitTextLines,
@@ -35,6 +39,18 @@ const failures = []
 function test(name, body) {
   try {
     body()
+    passed += 1
+    console.log(`  ok  ${name}`)
+  } catch (error) {
+    failures.push({ name, error })
+    console.log(`FAIL  ${name}\n      ${error.message}`)
+  }
+}
+
+/** Run one named asynchronous assertion group. */
+async function testAsync(name, body) {
+  try {
+    await body()
     passed += 1
     console.log(`  ok  ${name}`)
   } catch (error) {
@@ -353,6 +369,237 @@ test('sanitizeSkillRelativePath refuses escapes and absolute paths', () => {
   assert.equal(sanitizeSkillRelativePath('a//b.md'), null)
   assert.equal(sanitizeSkillRelativePath(''), null)
   assert.equal(sanitizeSkillRelativePath(undefined), null)
+})
+
+// ---------------------------------------------------------- agent runtimes
+
+test('the runtime registry has unique ids, relative paths and DSH last', () => {
+  const ids = RUNTIME_REGISTRY.map((runtime) => runtime.id)
+  assert.equal(new Set(ids).size, ids.length, 'every id is unique')
+  assert.equal(ids[ids.length - 1], 'dsh', 'DSH is last')
+  assert.equal(ids.includes('claude-code'), true)
+  for (const runtime of RUNTIME_REGISTRY) {
+    assert.equal(typeof runtime.title, 'string')
+    assert.equal(runtime.title.length > 0, true, `${runtime.id} has a title`)
+    assert.equal(typeof runtime.universal, 'boolean', `${runtime.id} declares universality`)
+    assert.equal(Array.isArray(runtime.markers), true, `${runtime.id} declares markers`)
+    assert.equal(Array.isArray(runtime.roots), true, `${runtime.id} declares roots`)
+    for (const marker of runtime.markers) {
+      assert.equal(marker.length > 0, true)
+      assert.equal(isAbsolute(marker), false, `${runtime.id} marker ${marker} is relative`)
+      assert.equal(marker.includes('\\'), false, `${runtime.id} marker ${marker} is POSIX-style`)
+    }
+    for (const root of runtime.roots) {
+      assert.equal(root.length > 0, true)
+      assert.equal(isAbsolute(root), false, `${runtime.id} root ${root} is relative`)
+      assert.equal(root.includes('\\'), false, `${runtime.id} root ${root} is POSIX-style`)
+      assert.equal(root.startsWith('/'), false, `${runtime.id} root ${root} is relative`)
+    }
+  }
+  const claude = RUNTIME_REGISTRY.find((runtime) => runtime.id === 'claude-code')
+  assert.equal(claude.universal, false, 'Claude Code does not read the canonical roots')
+  const gemini = RUNTIME_REGISTRY.find((runtime) => runtime.id === 'gemini-cli')
+  assert.deepEqual(gemini.markers, ['.gemini/skills'], 'the Gemini marker is its skills directory')
+})
+
+/** One temporary detection fixture with a home, a project and two skill roots. */
+async function detectionFixture() {
+  const root = await mkdtemp(join(tmpdir(), 'skd-runtime-'))
+  const home = join(root, 'home')
+  const cwd = join(root, 'cwd')
+  const agentsHome = join(home, '.agents')
+  const dshHome = join(home, '.dsh')
+  await mkdir(join(agentsHome, 'skills'), { recursive: true })
+  await mkdir(join(cwd, '.agents', 'skills'), { recursive: true })
+  await mkdir(dshHome, { recursive: true })
+  return {
+    root,
+    home,
+    cwd,
+    agentsHome,
+    dshHome,
+    cleanup: async () => { await rm(root, { recursive: true, force: true }) },
+  }
+}
+
+/** One directory link, or null when the platform refuses to create one. */
+async function linkDirectory(target, path) {
+  try {
+    await symlink(target, path, process.platform === 'win32' ? 'junction' : 'dir')
+    return path
+  } catch (error) {
+    if (error.code === 'EPERM' || error.code === 'EACCES') return null
+    throw error
+  }
+}
+
+await testAsync('a junction into the canonical root is seen by Claude Code and every universal agent', async () => {
+  const fixture = await detectionFixture()
+  try {
+    const canonical = join(fixture.agentsHome, 'skills', 'alpha')
+    await mkdir(canonical, { recursive: true })
+    await mkdir(join(fixture.home, '.claude', 'skills'), { recursive: true })
+    const link = await linkDirectory(canonical, join(fixture.home, '.claude', 'skills', 'alpha'))
+    if (link === null) return
+    await mkdir(join(fixture.home, '.codex'), { recursive: true })
+    const detected = await detectAgentRuntimes({
+      home: fixture.home,
+      cwd: fixture.cwd,
+      agentsHome: fixture.agentsHome,
+      dshHome: fixture.dshHome,
+      skills: [{ name: 'alpha', dir: canonical }],
+    })
+    const ids = detected.runtimes.map((runtime) => runtime.id)
+    assert.equal(ids.includes('claude-code'), true, 'Claude Code sees its own linked skill')
+    assert.equal(ids.includes('codex'), true, 'a universal agent sees the canonical skill')
+    assert.equal(ids[ids.length - 1], 'dsh', 'DSH is last')
+    assert.deepEqual(detected.bySkill.get('alpha'), ['claude-code', 'codex', 'dsh'])
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+await testAsync('a broken junction is claimed by nobody but DSH', async () => {
+  const fixture = await detectionFixture()
+  try {
+    await mkdir(join(fixture.home, '.codex'), { recursive: true })
+    const broken = join(fixture.agentsHome, 'skills', 'broken')
+    const link = await linkDirectory(join(fixture.root, 'missing'), broken)
+    if (link === null) return
+    const detected = await detectAgentRuntimes({
+      home: fixture.home,
+      cwd: fixture.cwd,
+      agentsHome: fixture.agentsHome,
+      dshHome: fixture.dshHome,
+      skills: [{ name: 'broken', dir: broken }],
+    })
+    assert.deepEqual(detected.bySkill.get('broken'), ['dsh'], 'only DSH serves a broken link')
+    assert.equal(detected.runtimes.some((runtime) => runtime.id === 'codex'), false, 'the universal agent sees nothing')
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+await testAsync('a canonical skill without any marker belongs to DSH alone', async () => {
+  const fixture = await detectionFixture()
+  try {
+    const canonical = join(fixture.agentsHome, 'skills', 'alpha')
+    await mkdir(canonical, { recursive: true })
+    const detected = await detectAgentRuntimes({
+      home: fixture.home,
+      cwd: fixture.cwd,
+      agentsHome: fixture.agentsHome,
+      dshHome: fixture.dshHome,
+      skills: [{ name: 'alpha', dir: canonical }],
+    })
+    assert.deepEqual(detected.runtimes.map((runtime) => runtime.id), ['dsh'])
+    assert.deepEqual(detected.bySkill.get('alpha'), ['dsh'])
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+await testAsync('a missing own root leaves its agent without skills', async () => {
+  const fixture = await detectionFixture()
+  try {
+    // The marker exists, but the agent's own skills directory does not.
+    await mkdir(join(fixture.home, '.claude'), { recursive: true })
+    const canonical = join(fixture.agentsHome, 'skills', 'alpha')
+    await mkdir(canonical, { recursive: true })
+    const detected = await detectAgentRuntimes({
+      home: fixture.home,
+      cwd: fixture.cwd,
+      agentsHome: fixture.agentsHome,
+      dshHome: fixture.dshHome,
+      skills: [{ name: 'alpha', dir: canonical }],
+    })
+    assert.equal(detected.runtimes.some((runtime) => runtime.id === 'claude-code'), false, 'an agent without skills is not reported')
+    assert.deepEqual(detected.bySkill.get('alpha'), ['dsh'], 'a missing own root claims nothing')
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+await testAsync('a flat Markdown skill belongs to the universal agents only', async () => {
+  const fixture = await detectionFixture()
+  try {
+    await mkdir(join(fixture.home, '.claude'), { recursive: true })
+    await mkdir(join(fixture.home, '.codex'), { recursive: true })
+    await writeFile(join(fixture.agentsHome, 'skills', 'flat.md'), 'x', 'utf8')
+    const detected = await detectAgentRuntimes({
+      home: fixture.home,
+      cwd: fixture.cwd,
+      agentsHome: fixture.agentsHome,
+      dshHome: fixture.dshHome,
+      skills: [{ name: 'flat', dir: null }],
+    })
+    assert.deepEqual(detected.bySkill.get('flat'), ['codex', 'dsh'], 'Claude Code never claims a flat skill')
+    assert.equal(detected.runtimes.some((runtime) => runtime.id === 'claude-code'), false)
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+await testAsync('an entry name that differs in case still matches its skill', async () => {
+  const fixture = await detectionFixture()
+  try {
+    const directory = join(fixture.agentsHome, 'skills', 'MixedCase')
+    await mkdir(directory, { recursive: true })
+    await mkdir(join(fixture.home, '.codex'), { recursive: true })
+    const detected = await detectAgentRuntimes({
+      home: fixture.home,
+      cwd: fixture.cwd,
+      agentsHome: fixture.agentsHome,
+      dshHome: fixture.dshHome,
+      skills: [{ name: 'mixedcase', dir: directory }],
+    })
+    assert.deepEqual(detected.bySkill.get('mixedcase'), ['codex', 'dsh'])
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+await testAsync('the dot entries of a root are never skills', async () => {
+  const fixture = await detectionFixture()
+  try {
+    const system = join(fixture.agentsHome, 'skills', '.system')
+    await mkdir(system, { recursive: true })
+    await mkdir(join(fixture.agentsHome, 'skills', '.kits'), { recursive: true })
+    await mkdir(join(fixture.home, '.codex'), { recursive: true })
+    const detected = await detectAgentRuntimes({
+      home: fixture.home,
+      cwd: fixture.cwd,
+      agentsHome: fixture.agentsHome,
+      dshHome: fixture.dshHome,
+      skills: [{ name: '.system', dir: system }],
+    })
+    assert.deepEqual(detected.bySkill.get('.system'), ['dsh'], 'a dot entry is not a skill of any root')
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+await testAsync('the canonical set and the Claude Code set can differ', async () => {
+  const fixture = await detectionFixture()
+  try {
+    const canonical = join(fixture.agentsHome, 'skills', 'alpha')
+    const claude = join(fixture.home, '.claude', 'skills', 'beta')
+    await mkdir(canonical, { recursive: true })
+    await mkdir(claude, { recursive: true })
+    const detected = await detectAgentRuntimes({
+      home: fixture.home,
+      cwd: fixture.cwd,
+      agentsHome: fixture.agentsHome,
+      dshHome: fixture.dshHome,
+      skills: [{ name: 'alpha', dir: canonical }, { name: 'beta', dir: claude }],
+    })
+    const claudeRuntime = detected.runtimes.find((runtime) => runtime.id === 'claude-code')
+    assert.deepEqual(claudeRuntime.skills, ['beta'], 'Claude Code only reads its own root')
+    assert.equal(detected.bySkill.get('alpha').includes('claude-code'), false)
+    assert.equal(detected.bySkill.get('beta').includes('codex'), false, 'a universal agent skips the Claude root')
+  } finally {
+    await fixture.cleanup()
+  }
 })
 
 // ------------------------------------------------------------------- report

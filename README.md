@@ -5,7 +5,7 @@
 [![Latest release](https://img.shields.io/github/v/release/tzzs/dsh-skill-dashboard)](https://github.com/tzzs/dsh-skill-dashboard/releases)
 
 A DeepSeek Harness (DSH) plugin that puts every agent skill in one place: what is
-installed, which agent preset can see it, how often it is really used, and a
+installed, which coding agents can see it, how often it is really used, and a
 read-only preview of the files behind it.
 
 [中文说明](README.zh.md)
@@ -14,8 +14,10 @@ read-only preview of the files behind it.
 
 **Installed** — every skill of every agent preset in one ledger.
 
-- Combines the per-preset catalogs, so a skill visible to two presets appears once with a
-  `2 agents` badge.
+- Combines the per-preset catalogs, so a skill visible to two presets appears once.
+- Detects the coding agents that really read skill directories — Claude Code, Codex, Cursor,
+  Gemini CLI, GitHub Copilot, OpenCode and more — from their own skill roots, and labels
+  each row with the agents that read it.
 - Shows source, call count and a `read-only` badge for skills inside the DSH installation.
 - Two switches per row (model invocation and `/name` invocation) that edit the skill's
   YAML frontmatter, plus row actions for update, delete and path.

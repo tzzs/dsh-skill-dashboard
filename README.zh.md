@@ -4,8 +4,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/tzzs/dsh-skill-dashboard)](https://github.com/tzzs/dsh-skill-dashboard/releases)
 
-一个 DeepSeek Harness（DSH）插件：把每个 Agent 的 skill 集中到一处 —— 装了什么、哪个
-Agent 预设能看到、实际被调用了多少次，以及只读的文件预览。
+一个 DeepSeek Harness（DSH）插件：把每个 Agent 的 skill 集中到一处 —— 装了什么、哪些
+编程 Agent 能看到、实际被调用了多少次，以及只读的文件预览。
 
 [English](README.md)
 
@@ -13,7 +13,9 @@ Agent 预设能看到、实际被调用了多少次，以及只读的文件预�
 
 **已安装** —— 所有 Agent 预设的 skill 放进一本账。
 
-- 合并各预设的目录：被两个预设共享的 skill 只出现一行，并标注可见的 Agent 数量。
+- 合并各预设的目录：被两个预设共享的 skill 只出现一行。
+- 从各自的 skill 根目录检测真正会读取技能目录的编程 Agent —— Claude Code、Codex、Cursor、
+  Gemini CLI、GitHub Copilot、OpenCode 等 —— 并在每行标出读取它的 Agent。
 - 显示来源、调用次数；位于 DSH 安装目录内的 skill 标为只读，看板不会修改它。
 - 每行两个开关（模型可调用、`/name` 可调用），修改的是 skill 的 YAML frontmatter；
   行菜单提供更新、删除和查看路径。
