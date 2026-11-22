@@ -44,6 +44,8 @@ window.__ModuleLoader__.load({
     const SETTLE_RETRY_MS = 800;
     const REQUEST_TIMEOUT_MS = 10000;
     const DISCOVER_LIMIT = 20;
+    /** The Host accepts at most this many cleanup targets in one call (§4). */
+    const CLEANUP_TARGET_LIMIT = 100;
     /** 高频 needs a real run of calls, not one lucky invocation: this many calls … */
     const MIN_FREQUENT_CALLS = 3;
     /** … and at least this many skills with calls, so the percentile means something. */
@@ -128,6 +130,59 @@ window.__ModuleLoader__.load({
       'tab.installed': '已安装',
       'tab.discover': '发现',
       'tab.usage': '统计',
+      'tab.diagnosis': '诊断',
+      'diagnosis.title': '技能诊断',
+      'diagnosis.basis': '只依据看板观察到的调用判断，不评价技能本身。',
+      'diagnosis.horizon': '观察自 {date} · {days} 天 · {total} 个技能，其中 {active} 个最近 {activeDays} 天被调用过。',
+      'diagnosis.buckets': '按状态分组',
+      'diagnosis.bucket.cleanup': '可清理',
+      'diagnosis.bucket.dormant': '已停用',
+      'diagnosis.bucket.active': '在用',
+      'diagnosis.bucket.kept': '已保留',
+      'diagnosis.bucket.unknown': '观察中',
+      'diagnosis.queueCount': '{bucket}：{count} 个',
+      'diagnosis.searchLabel': '搜索技能名称',
+      'diagnosis.searchPlaceholder': '输入技能名称…',
+      'diagnosis.selectRow': '选择 {name}',
+      'diagnosis.selectAll': '全选本组',
+      'diagnosis.clearSelection': '清除选择',
+      'diagnosis.verdict.active': '在用',
+      'diagnosis.verdict.cooling': '调用减少',
+      'diagnosis.verdict.stale': '久未调用',
+      'diagnosis.verdict.unused': '从未调用',
+      'diagnosis.verdict.kept': '已保留',
+      'diagnosis.verdict.unknown': '观察中',
+      'diagnosis.closed': '已停用',
+      'diagnosis.evidence.idle': '{idle} 天未调用 · 共调用 {count} 次',
+      'diagnosis.evidence.never': '从未调用 · 观察 {watched} 天',
+      'diagnosis.evidence.lastUsed': '最近调用 {date}',
+      'diagnosis.evidence.kept': '保留于 {date}',
+      'diagnosis.disable': '停用',
+      'diagnosis.remove': '删除',
+      'diagnosis.keep': '保留',
+      'diagnosis.unkeep': '取消保留',
+      'diagnosis.rail': '批量操作',
+      'diagnosis.tally': '已选 {selected} · 可停用 {disable} · 可删除 {remove} · 只读 {readonly}',
+      'diagnosis.removeConfirmMany': '删除选中的 {count} 个技能（{names}{more}）？技能目录会一并移除，无法撤销。',
+      'diagnosis.moreNames': ' 等 {count} 个',
+      'diagnosis.policy': '判断依据',
+      'diagnosis.policy.active': '最近 {days} 天内有调用，算在用。',
+      'diagnosis.policy.stale': '超过 {days} 天没有调用，算久未调用，可以清理。',
+      'diagnosis.policy.watch': '至少观察 {days} 天后，没被调用才说明问题。',
+      'diagnosis.policy.keep': '保留会停止提醒，直到该技能再次被调用。',
+      'diagnosis.noCleanup.title': '没有需要清理的技能',
+      'diagnosis.noCleanup.body': '被观察满 {days} 天、期间没有调用的技能会出现在这里。',
+      'diagnosis.noCleanup.action': '查看在用的技能',
+      'diagnosis.noMatches.title': '没有匹配的技能',
+      'diagnosis.noMatches.body': '换个关键词，或清除搜索。',
+      'diagnosis.noMatches.action': '清除搜索',
+      'diagnosis.bucketEmpty': '这个分组里没有技能。',
+      'diagnosis.selectionStatus': '已选择 {count} 个技能',
+      'diagnosis.disableNote': '停用完成：成功 {ok} 个，失败 {failed} 个。',
+      'diagnosis.removeNote': '删除完成：成功 {ok} 个，失败 {failed} 个。',
+      'diagnosis.keepNote': '已更新 {ok} 个，失败 {failed} 个。',
+      'diagnosis.oldHost.title': '需要更新插件',
+      'diagnosis.oldHost.body': '这个 Host 还没有诊断数据。更新插件并重新加载页面后再看。',
       'filter.label': '按 Agent 筛选',
       'filter.all': '全部',
       'filter.agentOption': '{name} ({count})',
@@ -338,6 +393,59 @@ window.__ModuleLoader__.load({
       'tab.installed': 'Installed',
       'tab.discover': 'Discover',
       'tab.usage': 'Usage',
+      'tab.diagnosis': 'Diagnosis',
+      'diagnosis.title': 'Skill diagnosis',
+      'diagnosis.basis': 'Judged only from calls this dashboard observed; it says nothing about skill quality.',
+      'diagnosis.horizon': 'Observed since {date} · {days} days · {total} skills, {active} of them called in the last {activeDays} days.',
+      'diagnosis.buckets': 'Group by state',
+      'diagnosis.bucket.cleanup': 'Clean up',
+      'diagnosis.bucket.dormant': 'Off',
+      'diagnosis.bucket.active': 'In use',
+      'diagnosis.bucket.kept': 'Kept',
+      'diagnosis.bucket.unknown': 'Too new',
+      'diagnosis.queueCount': '{bucket}: {count}',
+      'diagnosis.searchLabel': 'Search skill names',
+      'diagnosis.searchPlaceholder': 'Enter a skill name…',
+      'diagnosis.selectRow': 'Select {name}',
+      'diagnosis.selectAll': 'Select this group',
+      'diagnosis.clearSelection': 'Clear selection',
+      'diagnosis.verdict.active': 'In use',
+      'diagnosis.verdict.cooling': 'Slowing down',
+      'diagnosis.verdict.stale': 'Stale',
+      'diagnosis.verdict.unused': 'Never used',
+      'diagnosis.verdict.kept': 'Kept',
+      'diagnosis.verdict.unknown': 'Too new',
+      'diagnosis.closed': 'Off',
+      'diagnosis.evidence.idle': 'Idle {idle} days · {count} calls',
+      'diagnosis.evidence.never': 'Never called · observed {watched} days',
+      'diagnosis.evidence.lastUsed': 'Last call {date}',
+      'diagnosis.evidence.kept': 'Kept {date}',
+      'diagnosis.disable': 'Disable',
+      'diagnosis.remove': 'Delete',
+      'diagnosis.keep': 'Keep',
+      'diagnosis.unkeep': 'Unkeep',
+      'diagnosis.rail': 'Bulk actions',
+      'diagnosis.tally': '{selected} selected · {disable} disable · {remove} delete · {readonly} read-only',
+      'diagnosis.removeConfirmMany': 'Delete {count} selected skills ({names}{more})? Their folders are removed and this cannot be undone.',
+      'diagnosis.moreNames': ' and {count} more',
+      'diagnosis.policy': 'How this is judged',
+      'diagnosis.policy.active': 'Called within the last {days} days: in use.',
+      'diagnosis.policy.stale': 'No call for more than {days} days: stale enough to clean up.',
+      'diagnosis.policy.watch': 'A skill has to be observed for {days} days before a missing call means anything.',
+      'diagnosis.policy.keep': 'Keep stops the reminder until the skill is called again.',
+      'diagnosis.noCleanup.title': 'Nothing to clean up',
+      'diagnosis.noCleanup.body': 'Skills observed for {days} days without a single call appear here.',
+      'diagnosis.noCleanup.action': 'View skills in use',
+      'diagnosis.noMatches.title': 'No matching skills',
+      'diagnosis.noMatches.body': 'Try another keyword, or clear the search.',
+      'diagnosis.noMatches.action': 'Clear search',
+      'diagnosis.bucketEmpty': 'No skills in this group.',
+      'diagnosis.selectionStatus': '{count} skills selected',
+      'diagnosis.disableNote': 'Disabled {ok}, failed {failed}.',
+      'diagnosis.removeNote': 'Deleted {ok}, failed {failed}.',
+      'diagnosis.keepNote': 'Updated {ok}, failed {failed}.',
+      'diagnosis.oldHost.title': 'Update the plugin',
+      'diagnosis.oldHost.body': 'This host sends no diagnosis data yet. Update the plugin, reload the page, and look again.',
       'filter.label': 'Filter by agent',
       'filter.all': 'All',
       'filter.agentOption': '{name} ({count})',
@@ -913,6 +1021,56 @@ window.__ModuleLoader__.load({
   .skd-periodSkill{min-block-size:44px}
 }
 @media(forced-colors:active){.skd-periodSkill{color:LinkText}.skd-periodTable thead th{background:Canvas}.skd-periodSkill[aria-pressed=true]{outline:1px solid Highlight}}
+/* Diagnosis: a checkbox queue with a sticky bulk rail; every colour comes from the panel tokens. */
+.skd-diagnosisHeading{scroll-margin-block-start:16px;border-radius:4px}
+.skd-diagnosisHeading:focus-visible{outline:2px solid var(--skd-accent);outline-offset:3px}
+.skd-diagnosisHorizon{margin:0}
+.skd-diagnosisBuckets{display:flex;align-items:center;flex-wrap:wrap}
+.skd-diagnosisBuckets .skd-segmented{flex-wrap:wrap;overflow:visible;max-width:100%}
+.skd-diagnosisBuckets .skd-segment{flex:0 0 auto}
+.skd-diagnosisBuckets .skd-bucketOption{display:inline-flex;align-items:baseline;gap:6px}
+.skd-diagnosisBuckets .skd-bucketCount{font-weight:600;font-variant-numeric:tabular-nums;color:var(--skd-fg)}
+.skd-diagnosisBuckets .skd-segment[data-active] .skd-bucketName{color:var(--skd-fg)}
+.skd-diagnosisQueue{display:grid;grid-template-columns:auto minmax(0,22rem) auto;align-items:end;gap:10px 16px}
+.skd-diagnosisQueue>.skd-button{justify-self:end}
+.skd-diagnosisResults{grid-column:1;align-self:center;justify-content:flex-start}
+.skd-diagnosisNoAction{color:var(--skd-muted);font-size:.875rem}
+.skd-diagnosisList{background:var(--skd-bg);border-color:var(--skd-line)}
+.skd-diagnosisItem{list-style:none}
+.skd-diagnosisRow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:4px 14px;padding:9px 16px;border-block-end:1px solid var(--skd-line)}
+.skd-diagnosisList>li:last-child .skd-diagnosisRow{border-block-end:0}
+.skd-diagnosisCheck{position:relative;display:inline-flex;align-items:center;justify-content:center;inline-size:1.5rem;block-size:1.5rem;cursor:pointer;border-radius:4px}
+.skd-diagnosisCheckInput{margin:0;inline-size:1rem;block-size:1rem;accent-color:var(--skd-accent);cursor:inherit}
+.skd-diagnosisCheckInput:disabled{cursor:default;opacity:.5}
+.skd-diagnosisMain{display:flex;flex-direction:column;gap:3px;min-inline-size:0}
+.skd-diagnosisEvidence{margin:0;color:var(--skd-muted);font-size:.75rem;line-height:1.6;overflow-wrap:anywhere}
+.skd-diagnosisActions{display:flex;align-items:center;gap:8px;flex:none}
+.skd-diagnosisActions .skd-button{min-block-size:30px;padding:4px 11px;font-size:.75rem}
+.skd-diagnosisRowNote{margin-block:0 8px;padding-inline-start:40px}
+.skd-diagnosisConfirm{grid-column:1 / -1}
+.skd-diagnosisRail{position:sticky;inset-block-end:10px;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:10px 16px;flex-wrap:wrap;padding:12px 16px;border:1px solid var(--skd-control-line);border-radius:10px;background:var(--dsw-alias-bg-overlay,var(--skd-bg));box-shadow:0 8px 24px color-mix(in srgb,var(--skd-fg) 12%,transparent)}
+.skd-diagnosisTally{margin:0;color:var(--skd-muted);font-size:.75rem;line-height:1.6;overflow-wrap:anywhere}
+.skd-diagnosisRailActions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.skd-diagnosisPolicyList{margin:0;padding-inline-start:1.25em;font-size:.75rem;line-height:1.75;color:var(--skd-muted)}
+@container dashboard (max-width:1200px){
+  .skd-diagnosisQueue{grid-template-columns:minmax(0,1fr) auto}
+  .skd-diagnosisResults{grid-column:1 / -1}
+  .skd-diagnosisRow{grid-template-columns:auto minmax(0,1fr)}
+  .skd-diagnosisActions{grid-column:2;justify-content:flex-start;flex-wrap:wrap}
+}
+@container dashboard (max-width:600px){
+  .skd-diagnosisQueue{grid-template-columns:minmax(0,1fr)}
+  .skd-diagnosisRow{padding-inline:8px;gap:6px 10px}
+  .skd-diagnosisActions{grid-column:1 / -1}
+  .skd-diagnosisActions .skd-button{flex:1;min-block-size:44px}
+  .skd-diagnosisCheck{inline-size:2.75rem;justify-content:flex-start}
+  .skd-diagnosisRowNote{padding-inline-start:0}
+  .skd-diagnosisRail{inset-block-end:6px;padding:10px 12px}
+  .skd-diagnosisRailActions{width:100%}
+  .skd-diagnosisRailActions .skd-button{flex:1;min-block-size:44px}
+}
+@media(prefers-reduced-motion:reduce){.skd-diagnosisRow,.skd-diagnosisRail{transition:none}}
+@media(forced-colors:active){.skd-diagnosisRail{border-color:ButtonText;box-shadow:none}}
 `;
     // ---------------------------------------------------------------- util
     /** A string field, or the empty string; missing fields are tolerated. */
@@ -962,6 +1120,18 @@ window.__ModuleLoader__.load({
     function formatStamp(millis) {
       if (Number.isFinite(millis) === false || millis <= 0) return '';
       const formatter = formatterOf('stamp', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      if (formatter === null) return '';
+      try {
+        return formatter.format(new Date(millis));
+      } catch {
+        return '';
+      }
+    }
+
+    /** Local date only, for evidence where the time of day carries nothing. */
+    function formatDate(millis) {
+      if (Number.isFinite(millis) === false || millis <= 0) return '';
+      const formatter = formatterOf('date', { month: 'short', day: 'numeric' });
       if (formatter === null) return '';
       try {
         return formatter.format(new Date(millis));
@@ -1125,6 +1295,7 @@ window.__ModuleLoader__.load({
         refreshing: false,
         pending: null,
         note: null,
+        rowNotes: {},
         discover: { source: null, query: '', status: 'idle', items: [], error: null, note: null, at: 0 },
       });
       const patch = (fields) => store.set((current) => ({ ...current, ...fields }));
@@ -1308,6 +1479,114 @@ window.__ModuleLoader__.load({
         );
       };
 
+      /** The `{ name, path }` pairs the cleanup verb accepts, taken from the catalog. */
+      const cleanupTargetsOf = (targets) => (Array.isArray(targets) ? targets : [])
+        .map((entry) => objectOf(entry))
+        .filter((entry) => entry !== null)
+        .map((entry) => ({ name: textOf(entry.name), path: textOf(entry.path) }))
+        .filter((entry) => entry.name !== '');
+
+      /** One name plus a flag, or the array of entries the bulk rail sends. */
+      const keepEntriesOf = (name, keep) => {
+        if (Array.isArray(name)) {
+          return name.map((entry) => objectOf(entry)).filter((entry) => entry !== null)
+            .map((entry) => ({ name: textOf(entry.name), keep: entry.keep === true }))
+            .filter((entry) => entry.name !== '');
+        }
+        const single = textOf(name);
+        return single === '' ? [] : [{ name: single, keep: keep === true }];
+      };
+
+      /**
+       * One batch of writes and one state read. Each refusal stays on its own row; the
+       * footer receipt names how many writes worked. The Host's verdicts are never
+       * recomputed here — only the verb and the targets travel back.
+       */
+      const runBatch = async (calls, step) => {
+        if (calls.length === 0 || store.getSnapshot().pending !== null) return false;
+        revision += 1;
+        patch({ pending: { kind: step.kind, target: step.target }, note: null });
+        const outcomes = [];
+        let requestFailure = null;
+        let offline = false;
+        for (const call of calls) {
+          const result = await requestJson(ROUTE_ACTION, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(call.body),
+          });
+          if (result.offline === true) offline = true;
+          const value = objectOf(result.value);
+          if (result.ok !== true) {
+            for (const name of call.names) {
+              outcomes.push({ name, ok: false, code: result.code ?? null, message: result.message ?? null });
+            }
+            if (requestFailure === null) requestFailure = { code: result.code ?? null, message: result.message ?? null };
+            continue;
+          }
+          const reported = value !== null && Array.isArray(value.results) ? value.results : null;
+          if (reported === null) {
+            for (const name of call.names) outcomes.push({ name, ok: true, code: null, message: null });
+            continue;
+          }
+          for (const entry of reported) {
+            const row = objectOf(entry);
+            const name = textOf(row?.name);
+            if (name === '') continue;
+            outcomes.push({ name, ok: row.ok === true, code: textOf(row.code) || null, message: textOf(row.message) || null });
+          }
+        }
+        const failed = outcomes.filter((outcome) => outcome.ok !== true);
+        const succeeded = outcomes.length - failed.length;
+        const notes = {};
+        for (const outcome of failed) notes[outcome.name] = { code: outcome.code, message: outcome.message };
+        patch({ pending: null, rowNotes: notes });
+        if (requestFailure !== null && succeeded === 0) {
+          patch({
+            status: offline === true ? 'offline' : store.getSnapshot().status,
+            note: { tone: 'error', failKey: step.failKey, code: requestFailure.code, message: requestFailure.message, offline },
+          });
+          return false;
+        }
+        if (succeeded > 0) PREVIEW_MEMORY.clear();
+        patch({ note: { tone: failed.length === 0 ? 'ok' : 'idle', key: step.note, params: { ok: succeeded, failed: failed.length } } });
+        await refresh();
+        refetchSoon();
+        return failed.length === 0;
+      };
+
+      /** Keep or unkeep one skill; an array of entries keeps the bulk rail to one refresh. */
+      const keepSkill = (name, keep) => {
+        const entries = keepEntriesOf(name, keep);
+        return runBatch(entries.map((entry) => ({
+          name: entry.name,
+          body: { action: 'keep', name: entry.name, keep: entry.keep },
+          names: [entry.name],
+        })), {
+          kind: 'keep',
+          target: entries.map((entry) => entry.name).join(','),
+          failKey: 'diagnosis.keep',
+          note: 'diagnosis.keepNote',
+        });
+      };
+
+      /** One cleanup post for a group of disable or remove targets. */
+      const cleanupSkills = (mode, targets) => {
+        const verb = mode === 'remove' ? 'remove' : 'disable';
+        const list = cleanupTargetsOf(targets);
+        const names = list.map((entry) => entry.name);
+        return runBatch([{
+          name: names.join(','),
+          body: { action: 'cleanup', mode: verb, targets: list },
+          names,
+        }], {
+          kind: 'cleanup',
+          target: names.join(','),
+          failKey: verb === 'remove' ? 'diagnosis.remove' : 'diagnosis.disable',
+          note: verb === 'remove' ? 'diagnosis.removeNote' : 'diagnosis.disableNote',
+        });
+      };
+
       /** Select a discover source without searching; a search re-runs it when a query is set. */
       const selectSource = (source) => {
         const sourceId = textOf(source);
@@ -1360,6 +1639,8 @@ window.__ModuleLoader__.load({
         removeSkill,
         updateSkill,
         installSkill,
+        keepSkill,
+        cleanupSkills,
         selectSource,
         runDiscover,
         dismissNote,
@@ -1445,6 +1726,7 @@ window.__ModuleLoader__.load({
         library: 'M3 5h5v15H3zM9 3h5v17H9zM16 5l4-1 3 15-4 1z',
         compass: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M16 8l-2.5 5.5L8 16l2.5-5.5z',
         chart: 'M4 4v16h16M8 15v-4M12 15V7M16 15v-6',
+        pulse: 'M3 12h4l2.5-6 4 12 2.5-6h5',
         close: 'M6 6l12 12M6 18 18 6',
         file: 'M14 3H5v18h14V8zM14 3v5h5M8 12h8M8 16h6',
       };
@@ -1479,6 +1761,65 @@ window.__ModuleLoader__.load({
         const field = sort === 'recent' ? 'lastUsedAt' : 'count';
         return countOf(objectOf(right.usage)?.[field]) - countOf(objectOf(left.usage)?.[field]) || alphabetical;
       });
+    }
+
+    /** The five buckets in the strip's order; their membership is decided by the Host. */
+    const DIAGNOSIS_BUCKETS = ['cleanup', 'dormant', 'active', 'kept', 'unknown'];
+
+    /**
+     * Pure queue projection: bucket and name only. Verdicts, counts and every `can.*`
+     * flag are copied from the wire; a day count is never compared against a threshold.
+     */
+    function diagnosisRows(diagnosis, { bucket = 'cleanup', query = '', sort = 'host' } = {}) {
+      const block = objectOf(diagnosis);
+      const listed = block !== null && Array.isArray(block.skills) ? block.skills : [];
+      const needle = query.trim().toLocaleLowerCase();
+      const rows = listed.map((entry) => {
+        const skill = objectOf(entry);
+        if (skill === null) return null;
+        const name = textOf(skill.name);
+        if (name === '') return null;
+        const can = objectOf(skill.can) ?? {};
+        return {
+          name,
+          verdict: textOf(skill.verdict),
+          bucket: textOf(skill.bucket),
+          idleDays: Number.isFinite(skill.idleDays) ? Math.max(0, Math.floor(skill.idleDays)) : null,
+          watchedDays: countOf(skill.watchedDays),
+          lastUsedAt: Number.isFinite(skill.lastUsedAt) ? skill.lastUsedAt : null,
+          useCount: countOf(skill.useCount),
+          keptAt: Number.isFinite(skill.keptAt) ? skill.keptAt : null,
+          closed: skill.closed === true,
+          writable: skill.writable === true,
+          can: { disable: can.disable === true, remove: can.remove === true, keep: can.keep === true },
+        };
+      }).filter((row) => row !== null).filter((row) =>
+        (bucket === '' || row.bucket === bucket) && (needle === '' || row.name.toLocaleLowerCase().includes(needle)));
+      if (sort === 'name') return rows.sort((left, right) => left.name.localeCompare(right.name));
+      if (sort === 'idle') return rows.sort((left, right) => (right.idleDays ?? -1) - (left.idleDays ?? -1) || left.name.localeCompare(right.name));
+      if (sort === 'calls') return rows.sort((left, right) => right.useCount - left.useCount || left.name.localeCompare(right.name));
+      // 'host' keeps the Host's §8.3 rank order; the Client may re-sort, not re-classify.
+      return rows;
+    }
+
+    /**
+     * Bulk targets from the wire's `can.*` flags alone. `keep` carries the requested state
+     * per name: a kept row is an unkeep target, so the rail never re-keeps it.
+     */
+    function diagnosisTally(rows, selected) {
+      const picked = new Set(stringsOf(selected));
+      const names = [], disable = [], remove = [], keep = [], readonly = [];
+      for (const row of Array.isArray(rows) ? rows : []) {
+        if (objectOf(row) === null) continue;
+        const name = textOf(row.name);
+        if (name === '' || picked.has(name) === false) continue;
+        names.push(name);
+        if (row.can?.disable === true) disable.push(name);
+        if (row.can?.remove === true) remove.push(name);
+        if (row.can?.keep === true) keep.push({ name, keep: row.verdict !== 'kept' });
+        if (row.writable !== true) readonly.push(name);
+      }
+      return { names, disable, remove, keep, readonly };
     }
 
     // ---------------------------------------------------------------- controls
@@ -1593,7 +1934,7 @@ window.__ModuleLoader__.load({
           onClick: () => onChange(tab.id),
           onKeyDown: (event) => move(event, index),
         },
-          el('span', { className: 'skd-tabIcon', 'aria-hidden': true }, el(Glyph, { name: tab.id === 'installed' ? 'library' : tab.id === 'discover' ? 'compass' : 'chart', size: 15 })),
+          el('span', { className: 'skd-tabIcon', 'aria-hidden': true }, el(Glyph, { name: tab.id === 'installed' ? 'library' : tab.id === 'discover' ? 'compass' : tab.id === 'usage' ? 'chart' : 'pulse', size: 15 })),
           tab.label,
         )),
       );
@@ -2577,14 +2918,335 @@ window.__ModuleLoader__.load({
         el('p', { className: 'skd-noteLine' }, t('usage.note')));
     }
 
+    /** An unknown verdict keeps the Host's own word instead of inventing a Chinese label. */
+    function verdictLabel(verdict, t) {
+      const key = 'diagnosis.verdict.' + verdict;
+      const localized = t(key);
+      return localized === key ? verdict : localized;
+    }
 
+    /** One diagnosis row: native selection, the Host's verdict, and its three verbs. */
+    function DiagnosisRow(props) {
+      const {
+        row, t, checked, busy, writesLocked, confirming, note, previewTarget, observedDays,
+        onSelect, onAskRemove, onConfirmRemove, onCancelRemove, onDisable, onKeep, onPreview,
+      } = props;
+      const name = row.name;
+      const kept = row.verdict === 'kept';
+      const actionable = row.can.disable === true || row.can.remove === true || row.can.keep === true;
+      const removeRef = useRef(null);
+      const cancelRef = useRef(null);
+      const confirmId = 'skd-diagnosis-confirm-' + useId().replace(/[^a-zA-Z0-9_-]/g, '');
+      useEffect(() => { if (confirming) cancelRef.current?.focus({ preventScroll: true }); }, [confirming]);
+      const cancel = () => { onCancelRemove(); removeRef.current?.focus({ preventScroll: true }); };
+      const evidence = (row.idleDays === null
+        ? (row.watchedDays === observedDays ? '' : t('diagnosis.evidence.never', { watched: row.watchedDays }))
+        : t('diagnosis.evidence.idle', { idle: row.idleDays, count: row.useCount }))
+        + (row.keptAt !== null ? ' · ' + t('diagnosis.evidence.kept', { date: formatDate(row.keptAt) })
+          : row.lastUsedAt !== null ? ' · ' + t('diagnosis.evidence.lastUsed', { date: formatDate(row.lastUsedAt) }) : '');
+      return el('li', { className: 'skd-diagnosisItem', 'aria-label': name },
+        el('div', { className: 'skd-diagnosisRow', 'aria-busy': busy === true || undefined },
+          el('label', { className: 'skd-diagnosisCheck' },
+            el(Input, {
+              type: 'checkbox', className: 'skd-diagnosisCheckInput', checked: checked === true,
+              disabled: actionable === false || writesLocked === true,
+              'aria-label': t('diagnosis.selectRow', { name }),
+              onChange: (event) => onSelect(name, event.target.checked),
+            })),
+          el('div', { className: 'skd-diagnosisMain' },
+            el('div', { className: 'skd-rowHead' },
+              previewTarget !== null ? el(Button, {
+                className: 'skd-rowName skd-nameButton', title: t('preview.open', { name }),
+                'aria-label': t('preview.open', { name }), onClick: () => onPreview(previewTarget),
+              }, name) : el('span', { className: 'skd-rowName' }, name),
+              el('div', { className: 'skd-badges' },
+                el(Badge, { className: 'skd-badge', 'data-tone': row.bucket === 'cleanup' ? 'accent' : undefined }, verdictLabel(row.verdict, t)),
+                row.closed === true && el(Badge, { className: 'skd-badge', 'data-tone': 'muted' }, t('diagnosis.closed')),
+                row.writable === false && el(Badge, { className: 'skd-badge', 'data-tone': 'muted' }, t('skill.readonly')))),
+            evidence !== '' && el('p', { className: 'skd-diagnosisEvidence' }, evidence)),
+          el('div', { className: 'skd-diagnosisActions' },
+            row.can.disable === true && el(Button, {
+              className: 'skd-button',
+              disabled: writesLocked === true,
+              onClick: () => onDisable(name),
+            }, t('diagnosis.disable')),
+            row.can.remove === true && el(Button, {
+              className: 'skd-button', ref: removeRef,
+              disabled: writesLocked === true,
+              onClick: () => onAskRemove(name),
+            }, t('diagnosis.remove')),
+            row.can.keep === true && el(Button, {
+              className: 'skd-button', disabled: writesLocked === true,
+              onClick: () => onKeep(name, kept !== true),
+            }, t(kept === true ? 'diagnosis.unkeep' : 'diagnosis.keep')),
+            actionable === false && el('span', { className: 'skd-diagnosisNoAction', 'aria-hidden': true }, '—'))),
+        confirming === true && el('div', {
+          className: 'skd-confirm skd-diagnosisConfirm', role: 'group',
+          'aria-label': t('diagnosis.remove'), 'aria-describedby': confirmId,
+          onKeyDown: (event) => { if (event.key === 'Escape') { event.preventDefault(); cancel(); } },
+        },
+          el('span', { id: confirmId, className: 'skd-confirmText' }, t('skill.removeConfirm', { name })),
+          el(Button, {
+            className: 'skd-button', 'data-variant': 'danger', disabled: writesLocked === true,
+            onClick: () => onConfirmRemove(name),
+          }, t('skill.removeConfirmAction')),
+          el(Button, { className: 'skd-button', ref: cancelRef, onClick: cancel }, t('action.cancel'))),
+        note !== null && el('p', { className: 'skd-noteLine skd-diagnosisRowNote', role: 'note' },
+          describeFailure(textOf(note.code) !== '' ? textOf(note.code) : null, textOf(note.message) !== '' ? textOf(note.message) : null, t)),
+      );
+    }
+
+    /**
+     * The diagnosis queue. The Host supplies verdicts, counts and every `can.*` flag; this
+     * component only filters names, holds the selection and posts the three verbs.
+     */
+    function DiagnosisTab(props) {
+      const {
+        diagnosis, catalog, t, view, setView, pending, rowNotes,
+        onPreview, onCleanup, onKeep,
+      } = props;
+      const block = objectOf(diagnosis);
+      const id = 'skd-diagnosis-' + useId().replace(/[^a-zA-Z0-9_-]/g, '');
+      const headingRef = useRef(null);
+      const listRef = useRef(null);
+      const bulkCancelRef = useRef(null);
+      const bulkRemoveRef = useRef(null);
+      const [confirmingBulk, setConfirmingBulk] = useState(false);
+      const [confirmingRow, setConfirmingRow] = useState('');
+      const [announced, setAnnounced] = useState('');
+      const pickedBucket = useRef(false);
+      const counts = block === null ? {} : objectOf(block.counts) ?? {};
+      const thresholds = block === null ? {} : objectOf(block.thresholds) ?? {};
+      const requested = textOf(view.bucket) === '' ? 'cleanup' : textOf(view.bucket);
+      // §8.7 starts on 可清理 but lands on 在用 when there is nothing to clean. Once the
+      // user chooses a segment, that choice is never overridden by the fallback.
+      const bucket = requested === 'cleanup' && countOf(counts.cleanup) === 0 && countOf(counts.active) > 0
+        && pickedBucket.current === false ? 'active' : requested;
+      const selectBucket = (next) => {
+        pickedBucket.current = true;
+        setConfirmingRow('');
+        setConfirmingBulk(false);
+        setView((current) => ({ ...current, bucket: next, selected: [] }));
+      };
+      const rows = useMemo(() => diagnosisRows(block, {
+        bucket, query: view.query, sort: view.sort ?? 'host',
+      }), [block, bucket, view.query, view.sort]);
+      const selected = stringsOf(view.selected);
+      const tally = diagnosisTally(rows, selected);
+      const selectedSet = new Set(selected);
+      const selectable = rows.filter((row) => row.can.disable === true || row.can.remove === true || row.can.keep === true);
+      const allSelected = selectable.length > 0 && selectable.every((row) => selectedSet.has(row.name));
+      const writable = pending === null;
+      const catalogByName = useMemo(() => {
+        const entries = new Map();
+        for (const skill of Array.isArray(catalog) ? catalog : []) {
+          const item = objectOf(skill);
+          const name = textOf(item?.name);
+          if (item !== null && name !== '') entries.set(name, item);
+        }
+        return entries;
+      }, [catalog]);
+      const targetOf = (name) => ({ name, path: textOf(catalogByName.get(name)?.path) });
+      const announcement = t('diagnosis.selectionStatus', { count: tally.names.length });
+      useEffect(() => {
+        const timer = setTimeout(() => setAnnounced(announcement), 350);
+        return () => clearTimeout(timer);
+      }, [announcement]);
+      useEffect(() => { if (confirmingBulk) bulkCancelRef.current?.focus({ preventScroll: true }); }, [confirmingBulk]);
+
+      const settleFocus = () => {
+        const first = listRef.current?.querySelector('.skd-diagnosisCheckInput:not(:disabled), .skd-nameButton');
+        (first ?? headingRef.current)?.focus?.({ preventScroll: true });
+      };
+      const toggleRow = (name, next) => setView((current) => {
+        const names = new Set(stringsOf(current.selected));
+        if (next === true) names.add(name); else names.delete(name);
+        return { ...current, selected: [...names] };
+      });
+      const dropSelection = (name) => setView((current) => ({ ...current, selected: stringsOf(current.selected).filter((entry) => entry !== name) }));
+      const clearSelection = () => setView((current) => ({ ...current, selected: [] }));
+      const toggleAll = () => setView((current) => ({
+        ...current,
+        selected: allSelected === true ? [] : selectable.map((row) => row.name),
+      }));
+      const disableRow = (name) => { void onCleanup('disable', [targetOf(name)]).then(settleFocus); };
+      const keepRow = (name, keep) => { void onKeep([{ name, keep }]).then(settleFocus); };
+      const removeRow = (name) => {
+        setConfirmingRow('');
+        void onCleanup('remove', [targetOf(name)]).then(() => { dropSelection(name); settleFocus(); });
+      };
+      const cancelBulk = () => { setConfirmingBulk(false); bulkRemoveRef.current?.focus({ preventScroll: true }); };
+      const bulkCleanup = async (mode) => {
+        const names = (mode === 'remove' ? tally.remove : tally.disable).slice(0, CLEANUP_TARGET_LIMIT);
+        setConfirmingBulk(false);
+        await onCleanup(mode, names.map(targetOf));
+        // Names past the Host's batch cap stay selected for a second pass.
+        setView((current) => ({
+          ...current,
+          selected: stringsOf(current.selected).filter((name) => names.includes(name) === false),
+        }));
+        settleFocus();
+      };
+      const bulkKeep = async () => {
+        await onKeep(tally.keep);
+        clearSelection();
+        settleFocus();
+      };
+
+      if (block === null) {
+        return el('div', { className: 'skd-panel skd-diagnosisPanel' },
+          el(SectionHeading, { title: t('diagnosis.title'), body: t('diagnosis.basis') }),
+          el('div', { className: 'skd-state' },
+            el('span', { className: 'skd-stateIcon' }, el(Glyph, { name: 'pulse', size: 24 })),
+            el('h3', { className: 'skd-stateTitle' }, t('diagnosis.oldHost.title')),
+            el('p', { className: 'skd-stateBody' }, t('diagnosis.oldHost.body')),
+            el('div', { className: 'skd-stateActions' }, el(Button, {
+              type: 'button', className: 'skd-button', onClick: () => { window.location.reload(); },
+            }, t('action.reload')))));
+      }
+
+      let empty = null;
+      if (rows.length === 0 && textOf(view.query).trim() !== '') {
+        empty = el('div', { className: 'skd-state' },
+          el('h3', { className: 'skd-stateTitle' }, t('diagnosis.noMatches.title')),
+          el('p', { className: 'skd-stateBody' }, t('diagnosis.noMatches.body')),
+          el('div', { className: 'skd-stateActions' }, el(Button, {
+            className: 'skd-button', onClick: () => setView((current) => ({ ...current, query: '' })),
+          }, t('diagnosis.noMatches.action'))));
+      } else if (rows.length === 0 && bucket === 'cleanup') {
+        empty = el('div', { className: 'skd-state' },
+          el('span', { className: 'skd-stateIcon' }, el(Glyph, { name: 'pulse', size: 24 })),
+          el('h3', { className: 'skd-stateTitle' }, t('diagnosis.noCleanup.title')),
+          el('p', { className: 'skd-stateBody' }, t('diagnosis.noCleanup.body', { days: countOf(thresholds.watchDays) })),
+          el('div', { className: 'skd-stateActions' }, el(Button, {
+            className: 'skd-button', onClick: () => selectBucket('active'),
+          }, t('diagnosis.noCleanup.action'))));
+      } else if (rows.length === 0) {
+        empty = el('div', { className: 'skd-state' },
+          el('h3', { className: 'skd-stateTitle' }, t('diagnosis.bucketEmpty')));
+      }
+
+      const rail = tally.names.length === 0 ? null : el('div', {
+        className: 'skd-diagnosisRail', role: 'group', 'aria-label': t('diagnosis.rail'),
+      },
+        el('p', { className: 'skd-diagnosisTally' }, t('diagnosis.tally', {
+          selected: tally.names.length, disable: tally.disable.length,
+          remove: tally.remove.length, readonly: tally.readonly.length,
+        })),
+        el('div', { className: 'skd-diagnosisRailActions' },
+          el(Button, {
+            className: 'skd-button', 'data-variant': 'primary',
+            disabled: tally.disable.length === 0 || writable === false,
+            onClick: () => { void bulkCleanup('disable'); },
+          }, t('diagnosis.disable')),
+          el(Button, {
+            className: 'skd-button', ref: bulkRemoveRef, 'data-variant': 'danger',
+            disabled: tally.remove.length === 0 || writable === false,
+            onClick: () => setConfirmingBulk(true),
+          }, t('diagnosis.remove')),
+          el(Button, {
+            className: 'skd-button', disabled: tally.keep.length === 0 || writable === false,
+            onClick: () => { void bulkKeep(); },
+          }, t(tally.keep.every((entry) => entry.keep === false) ? 'diagnosis.unkeep' : 'diagnosis.keep')),
+          el(Button, { className: 'skd-button', onClick: clearSelection }, t('diagnosis.clearSelection'))),
+        confirmingBulk === true && el('div', {
+          className: 'skd-confirm skd-diagnosisConfirm', role: 'group',
+          'aria-label': t('diagnosis.remove'), 'aria-describedby': id + '-bulk-confirm',
+          onKeyDown: (event) => { if (event.key === 'Escape') { event.preventDefault(); cancelBulk(); } },
+        },
+          el('span', { id: id + '-bulk-confirm', className: 'skd-confirmText' }, t('diagnosis.removeConfirmMany', {
+            count: tally.remove.length,
+            names: tally.remove.slice(0, 3).join('、'),
+            more: tally.remove.length > 3 ? t('diagnosis.moreNames', { count: tally.remove.length - 3 }) : '',
+          })),
+          el(Button, {
+            className: 'skd-button', 'data-variant': 'danger', disabled: writable === false,
+            onClick: () => { void bulkCleanup('remove'); },
+          }, t('skill.removeConfirmAction')),
+          el(Button, { className: 'skd-button', ref: bulkCancelRef, onClick: cancelBulk }, t('action.cancel'))));
+
+      const notes = objectOf(rowNotes) ?? {};
+      return el('div', { className: 'skd-panel skd-diagnosisPanel', 'aria-busy': pending !== null || undefined },
+        el('div', { className: 'skd-diagnosisHeading', ref: headingRef, tabIndex: -1 },
+          el(SectionHeading, { title: t('diagnosis.title'), body: t('diagnosis.basis') })),
+        el('p', { className: 'skd-noteLine skd-diagnosisHorizon' }, t('diagnosis.horizon', {
+          date: formatDate(block.since) || '—',
+          days: countOf(block.observedDays),
+          total: countOf(counts.total),
+          active: countOf(counts.active),
+          activeDays: countOf(thresholds.activeDays),
+        })),
+        el('div', { className: 'skd-diagnosisBuckets' },
+          el(Segmented, {
+            items: DIAGNOSIS_BUCKETS.map((entry) => ({
+              id: entry,
+              label: el('span', { className: 'skd-bucketOption' },
+                el('span', { className: 'skd-bucketName' }, t('diagnosis.bucket.' + entry)),
+                el('span', { className: 'skd-bucketCount' }, formatNumber(countOf(counts[entry])))),
+            })),
+            value: bucket,
+            label: t('diagnosis.buckets'),
+            onChange: selectBucket,
+          })),
+        el('div', { className: 'skd-toolbar skd-diagnosisQueue' },
+          el('div', { className: 'skd-resultLine skd-diagnosisResults' },
+            el('span', null, t('diagnosis.queueCount', { bucket: t('diagnosis.bucket.' + bucket), count: rows.length }))),
+          el('div', { className: 'skd-searchField' },
+            el('label', { className: 'skd-fieldLabel', htmlFor: id + '-query' }, t('diagnosis.searchLabel')),
+            el('div', { className: 'skd-searchBox' }, el(Glyph, { name: 'search' }), el(Input, {
+              id: id + '-query', name: 'diagnosis-query', className: 'skd-input', type: 'search',
+              value: view.query, placeholder: t('diagnosis.searchPlaceholder'),
+              autoCorrect: 'off', autoCapitalize: 'none', spellCheck: false,
+              onChange: (event) => setView((current) => ({ ...current, query: event.target.value })),
+            }))),
+          el(Button, {
+            className: 'skd-button', disabled: selectable.length === 0 || writable === false,
+            'aria-pressed': allSelected === true,
+            onClick: toggleAll,
+          }, t(allSelected === true ? 'diagnosis.clearSelection' : 'diagnosis.selectAll'))),
+        empty !== null ? empty : el('ul', {
+          className: 'skd-list skd-diagnosisList', ref: listRef, 'aria-busy': pending !== null || undefined,
+        }, rows.map((row) => {
+          const entry = objectOf(catalogByName.get(row.name));
+          const busy = pending !== null && (pending.kind === 'cleanup' || pending.kind === 'keep')
+            && textOf(pending.target).split(',').includes(row.name);
+          return el(DiagnosisRow, {
+            key: row.name,
+            row, t,
+            observedDays: countOf(block.observedDays),
+            checked: selectedSet.has(row.name),
+            busy,
+            writesLocked: writable === false,
+            confirming: confirmingRow === row.name,
+            note: objectOf(notes[row.name]),
+            previewTarget: textOf(entry?.path) !== '' ? entry : null,
+            onSelect: toggleRow,
+            onAskRemove: setConfirmingRow,
+            onConfirmRemove: removeRow,
+            onCancelRemove: () => setConfirmingRow(''),
+            onDisable: disableRow,
+            onKeep: keepRow,
+            onPreview,
+          });
+        })),
+        rail,
+        el('details', { className: 'skd-chartDetails skd-diagnosisPolicy' },
+          el('summary', null, t('diagnosis.policy')),
+          el('ul', { className: 'skd-diagnosisPolicyList' },
+            el('li', null, t('diagnosis.policy.active', { days: countOf(thresholds.activeDays) })),
+            el('li', null, t('diagnosis.policy.stale', { days: countOf(thresholds.staleDays) })),
+            el('li', null, t('diagnosis.policy.watch', { days: countOf(thresholds.watchDays) })),
+            el('li', null, t('diagnosis.policy.keep')))),
+        el('span', { className: 'skd-visuallyHidden', role: 'status', 'aria-atomic': true }, announced),
+      );
+    }
 
     // ---------------------------------------------------------------- page
     /** The panel: header, tab bar, scrolling body, and the footer status line. */
     function SkillDashboardPage(props) {
       const {
         useDashboard, t, refresh, setInvocation, removeSkill, updateSkill,
-        installSkill, selectSource, runDiscover, dismissNote,
+        installSkill, keepSkill, cleanupSkills, selectSource, runDiscover, dismissNote,
       } = props;
       const snapshot = useDashboard((current) => current);
       const data = objectOf(snapshot.data);
@@ -2602,6 +3264,7 @@ window.__ModuleLoader__.load({
       const [invocationFilter, setInvocationFilter] = useState('all');
       const [sort, setSort] = useState('usage');
       const [usageView, setUsageView] = useState({ period: '7', start: '', end: '', query: '', selected: '', sort: { key: 'count', direction: 'descending' } });
+      const [diagnosisView, setDiagnosisView] = useState({ bucket: 'cleanup', query: '', selected: [] });
       const scrollRef = useRef(null);
       const libraryInputRef = useRef(null);
       const contentRef = useRef(null);
@@ -2733,6 +3396,7 @@ window.__ModuleLoader__.load({
         { id: 'installed', label: t('tab.installed') },
         { id: 'discover', label: t('tab.discover') },
         { id: 'usage', label: t('tab.usage') },
+        { id: 'diagnosis', label: t('tab.diagnosis') },
       ];
 
       const filters = [
@@ -2912,6 +3576,18 @@ window.__ModuleLoader__.load({
                 onPreview: setPreviewTarget,
               }),
               tab === 'usage' && el(UsageTab, { data, t, view: usageView, setView: setUsageView }),
+              tab === 'diagnosis' && el(DiagnosisTab, {
+                diagnosis: objectOf(data.diagnosis),
+                catalog: skills,
+                t,
+                view: diagnosisView,
+                setView: setDiagnosisView,
+                pending,
+                rowNotes: objectOf(snapshot.rowNotes),
+                onPreview: setPreviewTarget,
+                onCleanup: (mode, targets) => cleanupSkills(mode, targets),
+                onKeep: (entries) => keepSkill(entries),
+              }),
             ),
             tabs.filter((entry) => entry.id !== tab).map((entry) => el('div', {
               key: entry.id, hidden: true, role: 'tabpanel',
@@ -3012,6 +3688,8 @@ window.__ModuleLoader__.load({
             removeSkill: runtime.removeSkill,
             updateSkill: runtime.updateSkill,
             installSkill: runtime.installSkill,
+            keepSkill: runtime.keepSkill,
+            cleanupSkills: runtime.cleanupSkills,
             selectSource: runtime.selectSource,
             runDiscover: runtime.runDiscover,
             dismissNote: runtime.dismissNote,

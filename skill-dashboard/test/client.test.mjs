@@ -14,7 +14,7 @@ function loadClient(fetch = async () => ({ ok: true, json: async () => ({ ok: tr
     fetch, AbortController, setTimeout, clearTimeout, console,
   };
   vm.runInNewContext(source.replace('    // ---------------------------------------------------------------- mount',
-    '    return { filterSkills, runtimeBadge, createRuntime, Segmented, TabBar, usagePeriodProjection, previewFileTree, cachedPreview, rememberPreview, PREVIEW_MEMORY, zh, en };\n    // ---------------------------------------------------------------- mount'), context);
+    '    return { filterSkills, runtimeBadge, createRuntime, Segmented, TabBar, usagePeriodProjection, diagnosisRows, diagnosisTally, previewFileTree, cachedPreview, rememberPreview, PREVIEW_MEMORY, zh, en };\n    // ---------------------------------------------------------------- mount'), context);
   return api;
 }
 const { filterSkills, runtimeBadge, zh, en } = loadClient();
@@ -171,4 +171,73 @@ test('the detected agent strings exist in both dictionaries and the old badge is
   assert.equal(en['skill.runtimesOne'], '{agent} only');
   assert.equal(zh['overview.agents'], '已检测 Agent');
   assert.equal(en['overview.agents'], 'Coding agents');
+});
+
+const diagnosis = {
+  evaluatedAt: 1796000000000,
+  since: 1795000000000,
+  observedDays: 11,
+  thresholds: { activeDays: 14, staleDays: 30, watchDays: 3 },
+  counts: { active: 2, cleanup: 3, dormant: 1, kept: 1, unknown: 1, total: 8 },
+  skills: [
+    { name: 'pdf-merge', verdict: 'stale', bucket: 'cleanup', idleDays: 41, watchedDays: 11, lastUsedAt: 1792500000000, useCount: 2, keptAt: null, closed: false, writable: true, can: { disable: true, remove: true, keep: true } },
+    { name: 'never-used', verdict: 'unused', bucket: 'cleanup', idleDays: null, watchedDays: 11, lastUsedAt: null, useCount: 0, keptAt: null, closed: false, writable: true, can: { disable: true, remove: true, keep: true } },
+    { name: 'bundled-tool', verdict: 'unused', bucket: 'cleanup', idleDays: null, watchedDays: 30, lastUsedAt: null, useCount: 0, keptAt: null, closed: false, writable: false, can: { disable: false, remove: false, keep: true } },
+    { name: 'old-notes', verdict: 'stale', bucket: 'dormant', idleDays: 53, watchedDays: 60, lastUsedAt: 1791500000000, useCount: 4, keptAt: null, closed: true, writable: true, can: { disable: false, remove: true, keep: true } },
+    { name: 'code-review', verdict: 'active', bucket: 'active', idleDays: 2, watchedDays: 60, lastUsedAt: 1795800000000, useCount: 12, keptAt: null, closed: false, writable: true, can: { disable: false, remove: false, keep: false } },
+    { name: 'archived', verdict: 'kept', bucket: 'kept', idleDays: 70, watchedDays: 60, lastUsedAt: 1790000000000, useCount: 1, keptAt: 1795000000000, closed: false, writable: true, can: { disable: true, remove: true, keep: true } },
+    { name: 'just-added', verdict: 'unknown', bucket: 'unknown', idleDays: null, watchedDays: 1, lastUsedAt: null, useCount: 0, keptAt: null, closed: false, writable: true, can: { disable: false, remove: false, keep: true } },
+    { name: 'cooling-skill', verdict: 'cooling', bucket: 'active', idleDays: 22, watchedDays: 60, lastUsedAt: 1794100000000, useCount: 3, keptAt: null, closed: false, writable: true, can: { disable: false, remove: false, keep: false } },
+  ],
+};
+
+test('diagnosis queue filters by bucket and searches names without regard to case', () => {
+  const { diagnosisRows } = loadClient();
+  assert.deepEqual(names(diagnosisRows(diagnosis, { bucket: 'cleanup' })), ['pdf-merge', 'never-used', 'bundled-tool']);
+  assert.deepEqual(names(diagnosisRows(diagnosis, { bucket: 'cleanup', query: '  PDF ' })), ['pdf-merge']);
+  assert.deepEqual(names(diagnosisRows(diagnosis, { bucket: 'cleanup', query: 'never' })), ['never-used']);
+  assert.deepEqual(names(diagnosisRows(diagnosis, { bucket: 'active' })), ['code-review', 'cooling-skill']);
+  assert.deepEqual(names(diagnosisRows(diagnosis, { bucket: 'cleanup', query: 'nothing' })), []);
+  assert.deepEqual(names(diagnosisRows(diagnosis, { bucket: 'cleanup', sort: 'name' })), ['bundled-tool', 'never-used', 'pdf-merge']);
+  assert.equal(diagnosisRows(diagnosis, { bucket: 'cleanup' })[0].verdict, 'stale', 'the Host verdict is copied, not recomputed');
+  assert.equal(diagnosisRows(diagnosis, { bucket: 'cleanup' })[0].can.remove, true);
+  assert.equal(diagnosis.skills[0].name, 'pdf-merge', 'the projection does not mutate its input');
+});
+
+test('the five buckets partition the catalog and match the Host counts', () => {
+  const { diagnosisRows } = loadClient();
+  const buckets = ['cleanup', 'dormant', 'active', 'kept', 'unknown'];
+  const lists = buckets.map((bucket) => diagnosisRows(diagnosis, { bucket }));
+  const all = lists.flat();
+  assert.equal(all.length, diagnosis.counts.total);
+  assert.equal(all.length, diagnosis.skills.length);
+  assert.equal(new Set(all.map((row) => row.name)).size, diagnosis.counts.total);
+  buckets.forEach((bucket, index) => assert.equal(lists[index].length, diagnosis.counts[bucket], bucket));
+  assert.deepEqual(names(diagnosisRows(diagnosis, { bucket: '' })), diagnosis.skills.map((skill) => skill.name));
+});
+
+test('a read-only row never enters a disable target list', () => {
+  const { diagnosisRows, diagnosisTally } = loadClient();
+  const rows = diagnosisRows(diagnosis, { bucket: 'cleanup' });
+  const tally = diagnosisTally(rows, ['pdf-merge', 'bundled-tool']);
+  assert.deepEqual(Array.from(tally.names), ['pdf-merge', 'bundled-tool']);
+  assert.deepEqual(Array.from(tally.disable), ['pdf-merge']);
+  assert.deepEqual(Array.from(tally.remove), ['pdf-merge']);
+  assert.deepEqual(Array.from(tally.readonly), ['bundled-tool']);
+  assert.deepEqual(Array.from(tally.keep, (entry) => ({ name: entry.name, keep: entry.keep })),
+    [{ name: 'pdf-merge', keep: true }, { name: 'bundled-tool', keep: true }]);
+  const dormant = diagnosisTally(diagnosisRows(diagnosis, { bucket: 'dormant' }), ['old-notes']);
+  assert.deepEqual(Array.from(dormant.disable), [], 'a closed skill cannot be disabled');
+  assert.deepEqual(Array.from(dormant.remove), ['old-notes']);
+  assert.deepEqual(Array.from(diagnosisTally(rows, []).names), []);
+  assert.deepEqual(Array.from(diagnosisTally(rows, ['code-review']).names), [], 'a row outside the queue is not a target');
+});
+
+test('a kept row in the tally offers unkeep rather than keep', () => {
+  const { diagnosisRows, diagnosisTally } = loadClient();
+  const tally = diagnosisTally(diagnosisRows(diagnosis, { bucket: 'kept' }), ['archived']);
+  assert.deepEqual(Array.from(tally.keep, (entry) => ({ name: entry.name, keep: entry.keep })), [{ name: 'archived', keep: false }]);
+  assert.equal(tally.keep[0].keep, false);
+  assert.deepEqual(Array.from(diagnosisTally(diagnosisRows(diagnosis, { bucket: 'active' }), ['code-review']).keep), [],
+    'a row the Host marked cannot be kept is not a target');
 });
