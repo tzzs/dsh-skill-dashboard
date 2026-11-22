@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.1.0...v1.2.0) (2026-11-22)
+
+
+### Features
+
+* **skill-dashboard:** detect coding agents from their skill roots ([#6](https://github.com/tzzs/dsh-skill-dashboard/issues/6)) ([6b83548](https://github.com/tzzs/dsh-skill-dashboard/commit/6b83548ef21426261c9f82d798ceb8f7d0076513))
+* **skill-dashboard:** improve dashboard navigation and layout ([61ca198](https://github.com/tzzs/dsh-skill-dashboard/commit/61ca1989b5a2468246760df093160ceb3d17b014))
+
 ## [1.1.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.0.1...v1.1.0) (2026-11-20)
 
 
