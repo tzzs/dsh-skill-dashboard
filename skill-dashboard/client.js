@@ -130,6 +130,7 @@ window.__ModuleLoader__.load({
       'tab.usage': '统计',
       'filter.label': '按 Agent 筛选',
       'filter.all': '全部',
+      'filter.agentOption': '{name} ({count})',
       'action.refresh': '刷新',
       'action.retry': '重试',
       'action.cancel': '取消',
@@ -137,7 +138,8 @@ window.__ModuleLoader__.load({
       'action.switch': '切换',
       'action.reload': '重新加载页面',
       'action.dismiss': '关闭',
-      'skill.agents': '{count} 个 Agent',
+      'skill.runtimesOne': '仅 {agent}',
+      'skill.runtimesSome': '{count}/{total} 个 Agent',
       'skill.calls': '已调用 {count} 次',
       'skill.callsLabel': '调用',
       'skill.usageTitle': '共 {count} 次 · 模型 {model} · 手动 {user}',
@@ -217,7 +219,7 @@ window.__ModuleLoader__.load({
       'panel.intro': '管理技能、调用权限与使用情况。',
       'overview.skills': '技能库',
       'overview.enabled': '模型可调用',
-      'overview.agents': 'Agent 预设',
+      'overview.agents': '已检测 Agent',
       'overview.calls': '累计调用',
       'installed.title': '已安装技能',
       'installed.body': '查找、筛选技能并管理调用权限。',
@@ -338,6 +340,7 @@ window.__ModuleLoader__.load({
       'tab.usage': 'Usage',
       'filter.label': 'Filter by agent',
       'filter.all': 'All',
+      'filter.agentOption': '{name} ({count})',
       'action.refresh': 'Refresh',
       'action.retry': 'Retry',
       'action.cancel': 'Cancel',
@@ -345,7 +348,8 @@ window.__ModuleLoader__.load({
       'action.switch': 'Switch',
       'action.reload': 'Reload the page',
       'action.dismiss': 'Dismiss',
-      'skill.agents': '{count} agents',
+      'skill.runtimesOne': '{agent} only',
+      'skill.runtimesSome': '{count}/{total} agents',
       'skill.calls': '{count} calls',
       'skill.callsLabel': 'Calls',
       'skill.usageTitle': '{count} calls · {model} by model · {user} manual',
@@ -425,7 +429,7 @@ window.__ModuleLoader__.load({
       'panel.intro': 'Manage skills, invocation, and activity.',
       'overview.skills': 'Skill library',
       'overview.enabled': 'Model enabled',
-      'overview.agents': 'Agent presets',
+      'overview.agents': 'Coding agents',
       'overview.calls': 'Total calls',
       'installed.title': 'Installed skills',
       'installed.body': 'Find and filter skills, then manage invocation permissions.',
@@ -1462,10 +1466,10 @@ window.__ModuleLoader__.load({
     }
 
     /** Pure projection shared by the library controls: filtering never mutates the host snapshot. */
-    function filterSkills(skills, { agent = 'all', query = '', status = 'all', sort = 'usage' } = {}) {
+    function filterSkills(skills, { runtime = 'all', query = '', status = 'all', sort = 'usage' } = {}) {
       const needle = query.trim().toLocaleLowerCase();
       return skills.filter((skill) =>
-        (agent === 'all' || stringsOf(skill.agents).includes(agent))
+        (runtime === 'all' || stringsOf(skill.runtimes).includes(runtime))
         && (needle === '' || [skill.name, skill.description, skill.source].some((value) => textOf(value).toLocaleLowerCase().includes(needle)))
         && (status === 'all' || (status === 'enabled' && skill.modelInvocable === true)
           || (status === 'disabled' && skill.modelInvocable !== true) || (status === 'writable' && skill.writable === true))
@@ -1478,6 +1482,39 @@ window.__ModuleLoader__.load({
     }
 
     // ---------------------------------------------------------------- controls
+    /**
+     * The agent badge of one skill: nothing when every detected agent reads it,
+     * the agent name when only one does, and a count when several but not all
+     * of them do.
+     *
+     * @param {object} skill - the skill entry.
+     * @param {{ id: string, title: string }[]} runtimes - the detected agents.
+     * @returns {{ kind: 'none' | 'one' | 'some', agent: string, count: number, total: number, title: string }} the badge.
+     */
+    function runtimeBadge(skill, runtimes) {
+      const total = Array.isArray(runtimes) ? runtimes.length : 0;
+      const ids = stringsOf(skill?.runtimes);
+      const titles = (Array.isArray(runtimes) ? runtimes : [])
+        .map((runtime) => objectOf(runtime))
+        .filter((runtime) => runtime !== null)
+        .map((runtime) => ({ id: textOf(runtime.id), title: textOf(runtime.title) }));
+      const titleOf = (id) => titles.find((runtime) => runtime.id === id)?.title ?? id;
+      if (total <= 0 || ids.length === 0 || ids.length >= total) {
+        return { kind: 'none', agent: '', count: 0, total, title: '' };
+      }
+      if (ids.length === 1) {
+        const agent = titleOf(ids[0]);
+        return { kind: 'one', agent, count: 1, total, title: agent };
+      }
+      return {
+        kind: 'some',
+        agent: '',
+        count: ids.length,
+        total,
+        title: ids.map((id) => titleOf(id)).join(' · '),
+      };
+    }
+
     /** Segmented single-choice control: the agent filter and the discover source both use it. */
     function Segmented({ items, value, label, onChange }) {
       const buttons = useRef([]);
@@ -1811,7 +1848,7 @@ window.__ModuleLoader__.load({
     }
 
     /** Native dialog is created outside React's managed DOM; React owns only its portal contents. */
-    function SkillPreview({ target, t, onClose }) {
+    function SkillPreview({ target, t, runtimes, onClose }) {
       const [dialog, setDialog] = useState(null);
       const [file, setFile] = useState('');
       const [mode, setMode] = useState('read');
@@ -1912,6 +1949,11 @@ window.__ModuleLoader__.load({
       const files = useMemo(() => Array.isArray(data?.files) ? data.files.filter((entry) => objectOf(entry) && textOf(entry.path)) : [], [data?.files]);
       const markdown = /\.(md|markdown)$/i.test(textOf(selected?.path));
       const name = textOf(skill.name) || textOf(target.title) || textOf(target.name);
+      // The detected coding agents that read this skill, by their own titles.
+      const agentTitles = stringsOf(skill.runtimes).map((id) => {
+        const runtime = (Array.isArray(runtimes) ? runtimes : []).map(objectOf).find((entry) => entry !== null && textOf(entry.id) === id);
+        return textOf(runtime?.title) !== '' ? textOf(runtime.title) : id;
+      });
       const errorKey = 'error.' + textOf(snapshot.error?.code);
       const error = t(errorKey) !== errorKey ? t(errorKey) : t('preview.failed');
       const selectFile = (path) => {
@@ -1980,6 +2022,7 @@ window.__ModuleLoader__.load({
         ),
         el('footer', { className: 'skd-previewFooter' },
           el('span', { title: textOf(skill.path) || textOf(target.ref) }, textOf(skill.path) || textOf(target.ref) || name),
+          agentTitles.length > 0 && el('span', { title: agentTitles.join(' · ') }, agentTitles.join(' · ')),
           el('span', null, t('preview.readOnlyNotice'))),
       ), dialog);
     }
@@ -1987,14 +2030,14 @@ window.__ModuleLoader__.load({
     /** One installed skill: identity, description, calls, both switches, and its menu. */
     function SkillRow(props) {
       const {
-        skill, t, frequent, busy, writesLocked, pathShown, confirming,
+        skill, t, frequent, busy, writesLocked, pathShown, confirming, runtimes,
         onToggle, onUpdate, onAskRemove, onConfirmRemove, onCancelRemove, onTogglePath, onPreview,
       } = props;
       const name = textOf(skill?.name) !== '' ? textOf(skill.name) : '—';
       const path = textOf(skill?.path);
       const source = textOf(skill?.source);
       const description = textOf(skill?.description);
-      const agents = stringsOf(skill?.agents);
+      const badge = runtimeBadge(skill, runtimes);
       const usage = objectOf(skill?.usage);
       const calls = countOf(usage?.count);
       const byModel = countOf(usage?.byModel);
@@ -2024,7 +2067,9 @@ window.__ModuleLoader__.load({
               'aria-label': t('preview.open', { name }), onClick: () => onPreview(skill) }, name),
             el('div', { className: 'skd-badges' },
               source !== '' && el(Badge, { className: 'skd-badge' }, source),
-              agents.length > 0 && el(Badge, { className: 'skd-badge' }, t('skill.agents', { count: agents.length })),
+              badge.kind === 'one' && el(Badge, { className: 'skd-badge' }, t('skill.runtimesOne', { agent: badge.agent })),
+              badge.kind === 'some' && el(Badge, { className: 'skd-badge', title: badge.title },
+                t('skill.runtimesSome', { count: badge.count, total: badge.total })),
               frequent && el(Badge, { className: 'skd-badge', 'data-tone': 'accent' }, t('skill.frequent')),
               closed && el(Badge, { className: 'skd-badge', 'data-tone': 'muted' }, t('skill.closed')),
               writable === false && el(Badge, { className: 'skd-badge', 'data-tone': 'muted' }, t('skill.readonly')),
@@ -2108,7 +2153,7 @@ window.__ModuleLoader__.load({
     /** The installed list: a row per skill, muted once the model can no longer call it. */
     function InstalledTab(props) {
       const {
-        skills, t, frequentRule, pending, filtered, onReset, onDiscover,
+        skills, t, frequentRule, pending, filtered, runtimes, onReset, onDiscover,
         expandedPath, confirmingPath, onToggle, onUpdate, onAskRemove, onConfirmRemove, onCancelRemove, onTogglePath, onPreview,
       } = props;
 
@@ -2135,6 +2180,7 @@ window.__ModuleLoader__.load({
         return el('li', { key: path !== '' ? path : 'name:' + name }, el(SkillRow, {
           skill,
           t,
+          runtimes,
           frequent: frequentRule.active === true
             && calls >= MIN_FREQUENT_CALLS
             && calls >= frequentRule.threshold,
@@ -2594,9 +2640,11 @@ window.__ModuleLoader__.load({
         void refresh({ staleAfterMs: STALE_AFTER_MS });
       }, [refresh, tab]);
 
-      const agents = useMemo(() => {
-        const listed = data !== null && Array.isArray(data.agents) ? data.agents : [];
-        return listed.map((agent) => objectOf(agent)).filter((agent) => agent !== null);
+      // The detected coding agents, not the DSH presets: they say which agent
+      // really reads a skill directory.
+      const runtimes = useMemo(() => {
+        const listed = data !== null && Array.isArray(data.runtimes) ? data.runtimes : [];
+        return listed.map((runtime) => objectOf(runtime)).filter((runtime) => runtime !== null);
       }, [data]);
 
       const skills = useMemo(() => {
@@ -2615,7 +2663,7 @@ window.__ModuleLoader__.load({
       }, [skills]);
 
       const visible = useMemo(() => filterSkills(skills, {
-        agent: agentFilter, query: libraryQuery, status: invocationFilter, sort,
+        runtime: agentFilter, query: libraryQuery, status: invocationFilter, sort,
       }), [skills, agentFilter, libraryQuery, invocationFilter, sort]);
       const hasFilters = agentFilter !== 'all' || libraryQuery !== '' || invocationFilter !== 'all';
       const resetFilters = () => {
@@ -2629,8 +2677,8 @@ window.__ModuleLoader__.load({
         return () => clearTimeout(timer);
       }, [resultAnnouncement]);
       useEffect(() => {
-        if (agentFilter !== 'all' && !agents.some((agent) => textOf(agent.id) === agentFilter)) setAgentFilter('all');
-      }, [agents, agentFilter]);
+        if (agentFilter !== 'all' && !runtimes.some((runtime) => textOf(runtime.id) === agentFilter)) setAgentFilter('all');
+      }, [runtimes, agentFilter]);
 
       const invocable = useMemo(() => skills.filter((skill) => skill.modelInvocable === true).length, [skills]);
 
@@ -2689,10 +2737,13 @@ window.__ModuleLoader__.load({
 
       const filters = [
         { id: 'all', label: t('filter.all'), title: undefined },
-        ...agents.map((agent) => ({
-          id: textOf(agent.id),
-          label: textOf(agent.title) !== '' ? textOf(agent.title) : textOf(agent.id),
-          title: textOf(agent.description) !== '' ? textOf(agent.description) : undefined,
+        ...runtimes.map((runtime) => ({
+          id: textOf(runtime.id),
+          label: t('filter.agentOption', {
+            name: textOf(runtime.title) !== '' ? textOf(runtime.title) : textOf(runtime.id),
+            count: countOf(runtime.skillCount),
+          }),
+          title: undefined,
         })),
       ].filter((filter) => filter.id !== '');
 
@@ -2785,11 +2836,11 @@ window.__ModuleLoader__.load({
         ),
         el('div', { className: 'skd-scroll', ref: scrollRef },
           el('div', { className: 'skd-wrap skd-content' },
-            tab === 'installed' && el('div', { className: 'skd-overview', role: 'group', 'aria-label': t('panel.subtitle', { skills: skills.length, agents: agents.length, invocable }) },
+            tab === 'installed' && el('div', { className: 'skd-overview', role: 'group', 'aria-label': t('panel.subtitle', { skills: skills.length, agents: runtimes.length, invocable }) },
               [
                 { label: 'overview.skills', value: skills.length },
                 { label: 'overview.enabled', value: invocable },
-                { label: 'overview.agents', value: agents.length },
+                { label: 'overview.agents', value: runtimes.length },
                 { label: 'overview.calls', value: countOf(objectOf(data.usage)?.totalCount) },
               ].map((entry) => el('div', { key: entry.label, className: 'skd-overviewItem' },
                 el('span', { className: 'skd-overviewLabel' }, t(entry.label)),
@@ -2815,7 +2866,7 @@ window.__ModuleLoader__.load({
                       placeholder: t('installed.placeholder'), autoCorrect: 'off', autoCapitalize: 'none', spellCheck: false, enterKeyHint: 'search',
                       onChange: (event) => setLibraryQuery(event.target.value),
                     }))),
-                el(SelectField, { label: t('filter.label'), value: agentFilter, onChange: setAgentFilter, options: filters }),
+                runtimes.length > 0 && el(SelectField, { label: t('filter.label'), value: agentFilter, onChange: setAgentFilter, options: filters }),
                 el(SelectField, { label: t('installed.status'), value: invocationFilter, onChange: setInvocationFilter,
                   options: ['all', 'enabled', 'disabled', 'writable'].map((id) => ({ id, label: t('installed.' + id) })) }),
                 el(SelectField, { label: t('installed.sort'), value: sort, onChange: setSort,
@@ -2831,6 +2882,7 @@ window.__ModuleLoader__.load({
               tab === 'installed' && el(InstalledTab, {
                 skills: visible,
                 t,
+                runtimes,
                 onPreview: setPreviewTarget,
                 frequentRule,
                 pending,
@@ -2877,7 +2929,7 @@ window.__ModuleLoader__.load({
             ),
           ),
         ),
-        previewTarget !== null && el(SkillPreview, { target: previewTarget, t, onClose: () => setPreviewTarget(null) }),
+        previewTarget !== null && el(SkillPreview, { target: previewTarget, t, runtimes, onClose: () => setPreviewTarget(null) }),
       );
     }
 
