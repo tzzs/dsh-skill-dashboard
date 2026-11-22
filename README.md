@@ -5,8 +5,8 @@
 [![Latest release](https://img.shields.io/github/v/release/tzzs/dsh-skill-dashboard)](https://github.com/tzzs/dsh-skill-dashboard/releases)
 
 A DeepSeek Harness (DSH) plugin that puts every agent skill in one place: what is
-installed, which coding agents can see it, how often it is really used, and a
-read-only preview of the files behind it.
+installed, which coding agents can see it, how often it is really used, which skills are worth
+keeping, and a read-only preview of the files behind it.
 
 [中文说明](README.zh.md)
 
@@ -36,6 +36,15 @@ read-only preview of the files behind it.
   daily history.
 - Cumulative totals and recent activity are labelled separately; search and trend selection
   never change the period totals.
+
+**Diagnosis** — which skills are really in use, and which have gone quiet.
+
+- One verdict per skill from the recorded calls: in use, slowing down, stale, never called,
+  kept, or too new to judge. The observation window is printed on the page.
+- Five buckets with counts: clean up, off, in use, kept, too new. Each row shows the evidence
+  behind its verdict.
+- Disable (reversible), delete (confirmed), or keep (stops the reminder) one row or a whole
+  selection. A batch degrades per row, and read-only skills offer keep only.
 
 **Preview** — click a skill name to read it.
 

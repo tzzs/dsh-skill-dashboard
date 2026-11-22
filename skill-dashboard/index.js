@@ -1006,6 +1006,23 @@ function recentDayKeys(now, length) {
 }
 
 /**
+ * Read one `YYYY-MM-DD` day key as a local instant, at noon.
+ *
+ * Noon is deliberate: an instant at midnight can fall on the neighbouring day
+ * in another zone, while the store's keys are Host-local dates.
+ *
+ * @param {string} key - stored day key.
+ * @returns {number | undefined} the instant, or `undefined` when unparseable.
+ */
+function dayKeyInstant(key) {
+  if (typeof key !== 'string') return undefined
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key)
+  if (match === null) return undefined
+  const instant = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0).getTime()
+  return Number.isFinite(instant) ? instant : undefined
+}
+
+/**
  * Fold a stored day map into one window of buckets.
  * @param {Record<string, number> | undefined} days - stored `YYYY-MM-DD` → count.
  * @param {number} now - reference timestamp.
@@ -1047,9 +1064,14 @@ function emptyUsageRecord() {
   return { count: 0, sessions: [], lastUsedAt: 0, days: {}, model: 0, user: 0 }
 }
 
-/** One empty usage store. */
+/**
+ * One empty usage store.
+ *
+ * `since` starts at 0 and not at a clock: a returning clock here would silently
+ * re-date every store written before diagnosis existed on its next load.
+ */
 function emptyUsageStore() {
-  return { version: 1, skills: {}, recent: [] }
+  return { version: 1, since: 0, catalog: {}, skills: {}, recent: [] }
 }
 
 /** One empty provenance store. */
@@ -1159,6 +1181,246 @@ export function summarizeUsage(state, now) {
   return {
     totalCount, activeSkills, dayBuckets: foldDayBuckets(aggregate, now), recent,
     history: foldDayBuckets(aggregate, now, DAY_KEEP), retentionDays: DAY_KEEP, skillUsage,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Skill diagnosis
+// ---------------------------------------------------------------------------
+
+/**
+ * The only place a day threshold appears (CONTRACT §8.1).
+ * `activeDays` matches the Usage tab's own window, `staleDays` is a month of
+ * silence, and `watchDays` is the smallest window in which "not called" means
+ * anything at all.
+ */
+export const DIAGNOSIS_POLICY = Object.freeze({
+  activeDays: 14,
+  staleDays: 30,
+  watchDays: 3,
+})
+
+const DAY_MS = 86_400_000
+
+/** Wire order of the buckets (CONTRACT §8.3). */
+const DIAGNOSIS_BUCKET_RANK = { cleanup: 0, dormant: 1, unknown: 2, kept: 3, active: 4 }
+
+/** Within the cleanup queue, a stale call history outranks never having been called. */
+const DIAGNOSIS_CLEANUP_RANK = { stale: 0, unused: 1 }
+
+/**
+ * Full days between two instants. A backwards clock yields 0, never a false
+ * silence (CONTRACT §8.2).
+ * @param {number} from - earlier instant.
+ * @param {number} to - later instant.
+ * @returns {number} non-negative whole days.
+ */
+function dayDistance(from, to) {
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return 0
+  return Math.max(0, Math.floor((to - from) / DAY_MS))
+}
+
+/**
+ * The earliest instant the store can prove it has been observing (CONTRACT §8.4).
+ *
+ * Stores written before diagnosis have no `since`. Their oldest call timestamp
+ * or surviving day key is the latest defensible start: using `now` instead
+ * would make every historic skill look newly watched. Day keys are the
+ * Host-local calendar dates recorded by `applyUsageEvent`, read at local noon.
+ *
+ * @param {{ since?: unknown, skills?: Record<string, object> }} state - usage store.
+ * @param {number} now - reference timestamp.
+ * @returns {number} the epoch, clamped to `now`; the input is never mutated.
+ */
+export function usageEpoch(state, now) {
+  const at = Number.isFinite(now) ? now : Date.now()
+  const stored = isRecord(state) ? state.since : undefined
+  if (Number.isFinite(stored) && stored > 0 && stored <= at) return stored
+  let oldest
+  const consider = (instant) => {
+    if (!Number.isFinite(instant) || instant <= 0) return
+    if (oldest === undefined || instant < oldest) oldest = instant
+  }
+  const skills = isRecord(state?.skills) ? state.skills : {}
+  for (const record of Object.values(skills)) {
+    if (!isRecord(record)) continue
+    consider(Number(record.lastUsedAt))
+    const days = isRecord(record.days) ? record.days : {}
+    for (const [key, count] of Object.entries(days)) {
+      const numeric = Number(count)
+      if (!Number.isFinite(numeric) || numeric <= 0) continue
+      consider(dayKeyInstant(key))
+    }
+  }
+  if (oldest === undefined) return at
+  return Math.min(oldest, at)
+}
+
+/** Read one creation time from a Map or a plain record, tolerating either. */
+function presenceOf(presence, name) {
+  if (presence instanceof Map) return presence.get(name)
+  if (isRecord(presence) && Object.hasOwn(presence, name)) return presence[name]
+  return undefined
+}
+
+/**
+ * Fill the observation epoch and each unseen catalog name's first-seen stamp
+ * once (CONTRACT §8.4). Existing stamps are never rewritten.
+ *
+ * A known file creation time is preferred over `now`, so a skill installed
+ * months before the dashboard existed does not start a fresh watch window.
+ *
+ * @param {object} usage - the usage store, mutated in place.
+ * @param {readonly (string | { name: string })[]} catalog - current catalog entries.
+ * @param {Map<string, number> | Record<string, number> | undefined} presence - creation times by name.
+ * @param {number} now - reference timestamp.
+ * @returns {boolean} whether anything changed, so the caller only flushes then.
+ */
+export function stampUsage(usage, catalog, presence, now) {
+  if (!isRecord(usage)) return false
+  const at = Number.isFinite(now) ? now : Date.now()
+  let changed = false
+  if (!isRecord(usage.catalog)) {
+    usage.catalog = {}
+    changed = true
+  }
+  const stamps = usage.catalog
+  const since = usageEpoch(usage, at)
+  if (!(Number.isFinite(usage.since) && usage.since > 0 && usage.since <= at)) {
+    usage.since = since
+    changed = true
+  }
+  for (const entry of Array.isArray(catalog) ? catalog : []) {
+    const name = typeof entry === 'string' ? entry : isRecord(entry) && typeof entry.name === 'string' ? entry.name : ''
+    if (name.length === 0) continue
+    const stored = Number(stamps[name])
+    if (Number.isFinite(stored) && stored > 0) continue
+    const observed = presenceOf(presence, name)
+    const source = Number.isFinite(observed) && observed > 0 ? observed : at
+    // NTFS reports a fractional birth time; the store holds whole milliseconds.
+    stamps[name] = Math.round(Math.min(Math.max(source, since), at))
+    changed = true
+  }
+  return changed
+}
+
+/** Classify one catalog entry; every returned field comes from the wire shape. */
+function diagnoseRow(entry, record, context) {
+  const usage = isRecord(record) ? record : {}
+  const lastUsedAt = Number.isFinite(usage.lastUsedAt) && usage.lastUsedAt > 0 ? usage.lastUsedAt : null
+  const keptAt = Number.isFinite(usage.keptAt) && usage.keptAt > 0 ? usage.keptAt : null
+  const idleDays = lastUsedAt === null ? null : dayDistance(lastUsedAt, context.now)
+  const stamped = Number(context.stamps[entry.name])
+  const observed = presenceOf(context.presence, entry.name)
+  let firstSeen = context.since
+  if (Number.isFinite(stamped) && stamped > 0) firstSeen = Math.min(stamped, context.now)
+  else if (Number.isFinite(observed) && observed > 0) firstSeen = Math.min(observed, context.now)
+  const watchedDays = dayDistance(firstSeen, context.now)
+  const closed = entry.modelInvocable === false && entry.userInvocable === false
+  const writable = entry.writable === true
+  const thresholds = context.thresholds
+
+  let verdict
+  if (lastUsedAt !== null && idleDays <= thresholds.activeDays) verdict = 'active'
+  else if (keptAt !== null && (lastUsedAt === null || lastUsedAt <= keptAt)) verdict = 'kept'
+  else if (watchedDays < thresholds.watchDays) verdict = 'unknown'
+  else if (lastUsedAt === null) verdict = 'unused'
+  else if (idleDays >= thresholds.staleDays) verdict = 'stale'
+  else verdict = 'cooling'
+
+  let bucket
+  if (verdict === 'kept') bucket = 'kept'
+  else if (verdict === 'unknown') bucket = 'unknown'
+  else if (closed && (verdict === 'stale' || verdict === 'unused')) bucket = 'dormant'
+  else if (verdict === 'active' || verdict === 'cooling') bucket = 'active'
+  else bucket = 'cleanup'
+
+  const removable = verdict === 'stale' || verdict === 'unused'
+  return {
+    name: entry.name,
+    verdict,
+    bucket,
+    idleDays,
+    watchedDays,
+    lastUsedAt,
+    useCount: Number.isFinite(usage.count) ? usage.count : 0,
+    keptAt,
+    closed,
+    writable,
+    can: {
+      disable: writable && !closed && removable,
+      remove: writable && removable,
+      keep: verdict !== 'active',
+    },
+  }
+}
+
+/** Sort diagnosis rows by bucket, then by the queue rules of CONTRACT §8.3. */
+function compareDiagnosisRows(left, right) {
+  const bucket = (DIAGNOSIS_BUCKET_RANK[left.bucket] ?? 9) - (DIAGNOSIS_BUCKET_RANK[right.bucket] ?? 9)
+  if (bucket !== 0) return bucket
+  if (left.bucket === 'cleanup' || left.bucket === 'dormant') {
+    const verdict = (DIAGNOSIS_CLEANUP_RANK[left.verdict] ?? 9) - (DIAGNOSIS_CLEANUP_RANK[right.verdict] ?? 9)
+    if (verdict !== 0) return verdict
+    const idle = (right.idleDays ?? 0) - (left.idleDays ?? 0)
+    if (idle !== 0) return idle
+    const watched = right.watchedDays - left.watchedDays
+    if (watched !== 0) return watched
+  } else if (left.bucket === 'active') {
+    const idle = (left.idleDays ?? 0) - (right.idleDays ?? 0)
+    if (idle !== 0) return idle
+  }
+  return compareNames(left.name, right.name)
+}
+
+/**
+ * Classify the whole catalog against the usage store (CONTRACT §8.5).
+ *
+ * Pure and total: no input is mutated, a missing or corrupt store reads as
+ * "never called", and every unique catalog name appears exactly once.
+ *
+ * @param {readonly { name: string, modelInvocable?: boolean, userInvocable?: boolean, writable?: boolean }[]} catalog - current catalog.
+ * @param {{ since?: unknown, catalog?: object, skills?: Record<string, object> }} usage - usage store.
+ * @param {{ now?: number, since?: number, presence?: Map<string, number> | object, thresholds?: object }} [context] - reference facts.
+ * @returns {{ evaluatedAt: number, since: number, observedDays: number, thresholds: object,
+ *   counts: { active: number, cleanup: number, dormant: number, kept: number, unknown: number, total: number },
+ *   skills: object[] }} the diagnosis document.
+ */
+export function diagnoseSkills(catalog, usage, context = {}) {
+  const settings = isRecord(context) ? context : {}
+  const now = Number.isFinite(settings.now) ? settings.now : Date.now()
+  const thresholds = { ...DIAGNOSIS_POLICY }
+  if (isRecord(settings.thresholds)) {
+    for (const key of ['activeDays', 'staleDays', 'watchDays']) {
+      const value = Number(settings.thresholds[key])
+      if (Number.isFinite(value) && value >= 0) thresholds[key] = value
+    }
+  }
+  const since = Number.isFinite(settings.since) && settings.since > 0 ? Math.min(settings.since, now) : usageEpoch(usage, now)
+  const records = isRecord(usage) && isRecord(usage.skills) ? usage.skills : {}
+  const stamps = isRecord(usage?.catalog) ? usage.catalog : {}
+  const counts = { active: 0, cleanup: 0, dormant: 0, kept: 0, unknown: 0, total: 0 }
+  const rows = []
+  const seen = new Set()
+  for (const entry of Array.isArray(catalog) ? catalog : []) {
+    if (!isRecord(entry) || typeof entry.name !== 'string' || entry.name.length === 0) continue
+    if (seen.has(entry.name)) continue
+    seen.add(entry.name)
+    const row = diagnoseRow(entry, Object.hasOwn(records, entry.name) ? records[entry.name] : undefined, {
+      now, since, stamps, presence: settings.presence, thresholds,
+    })
+    counts[row.bucket] += 1
+    counts.total += 1
+    rows.push(row)
+  }
+  rows.sort(compareDiagnosisRows)
+  return {
+    evaluatedAt: now,
+    since,
+    observedDays: dayDistance(since, now),
+    thresholds: { ...thresholds },
+    counts,
+    skills: rows,
   }
 }
 
@@ -2355,16 +2617,27 @@ export function apply(ctx) {
     return found
   }
 
-  /** Whether a real file exists at `path`, and it is not part of the installation. */
+  /**
+   * Whether a real skill file exists at `path` and may be edited, plus when
+   * that file was created. The creation time is an observation window for
+   * diagnosis only and never travels in the state document.
+   *
+   * @param {string} path - absolute skill file path.
+   * @returns {Promise<{ writable: boolean, createdAt: number }>} permission and creation instant (0 when unknown).
+   */
   const resolveWritable = async (path) => {
-    if (typeof path !== 'string' || path.length === 0) return false
+    if (typeof path !== 'string' || path.length === 0) return { writable: false, createdAt: 0 }
     try {
       const real = await realpath(path)
       const info = await stat(real)
-      if (!info.isFile()) return false
-      return !isProtectedInstallPath(real, await resolvedInstallRoots())
+      if (!info.isFile()) return { writable: false, createdAt: 0 }
+      const birth = Number(info.birthtimeMs)
+      return {
+        writable: !isProtectedInstallPath(real, await resolvedInstallRoots()),
+        createdAt: Number.isFinite(birth) && birth > 0 ? birth : 0,
+      }
     } catch {
-      return false
+      return { writable: false, createdAt: 0 }
     }
   }
 
@@ -2512,9 +2785,12 @@ export function apply(ctx) {
     const merged = mergeAgentSkills(lists, { usageOf: (name) => usageForSkill(usageState, name, now) })
     overlayRecentEdits(merged)
     const installedState = await installedStore.load()
+    const presence = new Map()
     await Promise.all(
       merged.map(async (skill) => {
-        skill.writable = await resolveWritable(skill.path)
+        const file = await resolveWritable(skill.path)
+        skill.writable = file.writable
+        if (file.createdAt > 0) presence.set(skill.name, file.createdAt)
         skill.installed = await provenanceOf(skill, installedState)
       }),
     )
@@ -2523,6 +2799,7 @@ export function apply(ctx) {
       skill.runtimes = detected.bySkill.get(skill.name) ?? ['dsh']
     }
     const runtimes = detected.runtimes.map((entry) => ({ id: entry.id, title: entry.title, skillCount: entry.skills.length }))
+    if (stampUsage(usageState, merged, presence, now)) usageStore.schedule()
     return {
       ok: true,
       generatedAt: now,
@@ -2530,6 +2807,7 @@ export function apply(ctx) {
       runtimes,
       skills: merged,
       usage: summarizeUsage(usageState, now),
+      diagnosis: diagnoseSkills(merged, usageState, { now, since: usageState.since, presence }),
       sources: Object.values(sources).map((source) => ({
         id: source.id,
         title: source.title,
@@ -2820,6 +3098,102 @@ export function apply(ctx) {
     }
     invalidateState()
     return { status: 200, body: { ok: true, removed: [target.target] } }
+  }
+
+  /**
+   * `keep`: record the one decision the Host cannot derive from call history.
+   *
+   * The decision is flushed before the reply so a reload cannot lose it; a
+   * later call voids it without a writer (CONTRACT §8.1).
+   */
+  const keepSkill = async (body) => {
+    if (typeof body.name !== 'string' || body.name.length === 0) {
+      return { status: 400, body: failure('bad-request', 'name is required') }
+    }
+    if (typeof body.keep !== 'boolean') {
+      return { status: 400, body: failure('bad-request', 'keep must be a boolean') }
+    }
+    const state = await getState(false)
+    if (!state.skills.some((skill) => skill.name === body.name)) {
+      return { status: 404, body: failure('not-found', `no skill named "${body.name}"`) }
+    }
+    const usageState = await usageStore.load()
+    if (!isRecord(usageState.skills)) usageState.skills = {}
+    let record = isRecord(usageState.skills[body.name]) ? usageState.skills[body.name] : undefined
+    let keptAt = null
+    let changed = false
+    if (body.keep) {
+      if (record === undefined) {
+        record = emptyUsageRecord()
+        usageState.skills[body.name] = record
+      }
+      record.keptAt = Date.now()
+      keptAt = record.keptAt
+      changed = true
+    } else if (record !== undefined && Object.hasOwn(record, 'keptAt')) {
+      delete record.keptAt
+      changed = true
+    }
+    if (changed) usageStore.schedule()
+    await usageStore.flush()
+    invalidateState()
+    return { status: 200, body: { ok: true, name: body.name, keptAt } }
+  }
+
+  /**
+   * `cleanup`: run the existing mutation handlers once per unique target.
+   *
+   * A read-only row is a normal outcome, not a failure of the batch, so the
+   * request always answers 200 once its shape is valid.
+   */
+  const cleanupSkills = async (body) => {
+    if (body.mode !== 'disable' && body.mode !== 'remove') {
+      return { status: 400, body: failure('bad-request', 'mode must be "disable" or "remove"') }
+    }
+    if (!Array.isArray(body.targets) || body.targets.length < 1 || body.targets.length > 100) {
+      return { status: 400, body: failure('bad-request', 'targets must hold between 1 and 100 skills') }
+    }
+    const seen = new Set()
+    const targets = []
+    for (const target of body.targets) {
+      if (!isRecord(target) || typeof target.name !== 'string' || target.name.length === 0) {
+        return { status: 400, body: failure('bad-request', 'every target needs a non-empty name') }
+      }
+      if (typeof target.path !== 'string' || target.path.length === 0 || !isAbsolute(target.path)) {
+        return { status: 400, body: failure('bad-request', 'every target needs an absolute path') }
+      }
+      const key = normalizePathKey(target.path)
+      if (key.length === 0 || seen.has(key)) continue
+      seen.add(key)
+      targets.push({ name: target.name, path: target.path })
+    }
+    const results = []
+    let succeeded = 0
+    let failed = 0
+    for (const target of targets) {
+      let outcome
+      try {
+        outcome = body.mode === 'disable'
+          ? await setInvocation({ path: target.path, modelInvocable: false, userInvocable: false })
+          : await removeSkill({ name: target.name, path: target.path })
+      } catch (error) {
+        outcome = { status: 500, body: failure('internal-error', errorMessage(error)) }
+      }
+      if (outcome.status === 200) {
+        succeeded += 1
+        results.push({ name: target.name, ok: true })
+      } else {
+        failed += 1
+        results.push({
+          name: target.name,
+          ok: false,
+          code: outcome.body?.code ?? 'internal-error',
+          message: outcome.body?.message ?? 'the skill could not be changed',
+        })
+      }
+    }
+    invalidateState()
+    return { status: 200, body: { ok: true, mode: body.mode, succeeded, failed, results } }
   }
 
   /** Write one fetched file set into a fresh directory, refusing escapes. */
@@ -3300,6 +3674,12 @@ export function apply(ctx) {
           break
         case 'remove':
           outcome = await removeSkill(body.value)
+          break
+        case 'keep':
+          outcome = await keepSkill(body.value)
+          break
+        case 'cleanup':
+          outcome = await cleanupSkills(body.value)
           break
         case 'install':
           outcome = await installSkill(body.value, fenced.signal)
