@@ -974,8 +974,223 @@ await check('an edit with no cached state does not shrink the detected runtimes'
 process.env.HOME = originalHomeEnv.HOME
 process.env.USERPROFILE = originalHomeEnv.USERPROFILE
 
+// ------------------------------- scenario 6: diagnosis, keep, and cleanup on the routes
+
+console.log('')
+console.log('scenario 6: diagnosis on the state route, keep, and cleanup')
+
+const diagnosisHome = join(workspace, 'dsh-home-diagnosis')
+const diagnosisAgents = join(workspace, 'agents-home-diagnosis')
+const diagnosisSkills = join(diagnosisAgents, 'skills')
+process.env.DSH_HOME = diagnosisHome
+process.env.DSH_AGENTS_HOME = diagnosisAgents
+await mkdir(diagnosisSkills, { recursive: true })
+await mkdir(join(diagnosisHome, 'skill-dashboard'), { recursive: true })
+
+const keptPath = await writeSkill(diagnosisSkills, 'kept-skill', 'name: kept-skill\ndescription: A skill kept by hand.')
+const doomedPath = await writeSkill(diagnosisSkills, 'doomed-skill', 'name: doomed-skill\ndescription: A skill the cleanup disables.')
+const removablePath = await writeSkill(diagnosisSkills, 'removable-skill', 'name: removable-skill\ndescription: A skill the cleanup removes.')
+const flatDiagnosisPath = join(diagnosisSkills, 'flat-diagnosis.md')
+await writeFile(flatDiagnosisPath, '---\nname: flat-diagnosis\ndescription: A flat skill.\n---\n\nFlat body.\n', 'utf8')
+
+const diagnosisServices = new Map([['workingDirectory', { defaultDirectory: workspace }]])
+const fifth = createFakeContext({ cwd: workspace, services: diagnosisServices })
+apply(fifth.ctx)
+
+await check('GET state carries a diagnosis covering every catalog skill', async () => {
+  const response = await call(fifth.routes.get('/skill-dashboard/state'))
+  assert.equal(response.status, 200)
+  const state = response.body
+  const names = state.skills.map((skill) => skill.name).sort()
+  assert.deepEqual(names, ['doomed-skill', 'flat-diagnosis', 'kept-skill', 'removable-skill'])
+  assert.equal(state.skills.find((skill) => skill.name === 'kept-skill').path, keptPath)
+  assert.ok(state.diagnosis !== undefined, 'the new top-level block is on the wire')
+  assert.equal(state.diagnosis.evaluatedAt, state.generatedAt)
+  assert.ok(state.diagnosis.since > 0)
+  assert.ok(Number.isFinite(state.diagnosis.observedDays))
+  assert.deepEqual(state.diagnosis.thresholds, { activeDays: 14, staleDays: 30, watchDays: 3 })
+  assert.equal(state.diagnosis.counts.total, names.length)
+  assert.deepEqual(state.diagnosis.skills.map((row) => row.name).sort(), names)
+  const perBucket = {}
+  for (const row of state.diagnosis.skills) perBucket[row.bucket] = (perBucket[row.bucket] ?? 0) + 1
+  for (const [bucket, count] of Object.entries(perBucket)) assert.equal(state.diagnosis.counts[bucket], count, `${bucket} count matches its rows`)
+  assert.equal(Object.values(perBucket).reduce((sum, count) => sum + count, 0), state.diagnosis.counts.total, 'every row is counted once')
+  for (const row of state.diagnosis.skills) {
+    assert.equal(typeof row.verdict, 'string')
+    assert.deepEqual(Object.keys(row.can), ['disable', 'remove', 'keep'])
+    assert.equal(row.idleDays === null, row.lastUsedAt === null)
+  }
+  assert.equal(Object.hasOwn(state.skills[0], 'createdAt'), false, 'the creation time never reaches the wire')
+  assert.equal(JSON.stringify(state).includes('birthtimeMs'), false)
+})
+
+await check('POST keep marks a row kept and survives a re-read from disk', async () => {
+  const kept = await call(fifth.routes.get('/skill-dashboard/action'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'keep', name: 'kept-skill', keep: true }),
+  })
+  assert.equal(kept.status, 200)
+  assert.deepEqual(Object.keys(kept.body), ['ok', 'name', 'keptAt'])
+  assert.equal(kept.body.name, 'kept-skill')
+  assert.ok(Number.isFinite(kept.body.keptAt))
+  const stored = JSON.parse(await readFile(join(diagnosisHome, 'skill-dashboard', 'usage.json'), 'utf8'))
+  assert.equal(stored.skills['kept-skill'].keptAt, kept.body.keptAt, 'the decision is flushed before the reply')
+
+  const reread = await call(fifth.routes.get('/skill-dashboard/state'))
+  const row = reread.body.diagnosis.skills.find((item) => item.name === 'kept-skill')
+  assert.equal(row.verdict, 'kept')
+  assert.equal(row.bucket, 'kept')
+  assert.equal(row.keptAt, kept.body.keptAt)
+
+  const restarted = createFakeContext({ cwd: workspace, services: diagnosisServices })
+  apply(restarted.ctx)
+  try {
+    const fresh = await call(restarted.routes.get('/skill-dashboard/state'))
+    const freshRow = fresh.body.diagnosis.skills.find((item) => item.name === 'kept-skill')
+    assert.equal(freshRow.verdict, 'kept', 'a new plugin activation reads the flushed decision')
+  } finally {
+    for (const entry of restarted.registered) {
+      if (typeof entry.disposer === 'function') entry.disposer()
+    }
+  }
+
+  const cleared = await call(fifth.routes.get('/skill-dashboard/action'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'keep', name: 'kept-skill', keep: false }),
+  })
+  assert.equal(cleared.status, 200)
+  assert.equal(cleared.body.keptAt, null)
+  const after = await call(fifth.routes.get('/skill-dashboard/state'))
+  const afterRow = after.body.diagnosis.skills.find((item) => item.name === 'kept-skill')
+  assert.equal(afterRow.keptAt, null)
+  assert.notEqual(afterRow.verdict, 'kept')
+})
+
+await check('POST keep validates its body and the catalog name', async () => {
+  for (const body of [{ keep: true }, { name: 'kept-skill' }, { name: 'kept-skill', keep: 'yes' }]) {
+    const response = await call(fifth.routes.get('/skill-dashboard/action'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'keep', ...body }),
+    })
+    assert.equal(response.status, 400)
+    assert.equal(response.body.code, 'bad-request')
+  }
+  const missing = await call(fifth.routes.get('/skill-dashboard/action'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'keep', name: 'not-installed', keep: true }),
+  })
+  assert.equal(missing.status, 404)
+  assert.equal(missing.body.code, 'not-found')
+})
+
+await check('POST cleanup reports one read-only failure beside one writable success', async () => {
+  const original = await readFile(doomedPath, 'utf8')
+  const response = await call(fifth.routes.get('/skill-dashboard/action'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      action: 'cleanup',
+      mode: 'disable',
+      targets: [
+        { name: 'rogue', path: outsidePath },
+        { name: 'doomed-skill', path: doomedPath },
+      ],
+    }),
+  })
+  assert.equal(response.status, 200, 'a read-only row does not fail the request')
+  assert.equal(response.body.ok, true)
+  assert.equal(response.body.mode, 'disable')
+  assert.equal(response.body.succeeded, 1)
+  assert.equal(response.body.failed, 1)
+  assert.equal(response.body.results.length, 2)
+  const failed = response.body.results.find((result) => !result.ok)
+  assert.equal(failed.name, 'rogue')
+  assert.equal(failed.code, 'read-only')
+  assert.ok(typeof failed.message === 'string' && failed.message.length > 0)
+  const succeeded = response.body.results.find((result) => result.ok)
+  assert.deepEqual(succeeded, { name: 'doomed-skill', ok: true })
+  const written = await readFile(doomedPath, 'utf8')
+  assert.match(written, /disable-model-invocation: true/)
+  assert.match(written, /user-invocable: false/)
+
+  const restore = await call(fifth.routes.get('/skill-dashboard/action'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'set-invocation', path: doomedPath, modelInvocable: true, userInvocable: true }),
+  })
+  assert.equal(restore.status, 200)
+  assert.equal(await readFile(doomedPath, 'utf8'), original)
+})
+
+await check('POST cleanup validates its batch, deduplicates paths, and can remove', async () => {
+  for (const body of [
+    { mode: 'archive', targets: [{ name: 'doomed-skill', path: doomedPath }] },
+    { mode: 'remove', targets: [] },
+    { mode: 'remove', targets: [{ name: 'doomed-skill' }] },
+    { mode: 'remove', targets: [{ name: 'doomed-skill', path: 'relative.md' }] },
+  ]) {
+    const response = await call(fifth.routes.get('/skill-dashboard/action'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'cleanup', ...body }),
+    })
+    assert.equal(response.status, 400)
+    assert.equal(response.body.code, 'bad-request')
+  }
+  const original = await readFile(doomedPath, 'utf8')
+  const duplicate = await call(fifth.routes.get('/skill-dashboard/action'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      action: 'cleanup',
+      mode: 'disable',
+      targets: [
+        { name: 'doomed-skill', path: doomedPath },
+        { name: 'doomed-skill', path: doomedPath },
+      ],
+    }),
+  })
+  assert.equal(duplicate.status, 200)
+  assert.equal(duplicate.body.results.length, 1, 'the repeated path is deduplicated to one target')
+  assert.deepEqual(duplicate.body.results, [{ name: 'doomed-skill', ok: true }])
+  await writeFile(doomedPath, original, 'utf8')
+
+  const removed = await call(fifth.routes.get('/skill-dashboard/action'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      action: 'cleanup',
+      mode: 'remove',
+      targets: [{ name: 'removable-skill', path: removablePath }],
+    }),
+  })
+  assert.equal(removed.status, 200)
+  assert.deepEqual(removed.body.results, [{ name: 'removable-skill', ok: true }])
+  assert.equal(removed.body.succeeded, 1)
+  assert.equal(existsSync(removablePath), false)
+  const after = await call(fifth.routes.get('/skill-dashboard/state'))
+  assert.deepEqual(after.body.diagnosis.skills.map((row) => row.name).sort(), ['doomed-skill', 'flat-diagnosis', 'kept-skill'])
+})
+
+await check('an unknown action verb still answers 400', async () => {
+  const response = await call(fifth.routes.get('/skill-dashboard/action'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'diagnose', name: 'kept-skill' }),
+  })
+  assert.equal(response.status, 400)
+  assert.equal(response.body.code, 'unknown-action')
+})
+
 // ------------------------------------------------------------------- teardown
 
+for (const entry of fifth.registered) {
+  if (typeof entry.disposer === 'function') entry.disposer()
+}
 for (const entry of first.registered) {
   if (typeof entry.disposer === 'function') entry.disposer()
 }

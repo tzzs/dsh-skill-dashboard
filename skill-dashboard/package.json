@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "check": "node --check index.js && node --check client.js",
-    "test": "node --test test/client.test.mjs test/helpers.test.mjs test/apply.test.mjs test/preview.test.mjs test/usage-periods.test.mjs",
+    "test": "node --test test/client.test.mjs test/helpers.test.mjs test/apply.test.mjs test/preview.test.mjs test/usage-periods.test.mjs test/diagnosis.test.mjs",
     "test:live": "node test/real-skills.test.mjs",
     "ci": "npm run check && npm test"
   },
-  "description": "Skill dashboard: manage, install, update and switch off agent skills, detect the coding agents that read their skill directories, and report per-skill usage statistics.",
+  "description": "Skill dashboard: manage, install, update and switch off agent skills, detect the coding agents that read their skill directories, report per-skill usage statistics, and diagnose skills that have gone unused.",
   "license": "MIT",
   "author": "tzzs",
   "homepage": "https://github.com/tzzs/dsh-skill-dashboard#readme",
