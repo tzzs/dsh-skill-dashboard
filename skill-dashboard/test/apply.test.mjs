@@ -647,7 +647,7 @@ await check('state exposes installed provenance, or null when unprovable', async
 
 await check('the installed field is purely additive', () => {
   for (const skill of provenanceState.skills) {
-    for (const key of ['name', 'description', 'source', 'provider', 'path', 'dir', 'agents', 'modelInvocable', 'userInvocable', 'writable', 'usage']) {
+    for (const key of ['name', 'description', 'source', 'provider', 'path', 'dir', 'agents', 'runtimes', 'modelInvocable', 'userInvocable', 'writable', 'usage']) {
       assert.equal(Object.hasOwn(skill, key), true, `${skill.name} lost ${key}`)
     }
     assert.equal(Object.hasOwn(skill, 'installed'), true)
@@ -668,7 +668,7 @@ await check('set-invocation echoes the full state shape including installed', as
     version: 'v1.0.13',
     installedAt: 1763000000000,
   })
-  for (const key of ['name', 'description', 'source', 'provider', 'path', 'dir', 'agents', 'userInvocable', 'writable', 'usage']) {
+  for (const key of ['name', 'description', 'source', 'provider', 'path', 'dir', 'agents', 'runtimes', 'userInvocable', 'writable', 'usage']) {
     assert.equal(Object.hasOwn(flipped.body.skill, key), true, `the echo lost ${key}`)
   }
   const restored = await call(third.routes.get('/skill-dashboard/action'), {
@@ -841,6 +841,139 @@ await check('discover marks installability per source', async () => {
   }
 })
 
+// --------------------------------------------- scenario 4: detected runtimes
+
+console.log('')
+console.log('scenario 5: coding agents detected from their skill roots')
+const runtimeHome = join(workspace, 'runtime-home')
+const runtimeAgents = join(runtimeHome, '.agents')
+const runtimeCwd = join(workspace, 'runtime-cwd')
+process.env.DSH_HOME = join(runtimeHome, '.dsh')
+process.env.DSH_AGENTS_HOME = runtimeAgents
+// The detection reads the real home, so the fixture points it at a temporary one.
+const originalHomeEnv = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE }
+process.env.HOME = runtimeHome
+process.env.USERPROFILE = runtimeHome
+await mkdir(join(runtimeAgents, 'skills', 'shared-skill'), { recursive: true })
+await mkdir(join(runtimeCwd, '.agents', 'skills', 'project-skill'), { recursive: true })
+await mkdir(join(runtimeHome, '.claude'), { recursive: true })
+await mkdir(join(runtimeHome, '.claude', 'skills', 'claude-skill'), { recursive: true })
+await mkdir(join(runtimeHome, '.codex'), { recursive: true })
+await writeFile(
+  join(runtimeAgents, 'skills', 'shared-skill', 'SKILL.md'),
+  '---\nname: shared-skill\ndescription: Shared by every agent.\n---\n\nBody.\n',
+  'utf8',
+)
+await writeFile(
+  join(runtimeCwd, '.agents', 'skills', 'project-skill', 'SKILL.md'),
+  '---\nname: project-skill\ndescription: In the project root.\n---\n\nBody.\n',
+  'utf8',
+)
+await writeFile(
+  join(runtimeHome, '.claude', 'skills', 'claude-skill', 'SKILL.md'),
+  '---\nname: claude-skill\ndescription: Only Claude Code reads this.\n---\n\nBody.\n',
+  'utf8',
+)
+// A link whose target never existed: no agent root may claim it.
+const brokenLink = join(runtimeAgents, 'skills', 'broken-skill')
+const brokenCreated = await fsSymlink(join(workspace, 'never-existed'), brokenLink, process.platform === 'win32' ? 'junction' : 'dir')
+  .then(() => true)
+  .catch(() => false)
+
+const runtimeServices = new Map([
+  ['workingDirectory', { defaultDirectory: runtimeCwd }],
+  ['skills', {
+    async list() {
+      return [
+        {
+          name: 'shared-skill',
+          description: 'Shared by every agent.',
+          source: 'user-agents',
+          provider: 'filesystem',
+          path: join(runtimeAgents, 'skills', 'shared-skill', 'SKILL.md'),
+          invocation: { modelInvocable: true, userInvocable: true },
+        },
+        {
+          name: 'project-skill',
+          description: 'In the project root.',
+          source: 'project-agents',
+          provider: 'filesystem',
+          path: join(runtimeCwd, '.agents', 'skills', 'project-skill', 'SKILL.md'),
+          invocation: { modelInvocable: true, userInvocable: true },
+        },
+        {
+          name: 'claude-skill',
+          description: 'Only Claude Code reads this.',
+          source: 'custom',
+          provider: 'filesystem',
+          path: join(runtimeHome, '.claude', 'skills', 'claude-skill', 'SKILL.md'),
+          invocation: { modelInvocable: true, userInvocable: true },
+        },
+        ...(brokenCreated ? [{
+          name: 'broken-skill',
+          description: 'A link without a target.',
+          source: 'user-agents',
+          provider: 'filesystem',
+          path: join(brokenLink, 'SKILL.md'),
+          invocation: { modelInvocable: true, userInvocable: true },
+        }] : []),
+      ]
+    },
+  }],
+])
+const fourth = createFakeContext({ cwd: runtimeCwd, services: runtimeServices })
+apply(fourth.ctx)
+
+let runtimeState
+await check('state lists the detected coding agents with their skill counts', async () => {
+  const response = await call(fourth.routes.get('/skill-dashboard/state'))
+  assert.equal(response.status, 200)
+  runtimeState = response.body
+  assert.deepEqual(runtimeState.runtimes.map((runtime) => [runtime.id, runtime.skillCount]), [
+    ['claude-code', 1],
+    ['codex', 2],
+    ['dsh', runtimeState.skills.length],
+  ], 'DSH is last and every runtime counts its own skills')
+  const byName = new Map(runtimeState.skills.map((skill) => [skill.name, skill]))
+  assert.deepEqual(byName.get('shared-skill').runtimes, ['codex', 'dsh'], 'a canonical skill reaches the universal agents')
+  assert.deepEqual(byName.get('project-skill').runtimes, ['codex', 'dsh'], 'a project root is canonical too')
+  assert.deepEqual(byName.get('claude-skill').runtimes, ['claude-code', 'dsh'], 'Claude Code reads only its own root')
+  if (brokenCreated) assert.deepEqual(byName.get('broken-skill').runtimes, ['dsh'], 'a broken link belongs to DSH alone')
+})
+
+await check('the agent presets stay untouched next to the detected runtimes', () => {
+  assert.deepEqual(runtimeState.agents, [{ id: 'default', title: 'Default', isDefault: true }])
+  const byName = new Map(runtimeState.skills.map((skill) => [skill.name, skill]))
+  assert.deepEqual(byName.get('shared-skill').agents, ['default'], 'the preset dimension is unchanged')
+})
+
+await check('a second read returns the same detected runtimes', async () => {
+  const again = await call(fourth.routes.get('/skill-dashboard/state'))
+  assert.equal(again.status, 200)
+  assert.deepEqual(again.body.runtimes, runtimeState.runtimes, 'the detected runtimes are stable')
+})
+
+await check('an edit with no cached state does not shrink the detected runtimes', async () => {
+  // `remove` drops the state cache without rebuilding it, so the next
+  // set-invocation has no cached row to borrow its runtimes from.
+  const removed = await call(fourth.routes.get('/skill-dashboard/action'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'remove', name: 'project-skill', path: join(runtimeCwd, '.agents', 'skills', 'project-skill') }),
+  })
+  assert.equal(removed.status, 200)
+  const flip = await call(fourth.routes.get('/skill-dashboard/action'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'set-invocation', path: join(runtimeAgents, 'skills', 'shared-skill', 'SKILL.md'), modelInvocable: false }),
+  })
+  assert.equal(flip.status, 200)
+  const state = await call(fourth.routes.get('/skill-dashboard/state'))
+  assert.deepEqual(state.body.runtimes.map((runtime) => runtime.id), ['claude-code', 'codex', 'dsh'], 'a single-skill echo must not poison the runtime cache')
+})
+process.env.HOME = originalHomeEnv.HOME
+process.env.USERPROFILE = originalHomeEnv.USERPROFILE
+
 // ------------------------------------------------------------------- teardown
 
 for (const entry of first.registered) {
@@ -850,6 +983,9 @@ for (const entry of second.registered) {
   if (typeof entry.disposer === 'function') entry.disposer()
 }
 for (const entry of third.registered) {
+  if (typeof entry.disposer === 'function') entry.disposer()
+}
+for (const entry of fourth.registered) {
   if (typeof entry.disposer === 'function') entry.disposer()
 }
 await sleep(50)

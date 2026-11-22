@@ -169,6 +169,8 @@ const MAX_FILE_FETCH_CONCURRENCY = 4
 const SEARCH_CACHE_MS = 60_000
 const PAYLOAD_CACHE_MS = 10 * 60_000
 const TREE_CACHE_MS = 10 * 60_000
+/** The detected coding agents are re-read at most once per this window. */
+const RUNTIME_CACHE_MS = 30_000
 
 const USER_AGENT = 'dsh-skill-dashboard/1.0 (+https://github.com/tzzs/dsh-skill-dashboard)'
 
@@ -613,6 +615,332 @@ export function sanitizeSkillRelativePath(value) {
   const segments = normalized.split('/')
   if (segments.some((segment) => segment === '' || segment === '.' || segment === '..')) return null
   return segments.join('/')
+}
+
+// ---------------------------------------------------------------------------
+// Coding agent runtimes
+// ---------------------------------------------------------------------------
+
+/**
+ * The coding agents whose skill directories this dashboard detects.
+ *
+ * The table mirrors the `skills` CLI registry
+ * (`vercel-labs/skills/src/agents.ts`), which documents each agent's project
+ * and global skill directories and the universal `.agents/skills` convention.
+ * `markers` are home-relative directories whose existence proves the agent is
+ * installed; `roots` are the agent's own skill directories, either
+ * home-relative or project-relative (`cwd/`). A `universal` runtime also reads
+ * the canonical `.agents/skills` roots, which every agent may share.
+ *
+ * `dsh` is last: it always exists and sees every catalog skill.
+ */
+export const RUNTIME_REGISTRY = [
+  {
+    id: 'claude-code',
+    title: 'Claude Code',
+    universal: false,
+    markers: ['.claude'],
+    roots: ['.claude/skills', 'cwd/.claude/skills'],
+  },
+  {
+    id: 'codex',
+    title: 'Codex',
+    universal: true,
+    markers: ['.codex'],
+    roots: ['.codex/skills', 'cwd/.codex/skills'],
+  },
+  {
+    id: 'cursor',
+    title: 'Cursor',
+    universal: true,
+    markers: ['.cursor'],
+    roots: ['.cursor/skills', 'cwd/.cursor/skills'],
+  },
+  {
+    id: 'gemini-cli',
+    title: 'Gemini CLI',
+    universal: true,
+    // `~/.gemini` belongs to Antigravity on this machine, and Antigravity does
+    // not read the canonical roots, so the marker is the skills directory.
+    markers: ['.gemini/skills'],
+    roots: ['.gemini/skills', 'cwd/.gemini/skills'],
+  },
+  {
+    id: 'github-copilot',
+    title: 'GitHub Copilot',
+    universal: true,
+    markers: ['.copilot'],
+    roots: ['.copilot/skills', 'cwd/.github/skills'],
+  },
+  {
+    id: 'opencode',
+    title: 'OpenCode',
+    universal: true,
+    markers: ['.config/opencode'],
+    roots: ['.config/opencode/skills', 'cwd/.opencode/skills'],
+  },
+  {
+    id: 'amp',
+    title: 'Amp',
+    universal: true,
+    markers: ['.config/amp'],
+    roots: ['.config/agents/skills'],
+  },
+  {
+    id: 'cline',
+    title: 'Cline',
+    universal: true,
+    markers: ['.cline'],
+    roots: [],
+  },
+  {
+    id: 'droid',
+    title: 'Droid',
+    universal: true,
+    markers: ['.factory'],
+    roots: ['.factory/skills'],
+  },
+  {
+    id: 'kilo',
+    title: 'Kilo Code',
+    universal: true,
+    markers: ['.kilo', '.kilocode'],
+    roots: ['.kilo/skills'],
+  },
+  {
+    id: 'kimi-code-cli',
+    title: 'Kimi Code CLI',
+    universal: true,
+    markers: ['.kimi-code', '.kimi'],
+    roots: [],
+  },
+  {
+    id: 'pi',
+    title: 'Pi',
+    universal: true,
+    markers: ['.pi/agent'],
+    roots: [],
+  },
+  {
+    id: 'warp',
+    title: 'Warp',
+    universal: true,
+    markers: ['.warp'],
+    roots: [],
+  },
+  {
+    id: 'zed',
+    title: 'Zed',
+    universal: true,
+    markers: ['.config/zed'],
+    roots: [],
+  },
+  {
+    id: 'fx',
+    title: 'fx',
+    universal: true,
+    markers: ['.fx'],
+    roots: [],
+  },
+  {
+    id: 'dsh',
+    title: 'DSH',
+    universal: true,
+    markers: [],
+    roots: ['cwd/.dsh/skills', 'cwd/.agents/skills', '$DSH_HOME/skills', '$DSH_AGENTS_HOME/skills'],
+  },
+]
+
+/** Entries of a skill root that are never skills. */
+const RUNTIME_SKIPPED_ENTRIES = new Set(['.system', '.kits'])
+
+/**
+ * Resolve one registry path to an absolute path.
+ *
+ * `cwd/` is project-relative, `$DSH_HOME` and `$DSH_AGENTS_HOME` are the two
+ * Home roots, and everything else is home-relative.
+ *
+ * @param {string} entry - registry path.
+ * @param {{ home: string, cwd: string, agentsHome: string, dshHome: string }} context - absolute roots.
+ * @returns {string} the absolute path.
+ */
+function runtimeRootPath(entry, context) {
+  if (entry.startsWith('cwd/')) return join(context.cwd, ...entry.slice('cwd/'.length).split('/'))
+  if (entry === '$DSH_HOME/skills') return join(context.dshHome, 'skills')
+  if (entry === '$DSH_AGENTS_HOME/skills') return join(context.agentsHome, 'skills')
+  return join(context.home, ...entry.split('/'))
+}
+
+/**
+ * Detect the coding agents that read the skill directories on this machine.
+ *
+ * A runtime is present when one of its marker directories or one of its own
+ * roots exists. A universal runtime sees a skill whose resolved directory
+ * lives inside a resolved canonical root (`.agents/skills`) or that resolves
+ * to an entry of one of its own roots; a non-universal runtime only claims a
+ * skill that resolves to an entry of one of its own roots. Every comparison
+ * runs on resolved paths, so a broken junction never counts and a directory
+ * that links into the canonical root is still recognised as that skill.
+ *
+ * @param {{ home: string, cwd: string, agentsHome: string, dshHome?: string, skills: { name: string, dir: string | null }[] }} options - roots and catalog skills.
+ * @returns {Promise<{ runtimes: { id: string, title: string, skills: string[] }[], bySkill: Map<string, string[]> }>} detected runtimes.
+ */
+export async function detectAgentRuntimes({ home, cwd, agentsHome, dshHome, skills }) {
+  const context = {
+    home: typeof home === 'string' && home.length > 0 ? home : homedir(),
+    cwd: typeof cwd === 'string' && cwd.length > 0 ? cwd : process.cwd(),
+    agentsHome: typeof agentsHome === 'string' && agentsHome.length > 0 ? agentsHome : join(homedir(), '.agents'),
+    dshHome: typeof dshHome === 'string' && dshHome.length > 0 ? dshHome : join(homedir(), '.dsh'),
+  }
+  const catalog = Array.isArray(skills) ? skills : []
+  const wanted = new Set()
+  for (const skill of catalog) {
+    if (isRecord(skill) && typeof skill.name === 'string' && skill.name.length > 0) wanted.add(skill.name.toLowerCase())
+  }
+
+  /** Resolve one path, or null when it does not exist. */
+  const resolve = async (path) => {
+    try {
+      return await realpath(path)
+    } catch {
+      return null
+    }
+  }
+
+  /** Whether one directory exists. */
+  const isDirectory = async (path) => {
+    try {
+      const info = await stat(path)
+      return info.isDirectory()
+    } catch {
+      return false
+    }
+  }
+
+  const canonicalPaths = [join(context.agentsHome, 'skills'), join(context.cwd, '.agents', 'skills')]
+  const canonicalRoots = []
+  for (const path of canonicalPaths) {
+    const resolved = await resolve(path)
+    if (resolved !== null) canonicalRoots.push(normalizePathKey(resolved))
+  }
+
+  /** One listing per root, reused by every runtime that reads that root. */
+  const listings = new Map()
+  const listRoot = async (path) => {
+    if (listings.has(path)) return listings.get(path)
+    let names = []
+    try {
+      const entries = await readdir(path, { withFileTypes: true, encoding: 'utf8' })
+      names = entries
+        .filter((entry) => !RUNTIME_SKIPPED_ENTRIES.has(entry.name))
+        .map((entry) => entry.name)
+    } catch {
+      names = []
+    }
+    listings.set(path, names)
+    return names
+  }
+
+  /** The resolved skill entries of one root: directories and flat `.md` skills. */
+  const entryCache = new Map()
+  const entriesOf = async (path) => {
+    if (entryCache.has(path)) return entryCache.get(path)
+    const directories = new Map()
+    const files = new Map()
+    for (const name of await listRoot(path)) {
+      const key = name.toLowerCase()
+      const flat = key.endsWith('.md') ? key.slice(0, -3) : null
+      if (!wanted.has(key) && (flat === null || !wanted.has(flat))) continue
+      const resolved = await resolve(join(path, name))
+      if (resolved === null) continue
+      if (flat !== null) files.set(flat, normalizePathKey(resolved))
+      else directories.set(key, normalizePathKey(resolved))
+    }
+    const entries = { directories, files }
+    entryCache.set(path, entries)
+    return entries
+  }
+
+  // Every skill is placed by its resolved directory, or, for a flat skill, by
+  // the resolved files the roots list for it. A skill whose directory cannot
+  // be resolved keeps no path, so no agent root claims it.
+  const locations = []
+  for (const skill of catalog) {
+    if (!isRecord(skill) || typeof skill.name !== 'string' || skill.name.length === 0) continue
+    const key = skill.name.toLowerCase()
+    if (typeof skill.dir === 'string' && skill.dir.length > 0) {
+      const resolved = await resolve(skill.dir)
+      locations.push({ name: skill.name, key, flat: false, paths: resolved === null ? [] : [normalizePathKey(resolved)] })
+      continue
+    }
+    locations.push({ name: skill.name, key, flat: true, paths: [] })
+  }
+  const rootPaths = new Set(canonicalPaths)
+  for (const runtime of RUNTIME_REGISTRY) {
+    for (const entry of runtime.roots) rootPaths.add(runtimeRootPath(entry, context))
+  }
+  for (const location of locations) {
+    if (location.flat === false) continue
+    for (const path of rootPaths) {
+      const { files } = await entriesOf(path)
+      const resolved = files.get(location.key)
+      if (resolved === undefined) continue
+      location.paths.push(normalizePathKey(resolved))
+    }
+  }
+
+  const runtimes = []
+  const bySkill = new Map()
+  for (const runtime of RUNTIME_REGISTRY) {
+    let present = runtime.id === 'dsh'
+    const ownEntries = []
+    for (const entry of runtime.roots) {
+      const path = runtimeRootPath(entry, context)
+      if (!present && await isDirectory(path)) present = true
+      const resolved = await resolve(path)
+      if (resolved === null) continue
+      ownEntries.push(await entriesOf(path))
+    }
+    if (!present) {
+      for (const marker of runtime.markers) {
+        if (await isDirectory(runtimeRootPath(marker, context))) {
+          present = true
+          break
+        }
+      }
+    }
+    if (!present) continue
+
+    const names = []
+    for (const location of locations) {
+      if (location.flat === true && runtime.universal === false) continue
+      // A dot entry is not a skill of any root, wherever it is found.
+      if (RUNTIME_SKIPPED_ENTRIES.has(location.name)) continue
+      const inCanonical = runtime.universal
+        && location.paths.some((path) => canonicalRoots.some((root) => path === root || path.startsWith(`${root}${sep}`)))
+      const inOwnRoot = location.paths.some((path) => ownEntries.some((own) =>
+        own.directories.get(location.key) === path || own.files.get(location.key) === path))
+      if (!inCanonical && !inOwnRoot) continue
+      names.push(location.name)
+      const claimed = bySkill.get(location.name) ?? []
+      claimed.push(runtime.id)
+      bySkill.set(location.name, claimed)
+    }
+    if (runtime.id === 'dsh') {
+      // DSH serves every catalog skill, including the flat ones and the ones
+      // that live outside every agent root.
+      for (const location of locations) {
+        if (names.includes(location.name)) continue
+        names.push(location.name)
+        const claimed = bySkill.get(location.name) ?? []
+        if (!claimed.includes('dsh')) claimed.push('dsh')
+        bySkill.set(location.name, claimed)
+      }
+    }
+    if (names.length === 0) continue
+    runtimes.push({ id: runtime.id, title: runtime.title, skills: names })
+  }
+  return { runtimes, bySkill }
 }
 
 /** Rank a skill source; unknown labels rank below every known source. */
@@ -1765,6 +2093,8 @@ export function apply(ctx) {
     stateCache: undefined,
     stateCacheAt: 0,
     stateInFlight: undefined,
+    runtimeCache: undefined,
+    runtimeCacheAt: 0,
     recentEdits: new Map(),
   }
 
@@ -2125,6 +2455,34 @@ export function apply(ctx) {
     return describeProvenance(await readProvenanceInDirectory(directory))
   }
 
+  /**
+   * Detect the coding agents that read the skill directories, cached for a
+   * short while so a burst of UI fetches scans the roots once.
+   *
+   * @param {{ name: string, dir: string | null }[]} skills - catalog skills.
+   * @param {boolean} [cache] - whether a full-catalog answer may be reused, and stored. A caller
+   *   with a partial catalog passes false so it cannot overwrite the full answer.
+   * @returns {Promise<{ runtimes: { id: string, title: string, skills: string[] }[], bySkill: Map<string, string[]> }>} detected runtimes.
+   */
+  const detectRuntimes = async (skills, cache = true) => {
+    const now = Date.now()
+    if (cache && runtime.runtimeCache !== undefined && now - runtime.runtimeCacheAt < RUNTIME_CACHE_MS) {
+      return runtime.runtimeCache
+    }
+    const detected = await detectAgentRuntimes({
+      home: homedir(),
+      cwd: workspaceDirectory() ?? process.cwd(),
+      agentsHome,
+      dshHome,
+      skills,
+    })
+    if (cache) {
+      runtime.runtimeCache = detected
+      runtime.runtimeCacheAt = now
+    }
+    return detected
+  }
+
   /** Build the CONTRACT §4 state document from the live catalog and the stores. */
   const buildState = async () => {
     const now = Date.now()
@@ -2160,10 +2518,16 @@ export function apply(ctx) {
         skill.installed = await provenanceOf(skill, installedState)
       }),
     )
+    const detected = await detectRuntimes(merged.map((skill) => ({ name: skill.name, dir: skill.dir })))
+    for (const skill of merged) {
+      skill.runtimes = detected.bySkill.get(skill.name) ?? ['dsh']
+    }
+    const runtimes = detected.runtimes.map((entry) => ({ id: entry.id, title: entry.title, skillCount: entry.skills.length }))
     return {
       ok: true,
       generatedAt: now,
       agents,
+      runtimes,
       skills: merged,
       usage: summarizeUsage(usageState, now),
       sources: Object.values(sources).map((source) => ({
@@ -2199,6 +2563,8 @@ export function apply(ctx) {
   const invalidateState = () => {
     runtime.stateCache = undefined
     runtime.stateCacheAt = 0
+    runtime.runtimeCache = undefined
+    runtime.runtimeCacheAt = 0
   }
 
   /** Find one skill entry in the cached state by absolute path. */
@@ -2395,6 +2761,8 @@ export function apply(ctx) {
       path: filePath,
       dir: directory,
       agents: previous?.agents ?? (runtime.stateCache?.agents ?? [DEFAULT_AGENT]).map((agent) => agent.id),
+      runtimes: previous?.runtimes ?? (await detectRuntimes([{ name: parsed.name, dir: directory }], false))
+        .bySkill.get(parsed.name) ?? ['dsh'],
       modelInvocable: parsed.modelInvocable,
       userInvocable: parsed.userInvocable,
       writable: true,
@@ -2777,7 +3145,7 @@ export function apply(ctx) {
       Object.assign(listing.files.find((entry) => entry.path === selected), { size: file.size, kind: file.kind })
       return { status: 200, body: { ok: true, skill: {
         name: skill.name, description: skill.description, path: skill.path, source: skill.source,
-        version: skill.installed?.version ?? null, readonly: !skill.writable, agents: skill.agents,
+        version: skill.installed?.version ?? null, readonly: !skill.writable, agents: skill.agents, runtimes: skill.runtimes,
       }, ...(body.fileOnly === true ? {} : listing), file } }
     }
     if (typeof body.source !== 'string' || !Object.hasOwn(sources, body.source)) return fail(400, 'bad-request', 'source must be tencent or skills-sh')
