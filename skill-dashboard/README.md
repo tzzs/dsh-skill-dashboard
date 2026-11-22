@@ -52,6 +52,31 @@ It adds a **技能看板 / Skill dashboard** entry to the Web UI's left rail, di
 - The store remains `$DSH_HOME/skill-dashboard/usage.json`; only calls observed while the
   dashboard is enabled are recorded.
 
+**诊断 (Diagnosis)** — which skills are really in use, and which have gone quiet.
+
+- One verdict per catalog skill, computed on the Host from the recorded call history: **在用**
+  called in the last 14 days, **调用减少** 15–29 days, **久未调用** 30 days or more with a
+  recorded call, **从未调用**, **已保留** (kept by you), or **观察中** (watched too briefly to
+  judge).
+- The observation window is stated, not implied: `观察自 <date> · <N> 天`. A skill is only
+  called never-used after three days of watching it, and a skill created after the dashboard
+  started watching gets its own shorter window. A skill installed yesterday is never described
+  as unused for months.
+- The five buckets partition the library and carry Host counts: **可清理 / 已停用 / 在用 /
+  已保留 / 观察中**. Each row leads with its evidence: idle days and calls, the last call date,
+  or how long it has been watched.
+- Cleanup reuses the mechanisms the plugin already owns. **停用** flips both invocation keys in
+  one write, so the skill stays installed. **删除** removes the skill directory after an inline
+  confirmation. **保留** stops the reminder until the skill is called again. Rows the dashboard
+  cannot change (bundled and `app.asar` skills) show `只读` and offer 保留 only.
+- Select rows, then act once on the whole selection. A batch degrades per row: a read-only or
+  already-missing skill reports its own failure and the rest still apply. Delete always confirms;
+  disable does not, because the row can turn it back on.
+- A skill that is already off both paths moves to **已停用**, where the only remaining action is
+  **删除**, so nothing is ever asked to disable something that is already disabled.
+- **判断依据** in the tab restates the three windows and the keep rule, so the judgement can be
+  audited without reading the source.
+
 ## Skill details and file preview
 
 Click a skill name in Installed or Discover to open its preview. On a narrow screen,
@@ -143,7 +168,9 @@ no handler can throw into the carrier.
 ## Data the plugin owns
 
 - `$DSH_HOME/skill-dashboard/usage.json` — per-skill call counters, distinct sessions,
-  60 day-buckets, recent activity. Corrupt or missing reads as empty.
+  60 day-buckets, recent activity, plus three diagnosis facts: `since` (when observation
+  began, written once), `catalog` (the first time each skill name was seen) and `keptAt`
+  (the one decision the call history cannot derive). Corrupt or missing reads as empty.
 - `$DSH_HOME/skill-dashboard/installed.json` — provenance of skills this dashboard installed,
   mirrored into `<skill>/.skill-source.json` so a hand-copied skill keeps its origin.
 - Nothing else. The dashboard never edits a skill outside the writable roots
@@ -171,3 +198,6 @@ does not run it.
   folder would too. Put local additions outside the skill directory.
 - Editing the Host half of an already installed plugin takes effect on the next app start; the
   Client half reloads with the page.
+- Diagnosis judges only what the dashboard observed. On a fresh install every skill reads
+  观察中 until three days have passed; the cleanup list fills as the watch window grows.
+  Deleting a cleanup candidate is never automatic, and a keep can be cleared at any time.
