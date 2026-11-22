@@ -173,6 +173,14 @@ Body: `{ "action": "<name>", ... }`, `content-type: application/json`.
 | `install` | `{ source, ref, name? }` | `{ ok: true, name, path }` |
 | `update` | `{ source, ref, name }` | `{ ok: true, name, path, changed: boolean }` |
 | `refresh` | `{}` | `{ ok: true, generatedAt }` |
+| `keep` | `{ name, keep: boolean }` | `{ ok: true, name, keptAt }` |
+| `cleanup` | `{ mode: "disable" \| "remove", targets: [{ name, path }] }` | `{ ok: true, mode, succeeded, failed, results: [{ name, ok, code?, message? }] }` |
+
+`keep` writes or clears the one diagnosis decision the Host cannot derive, and is idempotent.
+`cleanup` is a closed loop over the existing `set-invocation` / `remove` handlers: sequential, at
+most 100 targets, always HTTP 200 for a well-formed request with one result per target, so a
+read-only row degrades instead of failing the batch. A malformed request returns 400. Neither
+action adds a route.
 
 `set-invocation` rewrites only the two frontmatter keys in the existing `SKILL.md`
 (or flat `<name>.md`), preserving every other line byte-for-byte; when a key must be
@@ -271,8 +279,8 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
 - `inject: ['slots', 'locale']`; `SkillDashboardIcon({ size, active })` renders an inline
   SVG that inherits `currentColor` (`stroke="currentColor"`), no text.
 - Panel layout: a title row (title + subtitle + agent filter chips + refresh button), a tab
-  bar (已安装 / 发现 / 统计 — `installed` / `discover` / `usage`), and the tab body. The body
-  scrolls inside the panel; the page fills the main column height.
+  bar (已安装 / 发现 / 统计 / 诊断 — `installed` / `discover` / `usage` / `diagnosis`), and the
+  tab body. The body scrolls inside the panel; the page fills the main column height.
 - Data: fetch `skill-dashboard/state` on mount and after every mutation; re-fetch on tab
   switch only when older than 5 s. Show an inline error banner with a retry button when a
   request fails — never a blank panel.
@@ -309,4 +317,182 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
 - `GET /skill-dashboard/state` returns the real ~150 user skills, and
   `POST /skill-dashboard/action {"action":"set-invocation",...}` flips a real skill's
   frontmatter and puts it back.
+- `GET /skill-dashboard/state` carries a `diagnosis` block whose `skills` covers every catalog
+  name exactly once, and `POST /skill-dashboard/action {"action":"cleanup",...}` disables a real
+  skill and puts it back.
+
+## 8. Skill diagnosis
+
+Answers two questions about the whole library from the call history the Host already records:
+which skills are in use, and which have gone quiet long enough to be worth cleaning up.
+
+### 8.1 Policy
+
+One exported constant, the only place a day threshold appears.
+
+```js
+export const DIAGNOSIS_POLICY = Object.freeze({
+  activeDays: 14,  // called within the Usage tab's own window
+  staleDays: 30,   // one month of silence
+  watchDays: 3,    // the smallest window in which "not called" means anything
+})
+```
+
+`keep` has no expiry. A keep is valid while `lastUsedAt === null || lastUsedAt <= keptAt`, so a
+later call voids it without a writer.
+
+### 8.2 Reference measuring
+
+- `now` is captured once in `buildState` and published as `diagnosis.evaluatedAt`.
+- `days(from, to) = max(0, floor((to - from) / 86_400_000))`; a backwards clock yields 0, never a
+  false silence.
+- `observedDays = days(since, now)` describes the store, not a skill.
+- `watchedDays` is how long a call to that skill could have been observed:
+  `days(firstSeenAt, now)`, where `firstSeenAt` is the persisted stamp of §8.4.
+
+### 8.3 Verdict, bucket, and eligibility (Host only)
+
+Verdicts, first match wins:
+
+1. `active` — `lastUsedAt !== null && idleDays <= activeDays`
+2. `kept` — a valid keep (§8.1)
+3. `unknown` — `watchedDays < watchDays`
+4. `unused` — `lastUsedAt === null`
+5. `stale` — `idleDays >= staleDays`
+6. `cooling` — otherwise
+
+`closed` is `!modelInvocable && !userInvocable`: the skill is off both paths.
+
+Buckets partition the catalog, in this order:
+
+| bucket | when |
+|:--|:--|
+| `kept` | verdict `kept` |
+| `unknown` | verdict `unknown` |
+| `dormant` | `closed`, and verdict `stale` or `unused` |
+| `active` | verdict `active` or `cooling` |
+| `cleanup` | everything else (`stale` or `unused`, still open) |
+
+Eligibility travels on the wire so the Client never derives it:
+
+- `can.keep` — `verdict !== 'active'`
+- `can.disable` — `writable && !closed && (verdict === 'stale' || verdict === 'unused')`
+- `can.remove` — `writable && (verdict === 'stale' || verdict === 'unused')`
+
+A read-only cleanup candidate therefore shows `只读`, offers only `保留`, and is never sent to
+`cleanup`.
+
+Ordering inside `diagnosis.skills`: bucket rank `cleanup` (0) → `dormant` (1) → `unknown` (2) →
+`kept` (3) → `active` (4); inside `cleanup`, `stale` before `unused`, then `idleDays` desc then
+`watchedDays` desc; inside `active`, `idleDays` asc (most recent first); ties by `compareNames`.
+The Client may re-sort for display; it may not re-classify.
+
+### 8.4 Store additions
+
+`usage.json` stays `version: 1` and keeps every existing key. Three additive facts:
+
+```jsonc
+{
+  "version": 1,
+  "since": 1795000000000,                  // write-once observation epoch, 0 when unknown
+  "catalog": { "code-review": 1795000000000 },  // firstSeenAt per name, never rewritten
+  "skills": { "code-review": { /* … */, "keptAt": 1796000000000 } },  // keptAt only when kept
+  "recent": []
+}
+```
+
+- `emptyUsageStore()` returns `since: 0` and `catalog: {}`. Returning a clock here would silently
+  re-date every existing store on load.
+- `usageEpoch(state, now)` answers `state.since` when positive, else the oldest provable instant
+  among `lastUsedAt` and the surviving day keys, else `now`. It never mutates.
+- `stampUsage(usage, catalog, presence, now)` fills `since` once and stamps each unseen name.
+  The stamp is `clamp(presence ?? now, since, now)`, where `presence` is the skill file's creation
+  time when the platform reports one and the path exists. It returns whether anything changed;
+  `buildState` schedules a flush only then.
+- `keptAt` is written by `keep` and read by `diagnoseSkills`; `applyUsageEvent` must not touch it.
+
+### 8.5 Wire
+
+`GET /skill-dashboard/state` gains one top-level key. Nothing existing changes shape or order.
+
+```jsonc
+"diagnosis": {
+  "evaluatedAt": 1796000000000,
+  "since": 1795000000000,
+  "observedDays": 11,
+  "thresholds": { "activeDays": 14, "staleDays": 30, "watchDays": 3 },
+  "counts": { "active": 10, "cleanup": 132, "dormant": 4, "kept": 2, "unknown": 2, "total": 150 },
+  "skills": [
+    { "name": "pdf-merge", "verdict": "stale", "bucket": "cleanup",
+      "idleDays": 41, "watchedDays": 11, "lastUsedAt": 1792500000000, "useCount": 2,
+      "keptAt": null, "closed": false, "writable": true,
+      "can": { "disable": true, "remove": true, "keep": true } }
+  ]
+}
+```
+
+Rules:
+
+- `skills` covers every name in `state.skills` exactly once; `counts.total === skills.length`.
+- `idleDays` is `null` exactly when `lastUsedAt` is `null`.
+- `lastUsedAt` is the raw record timestamp, so the Client formats it with the existing helper.
+- `thresholds` is copy only. The Client must not branch on it.
+- The block is absent on an older Host; the Client renders one "update the plugin" state.
+
+### 8.6 Pure Host functions (exported for `node --test`)
+
+```js
+export const DIAGNOSIS_POLICY
+export function usageEpoch(state, now)                       // number, never mutates
+export function stampUsage(usage, catalog, presence, now)    // boolean changed
+export function diagnoseSkills(catalog, usage, context)      // the §8.5 document
+```
+
+`catalog` entries carry `name`, `modelInvocable`, `userInvocable`, `writable`.
+`context` is `{ now, since?, presence?, thresholds? }`. `diagnoseSkills` must not mutate its
+inputs.
+
+### 8.7 Client: the Diagnosis tab
+
+A fourth tab after Usage. The Client computes: the selected bucket (default `cleanup`; `active`
+when cleanup is empty), the search needle over names, sort, and the selection set. It renders
+Host verdicts verbatim.
+
+Structure, top to bottom:
+
+1. `SectionHeading` with the one-line basis: judged only from calls the dashboard observed.
+2. Horizon line: `观察自 {date} · {days} 天 · {total} 个技能，其中 {active} 个最近 14 天被调用过`.
+3. Bucket strip, five segments carrying Host counts: 可清理 / 已停用 / 在用 / 已保留 / 观察中.
+   Disabled buckets are not hidden: `观察中` and `已保留` are real answers.
+4. Queue toolbar: bucket count, search with a visible label, and select-all for the rows that
+   carry the bucket's action.
+5. Rows: checkbox, name button opening the existing preview dialog, badges (verdict, `只读`,
+   `已停用`), an evidence line built only from wire numbers, and actions in the order
+   `停用` (primary, no confirmation), `删除` (inline confirmation), `保留`.
+6. Sticky bulk rail while a selection exists: tally (`已选 N · 可停用 N · 可删除 N · 只读 N`),
+   then `停用` / `删除` / `保留` / `清除选择`. Delete opens the same inline confirmation, naming
+   the count and the first names. Nothing is sent for a row whose `can` flag is false.
+7. A `判断依据` details block restating the three thresholds and that 保留 stops the reminder.
+8. Empty states: nothing to clean (with the watch-window sentence), no selection, old Host,
+   offline. Never a blank panel.
+
+Bulk sends one `cleanup` request per group (disable, remove) and one `keep` request per name,
+then one state read, then a receipt naming succeeded and failed counts. A failed row stays in
+place carrying the Host's message.
+
+All strings come from the dictionaries, in all four places (inline `zh`, inline `en`,
+`locale/zh.json`, `locale/en.json`). Reuse existing classes and primitives; new classes keep the
+`skd-` prefix; no new dependency, no build step.
+
+### 8.8 Tests
+
+- `test/diagnosis.test.mjs` — boundary table at 13/14 and 29/30 idle days, 2/3 watched days,
+  never-called vs long-silent, keep voided by a later call, keep on a never-called skill, closed
+  escalation to `dormant`, read-only `can`, counts partition, input immutability, store epoch
+  derivation and one-time stamping, corrupt record tolerance.
+- `test/apply.test.mjs` — the real routes: state carries the diagnosis; `keep` survives a reload;
+  `cleanup` degrades per row (one read-only target beside a writable one) and reports both;
+  unknown verbs still 400.
+- `test/client.test.mjs` — the queue projection: bucket filtering, search, tally, and that a
+  read-only row never enters a disable target list.
 - No console errors from a crashed slot entry; the page reads correctly in light and dark.
