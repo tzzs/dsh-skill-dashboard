@@ -22,7 +22,7 @@ It adds a **技能看板 / Skill dashboard** entry to the Web UI's left rail, di
 - Shows source (`user-agents`, `user-dsh`, `project-*`, `custom`, `bundled`), call count and a
   `只读` badge for skills inside the DSH installation (bundled skills and `app.asar` entries),
   which the dashboard refuses to modify.
-- Two switches per row: **模型可调用** and **`/name` 可调用**.
+- Two switches per row: **模型自动调用** and **`/name` 手动调用**, each with a hover hint.
 - Row menu: **更新** (only when the dashboard installed the skill), **删除**, **查看路径**.
 - A `高频` badge marks the skills above the panel's own 75th percentile with at least three
   calls, so an over-eager skill is visible without opening the statistics tab.
@@ -79,7 +79,7 @@ It adds a **技能看板 / Skill dashboard** entry to the Web UI's left rail, di
 
 ## Skill details and file preview
 
-Click a skill name in Installed or Discover to open its preview. On a narrow screen,
+Select a skill row in Installed or a result card in Discover to open its preview. On a narrow screen,
 choose **Skill files** to browse the file tree. Refresh reloads the selected file if it is still available.
 The dialog shows the description, source, available version and local path, an expandable
 folder tree, and a reader that opens `SKILL.md` by default. Folder disclosures support native
@@ -125,7 +125,7 @@ user-invocable: false            # hidden from `/skill` gestures
 
 So the switch is a **byte-exact frontmatter edit**, nothing more:
 
-- Turning 模型可调用 off writes `disable-model-invocation: true` (or removes the line when it
+- Turning 模型自动调用 off writes `disable-model-invocation: true` (or removes the line when it
   returns to the default). Everything else in `SKILL.md` — description, nested `metadata`,
   CRLF endings — is preserved byte for byte, and turning it back on restores the original file
   (verified against 65 real skills × 3 edits, and live on `code-review` with a matching SHA-256).

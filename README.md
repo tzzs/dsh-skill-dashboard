@@ -46,7 +46,7 @@ keeping, and a read-only preview of the files behind it.
 - Disable (reversible), delete (confirmed), or keep (stops the reminder) one row or a whole
   selection. A batch degrades per row, and read-only skills offer keep only.
 
-**Preview** — click a skill name to read it.
+**Preview** — select a skill row or card to read it.
 
 - Collapsible folder tree, Markdown reader or raw source, binary and size-limit notices.
 - On-demand loading with bounded Host and client caches, and a resizable, maximizable window.
