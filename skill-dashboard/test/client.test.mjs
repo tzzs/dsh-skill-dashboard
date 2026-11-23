@@ -157,6 +157,25 @@ test('both shipped dictionaries stay synchronized with runtime strings', async (
   }
 });
 
+test('the preview file count and the renamed invocation switches stay in both dictionaries', () => {
+  assert.equal(zh['preview.fileCount'], '共 {count} 个文件');
+  assert.equal(en['preview.fileCount'], '{count} files');
+  assert.equal(zh['skill.model'], '模型自动调用');
+  assert.equal(zh['skill.user'], '/name 手动调用');
+  assert.equal(en['skill.model'], 'Model auto');
+  assert.equal(en['skill.user'], '/name manual');
+  assert.equal(zh['skill.modelSwitchAria'], '模型自动调用：{name}');
+  assert.equal(zh['skill.userSwitchAria'], '/name 手动调用：{name}');
+  assert.equal(en['skill.modelSwitchAria'], 'Model auto: {name}');
+  assert.equal(en['skill.userSwitchAria'], '/name manual: {name}');
+  for (const [lang, dictionary] of [['zh', zh], ['en', en]]) {
+    for (const key of ['skill.modelHint', 'skill.userHint']) {
+      assert.equal(typeof dictionary[key], 'string', `${lang}:${key} is missing`);
+      assert.equal(dictionary[key].length > 0, true, `${lang}:${key} is empty`);
+    }
+  }
+});
+
 test('the detected agent strings exist in both dictionaries and the old badge is gone', () => {
   for (const dictionary of [zh, en]) {
     for (const key of ['filter.agentOption', 'skill.runtimesOne', 'skill.runtimesSome', 'overview.agents']) {

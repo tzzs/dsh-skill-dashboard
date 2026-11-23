@@ -46,6 +46,15 @@ DSH 的 require 是模块表查找，不是 Node npm 解析；平台已有 React
 
 取舍：描述截成一行会少看到一点文字，完整描述仍在技能详情弹层和 `title` 里。行高从 109px 降到 73px 后，同样窗口可见的技能从 5 个变成 9 个以上。
 
+## 本轮：导航、预览与调用权限
+
+- 顶部四个页签改为下划线导航，选中态用 2px 强调色下划线，不改变字重或尺寸；窄屏横向滚动而不换行。
+- 预览正文列从 78ch 提到 92ch，字号 15px、行高 1.8，段落使用 `text-wrap: pretty`；文件数改为「共 N 个文件」；窗口工具合并为一组；文件侧栏上限 300px。
+- 已安装行与发现卡片的身份区域整块可点，开关、菜单与安装按钮保持独立。
+- 两个开关改名为「模型自动调用」与「/name 手动调用」，补充悬停说明与 `aria-describedby`；开关轨道加大到 36×20px。
+
+这一轮按 Modern Web Guidance 的 `tabs`（下划线用伪元素边框绘制，不用 `box-shadow` 或背景）、`css-layout`（行截断与 `scrollbar-gutter: stable`）、`improve-text-layout-and-legibility`（`text-wrap: pretty`）和 `switch`（原生 `switch` 属性与 `.checked`）执行。
+
 ## 语言跟随
 
 `locale: NS` 的 DSH 插槽通过 renderer 订阅宿主语言修订，为页面注入实时 t。ctx.locale.bind 本身读取当前语言；不会绑定为首次加载时的语言。继续使用这一机制，不建立第二套语言设置。

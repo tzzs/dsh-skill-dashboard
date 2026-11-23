@@ -103,6 +103,7 @@ window.__ModuleLoader__.load({
       'preview.open': '查看 {name} 的详情',
       'preview.close': '关闭预览',
       'preview.files': '技能文件',
+      'preview.fileCount': '共 {count} 个文件',
       'preview.content': '文件内容',
       'preview.instructions': '技能说明',
       'preview.view': '内容显示方式',
@@ -201,10 +202,12 @@ window.__ModuleLoader__.load({
       'skill.readonly': '只读',
       'skill.frequent': '高频',
       'skill.closed': '已关闭',
-      'skill.model': '模型可调用',
-      'skill.user': '/name 可调用',
-      'skill.modelSwitchAria': '模型可调用：{name}',
-      'skill.userSwitchAria': '/name 可调用：{name}',
+      'skill.model': '模型自动调用',
+      'skill.user': '/name 手动调用',
+      'skill.modelSwitchAria': '模型自动调用：{name}',
+      'skill.userSwitchAria': '/name 手动调用：{name}',
+      'skill.modelHint': '模型会根据技能描述自行决定是否调用。',
+      'skill.userHint': '在对话里输入 /技能名 手动调用。',
       'skill.menuAria': '更多操作：{name}',
       'skill.menu.update': '更新',
       'skill.menu.remove': '删除',
@@ -366,6 +369,7 @@ window.__ModuleLoader__.load({
       'preview.open': 'View details: {name}',
       'preview.close': 'Close preview',
       'preview.files': 'Skill files',
+      'preview.fileCount': '{count} files',
       'preview.content': 'File content',
       'preview.instructions': 'Instructions',
       'preview.view': 'Content display',
@@ -464,10 +468,12 @@ window.__ModuleLoader__.load({
       'skill.readonly': 'Read-only',
       'skill.frequent': 'Frequent',
       'skill.closed': 'Off',
-      'skill.model': 'Model',
-      'skill.user': '/name invocable',
-      'skill.modelSwitchAria': 'Model invocable: {name}',
-      'skill.userSwitchAria': '/name invocable: {name}',
+      'skill.model': 'Model auto',
+      'skill.user': '/name manual',
+      'skill.modelSwitchAria': 'Model auto: {name}',
+      'skill.userSwitchAria': '/name manual: {name}',
+      'skill.modelHint': 'The model decides from the description whether to call it.',
+      'skill.userHint': 'Type /skill-name in chat to call it yourself.',
       'skill.menuAria': 'More actions: {name}',
       'skill.menu.update': 'Update',
       'skill.menu.remove': 'Delete',
@@ -1071,6 +1077,78 @@ window.__ModuleLoader__.load({
 }
 @media(prefers-reduced-motion:reduce){.skd-diagnosisRow,.skd-diagnosisRail{transition:none}}
 @media(forced-colors:active){.skd-diagnosisRail{border-color:ButtonText;box-shadow:none}}
+.skd-tabbar{display:flex;flex-wrap:nowrap;align-items:stretch;gap:1.5rem;width:100%;min-height:0;margin:0;padding:0;border:0;border-radius:0;background:none;overflow-x:auto;scrollbar-width:none}
+.skd-tabbar::-webkit-scrollbar{display:none}
+.skd-top{padding-block-end:0}
+.skd-tab{position:relative;flex:none;min-height:40px;padding:0 1px 12px;border:0;border-radius:0;background:none;box-shadow:none;color:var(--muted-foreground);font-size:.8125rem;font-weight:500;white-space:nowrap}
+.skd-tab[aria-selected=true]{background:none;color:var(--foreground);font-weight:500;box-shadow:none}
+.skd-tab[aria-selected=true]::after{display:block;content:"";position:absolute;inset:auto 0 0;height:0;background:none;border-block-end:2px solid var(--skd-accent)}
+.skd-tab:hover{color:var(--foreground)}
+.skd-tab:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:4px}
+.skd-tabIcon{opacity:.75}
+.skd-tab[aria-selected=true] .skd-tabIcon{color:var(--skd-accent-label);opacity:1}
+@container dashboard (max-width:600px){.skd-tabbar{gap:1rem;margin-block-end:0}.skd-tab{min-height:44px;padding-bottom:10px;text-align:start}}
+.skd-previewDialog{border-radius:var(--skd-radius);border-color:var(--skd-control-line);box-shadow:0 24px 80px color-mix(in srgb,var(--skd-fg) 22%,transparent)}
+.skd-previewHeader{align-items:center;gap:18px;padding:18px 22px}
+.skd-previewIdentity{display:flex;flex-direction:column;gap:4px;min-width:0;max-width:none;flex:1}
+.skd-previewEyebrow{font-size:.6875rem;letter-spacing:.01em}
+.skd-previewTitle{margin:0;font-size:1.125rem;line-height:1.35}
+.skd-previewDescription{margin:0;max-width:none;max-height:none;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:clip;font-size:.8125rem}
+.skd-previewHeader .skd-badges{margin-top:2px}
+.skd-windowTools{gap:2px;padding:3px;border:1px solid var(--skd-line);border-radius:9px;background:var(--skd-soft)}
+.skd-windowTools .skd-iconButton{border:0;width:30px;height:30px;border-radius:6px}
+.skd-windowTools .skd-iconButton:hover{background:var(--skd-bg)}
+.skd-windowTools form{margin:0;padding-inline-start:3px;border-inline-start:1px solid var(--skd-line)}
+.skd-windowTools form .skd-iconButton{width:32px;height:30px}
+.skd-previewLayout{grid-template-columns:minmax(220px,300px) minmax(0,1fr)}
+.skd-previewFiles{background:color-mix(in srgb,var(--skd-soft) 65%,var(--skd-bg))}
+.skd-previewFilesHead{padding:14px 16px 8px}
+.skd-previewFilesHead h3{font-size:.75rem;letter-spacing:.01em}
+.skd-fileCount{display:inline-flex;align-items:center;min-height:20px;padding:0 7px;border:1px solid var(--skd-line);border-radius:999px;background:var(--skd-bg);color:var(--skd-muted);font-size:.6875rem;font-variant-numeric:tabular-nums}
+.skd-previewFilesToggle .skd-fileCount{margin-inline-start:auto}
+.skd-fileList{padding:0 10px 12px}
+.skd-fileButton{min-height:32px;padding:7px 8px;border-radius:6px;font-size:.75rem}
+.skd-folderLabel{min-height:32px;padding:6px 8px;border-radius:6px}
+.skd-fileList .skd-treeChildren{padding-inline-start:14px;margin-inline-start:10px}
+.skd-previewViewerHead{min-height:48px;padding:8px 22px}
+.skd-previewFilename{display:flex;align-items:center;gap:6px;font-size:.75rem}
+.skd-previewContent{padding:28px 32px 36px;scrollbar-gutter:stable}
+.skd-prose{max-inline-size:min(100%,92ch);margin-inline:auto;font-size:.9375rem;line-height:1.8}
+.skd-prose p,.skd-prose li{text-wrap:pretty}
+.skd-prose h3{font-size:1.375rem;margin-top:1.4em}
+.skd-prose h4{font-size:1.0625rem}
+.skd-prose pre{padding:16px 18px;border-radius:9px}
+.skd-previewFooter{padding:9px 22px;padding-inline-end:28px}
+/* The mobile stack lives in the existing @media(max-width:700px) rules; repeat only what this
+   round changes so the later two-column base rule cannot win on a narrow dialog. */
+@media(max-width:700px){
+  .skd-previewLayout{grid-template-columns:minmax(0,1fr)}
+  .skd-previewHeader{padding:14px}
+  .skd-previewContent{padding:20px 18px 28px}
+  .skd-previewLayout .skd-previewFiles{max-block-size:min(38dvh,18rem)}
+  .skd-fileButton{min-height:44px}
+  .skd-folderLabel{min-height:44px}
+  .skd-windowTools{padding:2px}
+  .skd-windowTools .skd-iconButton{width:32px;height:34px}
+}
+/* Extend the name button's hit area without nesting controls inside it. */
+.skd-rowMain{position:relative;cursor:pointer}
+.skd-rowName::after{content:"";position:absolute;inset:0;border-radius:6px}
+.skd-row:hover .skd-rowName{text-decoration:underline;text-underline-offset:3px}
+.skd-row:has(.skd-rowName:focus-visible) .skd-rowMain{outline:2px solid var(--ring);outline-offset:2px;border-radius:6px}
+.skd-card{position:relative}
+.skd-cardName .skd-nameButton::after{content:"";position:absolute;inset:0;border-radius:inherit}
+.skd-cardFoot,.skd-card .skd-noteLine{position:relative;z-index:1}
+.skd-card:has(.skd-nameButton:focus-visible){outline:2px solid var(--ring);outline-offset:2px}
+.skd-switchControl{min-block-size:1.75rem;column-gap:12px}
+.skd-switchLabel{font-size:.6875rem;line-height:1.4}
+.skd-switch{inline-size:2.25rem;block-size:1.25rem;border-radius:999px}
+.skd-switchThumb{inset-block-start:2px;inset-inline-start:2px;inline-size:1rem;block-size:1rem}
+.skd-switchInput:checked~.skd-switch .skd-switchThumb{transform:translateX(1rem)}
+/* The larger desktop geometry must not erase the existing touch targets. */
+@container dashboard (max-width:600px){.skd-switchControl{min-block-size:3rem}}
+@media(pointer:coarse){.skd-switchControl{min-block-size:3rem}}
+@media(forced-colors:active){.skd-previewDialog{box-shadow:none;border-color:CanvasText}.skd-tab[aria-selected=true]::after{display:none}}
 `;
     // ---------------------------------------------------------------- util
     /** A string field, or the empty string; missing fields are tolerated. */
@@ -1890,20 +1968,22 @@ window.__ModuleLoader__.load({
     }
 
     /** Switch that only reports the requested state; the Host decides whether it sticks. */
-    function Switch({ checked, disabled, label, busy, onChange, children }) {
+    function Switch({ checked, disabled, label, hint, busy, onChange, children }) {
       const id = 'skd-switch-' + useId();
+      const hintId = hint ? id + '-hint' : undefined;
       const nativeSwitch = typeof HTMLInputElement !== 'undefined' && 'switch' in HTMLInputElement.prototype;
-      return el('label', { className: 'skd-switchControl', htmlFor: id },
+      return el('label', { className: 'skd-switchControl', htmlFor: id, title: hint || undefined },
         el(Input, {
           id, name: id, type: 'checkbox', switch: '', className: 'skd-switchInput',
           role: nativeSwitch ? undefined : 'switch', checked: checked === true,
-          'aria-label': label, 'aria-busy': busy === true || undefined,
+          'aria-label': label, 'aria-describedby': hintId, 'aria-busy': busy === true || undefined,
           disabled: disabled === true,
           onChange: (event) => { if (!disabled) onChange(event.target.checked); },
         }),
         el('span', { className: 'skd-switchLabel' }, children),
         el('span', { className: 'skd-switch', 'aria-hidden': true },
           el('span', { className: 'skd-switchThumb' })),
+        hintId && el('span', { id: hintId, className: 'skd-visuallyHidden' }, hint),
       );
     }
 
@@ -2334,10 +2414,13 @@ window.__ModuleLoader__.load({
             className: 'skd-button skd-previewFilesToggle', ref: filesToggleRef,
             'aria-expanded': filesExpanded, 'aria-controls': titleId + '-files',
             onClick: () => setFilesExpanded((value) => !value),
-          }, el(Glyph, { name: 'folder', size: 16 }), t('preview.files'), el('span', { className: 'skd-micro' }, formatNumber(files.length))),
+          }, el(Glyph, { name: 'folder', size: 16 }), t('preview.files'), el('span', { className: 'skd-fileCount' }, t('preview.fileCount', { count: formatNumber(files.length) }))),
           el('aside', { className: 'skd-previewFiles', id: titleId + '-files', 'aria-label': t('preview.files') },
             el('div', { className: 'skd-previewFilesHead' }, el('h3', null, t('preview.files')),
-              el('span', { className: 'skd-micro' }, String(files.length))),
+              el('span', {
+                className: 'skd-fileCount',
+                title: data?.truncatedFiles === true ? t('preview.filesLimited') : undefined,
+              }, t('preview.fileCount', { count: formatNumber(files.length) }))),
             files.length > 0 && el(PreviewFiles, { files, selected: file || selected?.path, onSelect: selectFile, t }),
             !target.path && el('p', { className: 'skd-noteLine skd-previewNotice' }, t('preview.remoteNotice')),
             data?.truncatedFiles === true && el('p', { className: 'skd-noteLine skd-previewNotice' }, t('preview.filesLimited')),
@@ -2428,13 +2511,14 @@ window.__ModuleLoader__.load({
             }, el('span', { 'aria-hidden': true }, String(calls)),
             el('span', { className: 'skd-visuallyHidden' }, t('skill.usageTitle', { count: calls, model: byModel, user: byUser }))),
           ),
-          el('div', { className: 'skd-switchGroup' },
+          el('div', { className: 'skd-switchGroup', role: 'group', 'aria-label': t('installed.permissions') },
             el('div', { className: 'skd-switchRow' },
               el(Switch, {
                 checked: modelInvocable,
                 disabled: writable === false || writesLocked,
                 busy,
                 label: t('skill.modelSwitchAria', { name }),
+                hint: t('skill.modelHint'),
                 onChange: (next) => onToggle(skill, { modelInvocable: next }),
               }, t('skill.model')),
             ),
@@ -2444,6 +2528,7 @@ window.__ModuleLoader__.load({
                 disabled: writable === false || writesLocked,
                 busy,
                 label: t('skill.userSwitchAria', { name }),
+                hint: t('skill.userHint'),
                 onChange: (next) => onToggle(skill, { userInvocable: next }),
               }, t('skill.user')),
             ),

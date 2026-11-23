@@ -22,9 +22,10 @@
   而 DSH 始终能看到全部 skill。
 - 显示来源（`user-agents`、`user-dsh`、`project-*`、`custom`、`bundled`）、调用次数；位于 DSH 安装目录
   （bundled 与 `app.asar` 内）的 skill 标 `只读`，插件不会去改它。
-- 每行两个开关：**模型可调用** 与 **`/name` 可调用**。
+- 每行两个开关：**模型自动调用** 与 **`/name` 手动调用**，悬停可看说明。
 - 行菜单：**更新**（仅当该 skill 由本看板安装）、**删除**、**查看路径**。
 - `高频` 标记：调用次数 ≥ 3 且高于面板自身 75 分位的 skill，无需打开统计页就能看到它被过度使用。
+- **预览** —— 点击已安装的技能行或发现卡片即可阅读技能文件。
 
 **发现** —— 从两个公开源安装，全部经由 Host 进程代理。
 
@@ -76,7 +77,7 @@ user-invocable: false            # 从 `/skill` 手势中隐藏
 
 所以开关就是一次 **逐字节精确的 frontmatter 修改**：
 
-- 关闭 `模型可调用` 会写入 `disable-model-invocation: true`（恢复默认时删掉这一行）。`SKILL.md`
+- 关闭 `模型自动调用` 会写入 `disable-model-invocation: true`（恢复默认时删掉这一行）。`SKILL.md`
   其余内容——描述、嵌套 `metadata`、CRLF 换行——逐字节保留；重新打开会还原成完全相同的文件
   （已在 65 个真实 skill × 3 次编辑上验证，并在真实 `code-review` 上用 SHA-256 比对通过）。
 - 提供方会监听技能目录，因此该 skill 在 Agent 下一次 `agent/pre-step` 就离开模型目录；之后再调用
