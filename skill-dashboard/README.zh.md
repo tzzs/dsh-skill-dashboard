@@ -1,70 +1,65 @@
-# 技能看板（Skill dashboard）
+# 技能管理（Skills Manager）
 
-一个 DeepSeek Harness 插件：把每个 Agent 的 skill 集中到一处 —— 装了什么、哪些编程 Agent 能看到、
-模型实际调用了多少次，以及一个开关，用来把过度频繁的 skill 从模型手里收回来。
+一个 DeepSeek Harness 插件，将每个 Agent 的技能集中到一处。它展示已安装的技能、哪些编程 Agent 能看到它、实际调用次数，并提供直接开关用于关闭自动调用或手动调用。
 
-它会在 Web UI 左侧栏的 `插件`、`自动化任务` 下方新增一个 **技能看板** 入口，并在中央列新增整页面板
-（panel id `skill-dashboard`）。
+它在插件页显示为**技能管理（Skills Manager）**，在 Web UI 左侧栏的 `插件`、`自动化任务` 下方新增**技能（Skills）**入口，并在中央列打开整页面板（panel id `skill-dashboard`）。
 
 ## 功能
 
-**已安装** —— 所有 Agent 预设的 skill 放进一本账。
+**已安装。** 所有 Agent 预设的技能统一汇总在一张列表里。
 
-- 顶部概览技能库、模型可调用数、已检测 Agent 与累计调用；按名称、描述或来源即时搜索。
-- 组合 Agent 与调用状态筛选，按调用最多、名称或最近使用排序；空结果可一键清除筛选。
+- 顶部概览展示已安装技能数、自动调用数、已检测 Agent 与累计调用，支持按名称、描述或来源即时搜索。
+- 组合 Agent 与调用状态筛选，按调用最多、名称或最近使用排序，空结果可一键清除筛选。
+- 并行扫描各预设目录（`agentPresets` 与 `skills.list({ scope })`），被多个预设共享的技能只出现一行，页签附带已安装数量角标。
+- 从各自的技能根目录检测编程 Agent（Claude Code、Codex、Cursor、Gemini CLI、GitHub Copilot、OpenCode、Amp、Cline、Droid、Kilo Code、Kimi Code CLI、Pi、Warp、Zed、fx），并在每行标出读取它的 Agent。清单对齐 `skills` CLI 注册表（`vercel-labs/skills/src/agents.ts`），通用 `.agents/skills` 根目录对所有读取它的 Agent 生效，同时识别非通用 Agent 各自根目录下的单文件 `.md` 技能；DSH 始终能看到全部技能。
+- 显示来源（`user-agents`、`user-dsh`、`project-*`、`custom`、`bundled`）与调用次数；位于 DSH 安装目录（bundled 与 `app.asar` 内）的技能标为`只读`，插件不会修改。
+- 每行提供**自动调用**与 **`/name` 手动**两个开关，悬停显示说明；两者均关闭时标记为**已停用**。
+- 行菜单提供**更新**（仅对本插件安装的技能）、**删除**与**查看路径**。
+- `高频`标记标出调用次数 ≥ 3 且高于面板自身 75 分位的技能，无需打开统计页即可发现高频调用技能。
 
-- 逐个预设读取目录（`agentPresets` + `skills.list({ scope })`），只在某个预设可见的 skill 只出现一行，
-  并用 `N 个 Agent` 标出可见范围，不会重复列。
-- 从各自的 skill 根目录检测真正会读取技能目录的编程 Agent —— Claude Code、Codex、Cursor、
-  Gemini CLI、GitHub Copilot、OpenCode、Amp、Cline、Droid、Kilo Code、Kimi Code CLI、Pi、Warp、
-  Zed、fx —— 并在每一行标出读取它的 Agent。清单对齐 `skills` CLI 的注册表
-  （`vercel-labs/skills/src/agents.ts`）：通用的 `.agents/skills` 根目录对所有读取它的 Agent 生效，
-  而 DSH 始终能看到全部 skill。
-- 显示来源（`user-agents`、`user-dsh`、`project-*`、`custom`、`bundled`）、调用次数；位于 DSH 安装目录
-  （bundled 与 `app.asar` 内）的 skill 标 `只读`，插件不会去改它。
-- 每行两个开关：**模型自动调用** 与 **`/name` 手动调用**，悬停可看说明。
-- 行菜单：**更新**（仅当该 skill 由本看板安装）、**删除**、**查看路径**。
-- `高频` 标记：调用次数 ≥ 3 且高于面板自身 75 分位的 skill，无需打开统计页就能看到它被过度使用。
-- **预览** —— 点击已安装的技能行或发现卡片即可阅读技能文件。
+**发现。** 通过 Host 进程代理，从两个公开技能源搜索并安装。
 
-**发现** —— 从两个公开源安装，全部经由 Host 进程代理。
+- **skills.sh。** 社区技能目录，索引 Git 仓库；条目按 `owner/repo` 经 `raw.githubusercontent.com` 拉取，路径通过 GitHub tree 接口发现（缓存 10 分钟）。
+- **腾讯 SkillHub**（`api.skillhub.cn`）。国内技能源，提供中文标题、版本号、下载量与按文件逐个下载。
+- 依据实时目录并集判断已安装状态，加载过程展示 6 张与结果卡片结构一致的骨架屏。
+- 安装先落到被监听目录之外的临时区，再带重试地移入预解析好的 `$DSH_AGENTS_HOME`（通常是 `~/.agents/skills`），文件监听不会看到写了一半的技能。
 
-- **skills.sh** —— 社区 skill 目录，索引的是 Git 仓库；条目按 `owner/repo` 经
-  `raw.githubusercontent.com` 拉取，路径通过 GitHub tree 接口发现（缓存 10 分钟）。
-- **腾讯 SkillHub**（`api.skillhub.cn`）—— 国内源；中文标题、版本号、下载量，按文件逐个下载。
-- 安装先落到被监听目录之外的临时区，带重试地移入 `$DSH_AGENTS_HOME`（通常是 `~/.agents/skills`），
-  因此 skill 提供方的文件监听不会看到写了一半的 skill。
+**统计。** 查看实际使用情况。
 
-**统计** —— 到底在用哪些。
+- 支持今天、近 7/14/30/60 天或自定义日期范围，显示时段调用、时段活跃技能、可搜索排序的逐技能次数与占比表，以及全部技能或单个技能的趋势和逐日明细。
+- 搜索只筛选表格，占比始终按所选时段全部调用计算；选择技能只改变趋势，不改变时段汇总。当前技能库之外的技能只要有历史调用仍会列出，已安装但零调用的技能也会显示。
+- 累计调用与最近活动明确标注为不受时段筛选影响；模型与用户渠道计数为累计值，不伪造历史逐日渠道拆分。
+- 逐日数据保留 60 天，保存在 `$DSH_HOME/skill-dashboard/usage.json`，仅统计插件启用期间观察到的调用。手动 `/name` 调用在无预设上下文时自动回退归入 `'default'`。
 
-- 可选今天、近 7/14/30/60 天或自定义日期范围；显示周期调用数、周期活跃技能数、
-  可搜索排序的逐技能次数/占比表，以及全部技能或单个技能的趋势和逐日明细。
-- 搜索只筛选表格，占比始终按周期内全部调用计算；选择技能只改变趋势，不改变周期汇总。
-  当前技能库之外的技能只要有历史调用仍会列出，已安装但零调用的技能也会显示。
-- 累计调用与最近活动明确标注为不随周期变化；模型/用户渠道计数是累计值，
-  没有保存历史逐日渠道拆分，因此不会伪造周期内的渠道数据。
-- 逐日数据保留 60 天，保存在 `$DSH_HOME/skill-dashboard/usage.json`；只统计看板启用后观察到的调用。
+**诊断。** 区分仍在使用的技能与长期静默、适合清理的技能。
 
-**诊断** —— 哪些真的在用，哪些已经冷到可以收走。
+- 由 Host 依据已记录的调用历史为每个技能计算结论：**使用中**（近 14 天有调用）、**近期未用**（15 至 29 天）、**久未调用**（30 天以上未调用但有过调用记录）、**从未调用**、**已保留**，以及历史不足时的**观察中**。
+- 观察窗口直接写在页面上（`观察自 <日期> · 共 <N> 天`）。从未调用的技能至少观察满 3 天才下结论；观察开始之后才新增的技能单独按自己的在库时长计算。
+- 五个互斥分组覆盖全库并带 Host 计数：**可清理 / 已停用 / 使用中 / 已保留 / 观察中**，诊断页签附带可清理数量角标。每行先展示判定证据（静默天数与调用次数、最近调用日期或已观察时长）。
+- 清理沿用插件现有能力。**停用**一次写入两个 frontmatter 键并保留磁盘文件；**删除**在行内确认后移除技能目录，并等待溯源记录落盘完成；**保留**暂停清理提醒，直到技能再次被调用。只读技能（bundled 与 `app.asar` 内）标为`只读`并只提供保留。
+- 勾选多行后可执行批量操作。批量按行降级，只读或已消失的技能单独报错，其余照常生效。删除始终需要确认，停用因为可逆而直接执行。切换调用权限与停用清理都会原子重算诊断状态。
+- 两个调用路径都已关闭的技能会进入**已停用**分组，那里仅保留**删除**操作。
+- 页尾的**判断规则**折叠区复述三个阈值与保留规则，不用读源码也能核对结论。
 
-- 每个技能一个结论，由 Host 依据已记录的调用历史计算：**在用**（近 14 天有调用）、
-  **调用减少**（15–29 天）、**久未调用**（30 天以上没调用但有过调用记录）、**从未调用**、
-  **已保留**，以及历史不足时的**观察中**。
-- 观察窗口直接写在页面上：`观察自 <日期> · <N> 天`。从未调用的技能要观察满 3 天才下结论；
-  看板开始观察之后才创建的技能单独按自己的在库时长计算，所以昨天刚装的技能不会被说成“几个月没用”。
-- 五个分组覆盖全库并带 Host 计数：**可清理 / 已停用 / 在用 / 已保留 / 观察中**。每行先给证据：
-  静默天数与调用次数、最近调用日期，或者已观察的时长。
-- 清理沿用插件本来就有的机制：**停用**一次写入两个 frontmatter 键，技能仍留在磁盘上；
-  **删除**在行内二次确认后移除技能目录；**保留**停止提醒，直到它再次被调用。看板改不动的技能
-  （bundled 与 `app.asar` 内的）标 `只读`，只提供保留。
-- 勾选多行后可以一次处理整批。批量按行降级：只读或已消失的技能单独报错，其余照常生效。
-  删除一定确认；停用不确认，因为同一行就能改回来。
-- 已经两个开关都关闭的技能会进入**已停用**，那里只剩**删除**，所以不会建议停用一个已经停用的技能。
-- 页脚的「判断依据」复述三个阈值与保留规则，不用读源码也能核对结论。
+## 技能详情与文件预览
 
-## “关闭 skill”是怎么实现的
+点击已安装列表行或发现结果卡片即可打开原生 `<dialog>` 预览弹窗。窄屏（`max-width: 700px`）下点击**技能文件**可展开文件树；点击刷新会绕过缓存重载当前文件。
 
-DSH 里没有单独的开关字段，也不需要：文件系统 skill 提供方本来就认这两个 frontmatter 键。
+- 弹窗挂载在 `document.body` 上并直接继承全部 `--skd-*` DSH 令牌，加载时显示顶部不确定进度条与文件树、正文骨架屏。
+- 支持折叠文件夹、**阅读 / 原文**视图切换，以及大文件截断和二进制文件提示；内容永不执行，HTML 作为纯文本显示。
+- 桌面默认最大尺寸为 `1280px`（`92vw`）× `860px`（`88dvh`），支持拖拽右下角缩放、快捷缩放按钮与最大化/还原，并在页面生命周期内记住常规尺寸。
+- 本地目录列举仅读元数据（15 秒 Host 缓存，单技能最多 200 个常规文件、扫描上限 2,000 项与 6 层嵌套）；单文件文本预览上限 128 KiB；客户端保留 30 秒上限缓存，切换文件时用 `fileOnly: true` 复用目录清单。
+
+## 加载、缓存与容错
+
+- 首屏立即渲染完整 DSH 原生页壳（页头、状态胶囊与四页签栏），并展示 4 张 KPI 骨架卡片、筛选栏骨架与 6 行列表骨架，使用 `--dsw-alias-bg-skeleton` 脉冲动画（在 `prefers-reduced-motion` 下关闭）。
+- Host 侧 `StateCache` 在插件激活时预热，合并并发的 SWR 读取（1.5 秒 TTL），并将 `skills/change` 事件合并去抖（250 毫秒）后刷新；预设目录扫描与 `detectAgentRuntimes()` I/O 并行执行，安装根提前解析。
+- 客户端合并并发的 `refresh()` 请求；写入操作直接使用返回的权威状态，不再做盲目的 800 毫秒延迟二次拉取；后台刷新失败时保留已加载界面并显示内联重试横幅，不清空页面。
+- 全部 25 个 Host 错误码均已在 `locale/en.json` 和 `locale/zh.json` 中本地化，用户界面文案不含内部 Host 术语。
+
+## “关闭技能”是怎么实现的
+
+DSH 不需要单独的启用开关字段，文件系统技能提供方原生识别这两个 frontmatter 键。
 
 ```yaml
 ---
@@ -75,11 +70,9 @@ user-invocable: false            # 从 `/skill` 手势中隐藏
 ---
 ```
 
-所以开关就是一次 **逐字节精确的 frontmatter 修改**：
+开关执行的是**逐字节精确的 frontmatter 修改**。
 
-- 关闭 `模型自动调用` 会写入 `disable-model-invocation: true`（恢复默认时删掉这一行）。`SKILL.md`
-  其余内容——描述、嵌套 `metadata`、CRLF 换行——逐字节保留；重新打开会还原成完全相同的文件
-  （已在 65 个真实 skill × 3 次编辑上验证，并在真实 `code-review` 上用 SHA-256 比对通过）。
+- 关闭**自动调用**会写入 `disable-model-invocation: true`（恢复默认时删掉这一行）。`SKILL.md` 其余内容（描述、嵌套 `metadata`、CRLF 换行）逐字节保留；重新打开会还原成完全相同的文件（已在 65 个真实 skill × 3 次编辑上验证，并在真实 `code-review` 上用 SHA-256 比对通过）。
 - 提供方会监听技能目录，因此该 skill 在 Agent 下一次 `agent/pre-step` 就离开模型目录；之后再调用
   `skill` 会得到 `skill "<name>" is not available for model invocation`。
 - 因为它是一次文件编辑：`git diff` 看得见、重启后依然有效、也可以手工还原。重新开启不依赖本插件
@@ -103,33 +96,26 @@ user-invocable: false            # 从 `/skill` 手势中隐藏
 
 | 文件 | 作用 |
 |:--|:--|
-| `index.js` | Host：目录读写、用量存储、两个源适配、三个精确 HTTP 路由 |
-| `client.js` | Client：侧栏图标、面板、页签、样式（无构建步骤、无 JSX） |
-| `locale/*.json` | 插件页显示的 `meta.title` / `meta.description`，以及界面字典 |
+| `index.js` | Host：`StateCache` SWR 生命周期、并行目录与 Agent 扫描、用量存储、两个源适配、四个精确 HTTP 路由 |
+| `client.js` | Client：侧栏图标、面板、页签、骨架屏加载、预览弹层、单层 DSH 原生样式（无构建步骤、无 JSX） |
+| `locale/*.json` | 插件页显示的 `meta.title` / `meta.description`、界面字典与 25 个本地化错误码 |
 | `icon.svg` | 原创图标 |
 | `cordis.patch.yml` | 插入 `skill-dashboard` 的 Host 行 |
-| `test/*.mjs` | 辅助函数、路由、真实安装的断言脚本 |
+| `test/*.mjs` | 客户端、辅助函数、路由、预览、统计周期、诊断断言脚本及手动实测脚本 |
 
-三个路由（`GET /skill-dashboard/state`、`POST /skill-dashboard/action`、
-`POST /skill-dashboard/discover`）都先执行连接信任检查，全部返回 JSON，任何 handler 都不会把异常
-抛给 carrier。
+四个路由（`GET /skill-dashboard/state`、`POST /skill-dashboard/action`、`POST /skill-dashboard/discover`、`POST /skill-dashboard/preview`）都先执行连接信任检查，全部返回 JSON，任何 handler 都不会把异常抛给 carrier。
 
 ## 插件自己保存的数据
 
-- `$DSH_HOME/skill-dashboard/usage.json` —— 每个 skill 的调用次数、去重会话数、60 天分桶、最近活动，
-  以及三项诊断事实：`since`（观察起点，只写一次）、`catalog`（每个技能名第一次出现的时间）、
-  `keptAt`（调用历史推不出来的那个决定）。文件损坏或缺失时按空数据启动。
-- `$DSH_HOME/skill-dashboard/installed.json` —— 由本看板安装的 skill 溯源信息，同时镜像到
-  `<skill>/.skill-source.json`，手工复制走的 skill 也保留来源。
-- 除此之外不写任何东西。看板不会修改可写根之外的文件（`$DSH_HOME/skills`、
-  `$DSH_AGENTS_HOME/skills`、项目内 `.dsh/skills` / `.agents/skills`），对 bundled/`app.asar`
-  内的 skill 一律返回 `read-only`。
+- `$DSH_HOME/skill-dashboard/usage.json` 保存每个技能的调用次数、去重会话数、60 天分桶、最近活动，以及三项诊断事实（`since` 记录观察起点且只写一次，`catalog` 记录每个技能名首次出现的时间，`keptAt` 记录手动保留决策）。文件损坏或缺失时按空数据启动。
+- `$DSH_HOME/skill-dashboard/installed.json` 保存由本插件安装的技能溯源信息，同时镜像到 `<skill>/.skill-source.json`，手工复制的技能也会保留来源。
+- 除此之外不写任何文件。插件不会修改可写根之外的技能（`$DSH_HOME/skills`、`$DSH_AGENTS_HOME/skills`、项目内 `.dsh/skills` / `.agents/skills`），对 bundled 与 `app.asar` 内的技能一律返回 `read-only`。
 
 ## 测试
 
 ```sh
 npm ci --ignore-scripts
-npm run ci          # 语法检查 + 客户端/辅助/路由/预览/统计周期离线测试
+npm run ci          # 语法检查 + 客户端/辅助/路由/预览/统计周期/诊断离线测试
 npm run test:live   # 手动集成检查：需要真实技能目录和网络，CI 不运行
 ```
 
