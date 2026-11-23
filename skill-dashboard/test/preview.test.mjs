@@ -13,12 +13,16 @@ const originalEnv = { DSH_HOME: process.env.DSH_HOME, DSH_AGENTS_HOME: process.e
 process.env.DSH_HOME = join(temporary, 'home')
 process.env.DSH_AGENTS_HOME = join(temporary, 'agents')
 process.env.DSH_INSTALL_DIR = join(temporary, 'bundled')
+const disposers = []
 after(async () => {
+  for (const dispose of disposers.splice(0)) {
+    try { dispose() } catch {}
+  }
   for (const [key, value] of Object.entries(originalEnv)) {
     if (value === undefined) delete process.env[key]
     else process.env[key] = value
   }
-  await rm(temporary, { recursive: true, force: true })
+  await rm(temporary, { recursive: true, force: true, maxRetries: 5 })
 })
 const markdown = '---\nname: demo\ndescription: Preview fixture.\n---\n\n# Demo\n'
 async function put(path, content = markdown) {
@@ -45,7 +49,11 @@ function host(skills = catalog, rejection) {
     get: (name) => name === 'connection' && rejection !== undefined ? { requestRejection: () => rejection } : undefined,
     logger: { info() {}, warn() {} },
     on() {},
-    effect: (factory) => factory(),
+    effect: (factory) => {
+      const dispose = factory()
+      if (typeof dispose === 'function') disposers.push(dispose)
+      return dispose
+    },
     webServer: { register(route) { routes.set(route.path, route); return () => {} } },
   }
   apply(ctx)

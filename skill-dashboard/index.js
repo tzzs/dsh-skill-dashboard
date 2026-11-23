@@ -2788,7 +2788,7 @@ export function apply(ctx) {
   }
 
   /** Build the CONTRACT §4 state document from the live catalog and the stores. */
-  const buildState = async () => {
+  const buildState = async ({ persist = true } = {}) => {
     const now = Date.now()
     pruneRecentEdits(now)
     const [usageState, roster, installedState, protectedRoots] = await Promise.all([
@@ -2834,7 +2834,7 @@ export function apply(ctx) {
       skill.runtimes = detected.bySkill.get(skill.name) ?? ['dsh']
     }
     const runtimes = detected.runtimes.map((entry) => ({ id: entry.id, title: entry.title, skillCount: entry.skills.length }))
-    if (stampUsage(usageState, merged, presence, now)) usageStore.schedule()
+    if (stampUsage(usageState, merged, presence, now) && persist) usageStore.schedule()
     return {
       presence,
       snapshot: {
@@ -2856,13 +2856,13 @@ export function apply(ctx) {
   }
 
   /** Run at most one coalesced state build, ignoring results superseded by invalidation. */
-  const startStateBuild = () => {
+  const startStateBuild = ({ persist = true } = {}) => {
     if (stateCache.inFlight !== null) return stateCache.inFlight
     const buildVersion = stateVersion
     const buildDirtyVersion = dirtyVersion
     const pending = (async () => {
       try {
-        const { snapshot, presence } = await buildState()
+        const { snapshot, presence } = await buildState({ persist })
         if (!runtime.disposed && buildVersion === stateVersion) {
           stateCache.data = snapshot
           stateCache.builtAt = Date.now()
@@ -2887,19 +2887,20 @@ export function apply(ctx) {
    */
   const getState = async (options = {}) => {
     const force = typeof options === 'boolean' ? options : options?.force === true
+    const persist = typeof options === 'object' && options !== null && options.persist === false ? false : true
     const now = Date.now()
     if (!force && !stateCache.dirty && stateCache.data !== null && now - stateCache.builtAt < STATE_TTL_MS) {
       return stateCache.data
     }
     if (!force && stateCache.data !== null) {
-      if (!runtime.disposed && stateCache.inFlight === null) void startStateBuild().catch(() => {})
+      if (!runtime.disposed && stateCache.inFlight === null) void startStateBuild({ persist }).catch(() => {})
       return stateCache.data
     }
     if (force) {
       stateVersion += 1
       stateCache.inFlight = null
     }
-    return startStateBuild()
+    return startStateBuild({ persist })
   }
 
   /** Forget the cached state immediately; the next read awaits a fresh scan. */
@@ -2930,7 +2931,7 @@ export function apply(ctx) {
       runtime.runtimeCache = undefined
       runtime.runtimeCacheAt = 0
       if (stateCache.inFlight !== null) {
-        void stateCache.inFlight.finally(() => {
+        void stateCache.inFlight.catch(() => {}).finally(() => {
           if (!runtime.disposed && stateCache.dirty && stateCache.inFlight === null) {
             void startStateBuild().catch(() => {})
           }
@@ -3150,6 +3151,8 @@ export function apply(ctx) {
     // both this response and the next GET /state agree with the file.
     let diagnosis
     if (stateCache.data !== null) {
+      stateVersion += 1
+      stateCache.inFlight = null
       const cached = findCachedSkill(filePath)
       if (cached !== undefined) {
         cached.modelInvocable = skill.modelInvocable
@@ -3976,7 +3979,7 @@ export function apply(ctx) {
   stateCache.warmupTimer = setTimeout(() => {
     stateCache.warmupTimer = null
     if (runtime.disposed) return
-    void getState({ force: false }).catch(() => {})
+    void getState({ force: false, persist: false }).catch(() => {})
   }, 0)
   stateCache.warmupTimer.unref?.()
 }

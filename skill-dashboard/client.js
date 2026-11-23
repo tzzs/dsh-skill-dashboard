@@ -1301,7 +1301,7 @@ window.__ModuleLoader__.load({
         if (silent !== true) patch({ status: before.data === null ? 'loading' : 'ready', refreshing: true });
         const result = await requestJson(ROUTE_STATE, { headers: { accept: 'application/json' } });
         if (started !== revision) {
-          patch({ refreshing: false });
+          if (inFlightRefresh === null || inFlightRevision === started) patch({ refreshing: false });
           return false;
         }
         const current = store.getSnapshot();
