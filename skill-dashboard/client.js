@@ -36,12 +36,6 @@ window.__ModuleLoader__.load({
     const ROUTE_PREVIEW = 'skill-dashboard/preview';
     /** A tab switch reloads only when the snapshot is older than this. */
     const STALE_AFTER_MS = 5000;
-    /**
-     * One delayed re-read after a mutation. The Host patches its cache synchronously, but
-     * the skill provider's own watcher needs ~200–500 ms to republish, so a single settle
-     * read at 800 ms is what makes a lagging watcher agree without a stuck spinner.
-     */
-    const SETTLE_RETRY_MS = 800;
     const REQUEST_TIMEOUT_MS = 10000;
     const DISCOVER_LIMIT = 20;
     /** The Host accepts at most this many cleanup targets in one call (§4). */
@@ -52,141 +46,16 @@ window.__ModuleLoader__.load({
     const MIN_FREQUENT_PEERS = 3;
 
     // ---------------------------------------------------------------- locale
-    /** Simplified Chinese dictionary; the key set the English one mirrors. */
     const zh = {
-      'preview.restore': '还原窗口',
-      'preview.maximize': '最大化窗口',
-      'preview.grow': '放大窗口',
-      'preview.shrink': '缩小窗口',
-      'preview.refresh': '刷新预览',
-      'usage.recentAllTime': '最近调用记录，不随周期筛选。',
-      'usage.noMatchingSkills': '没有匹配的技能。',
-      'usage.showTrend': '查看 {name} 的周期趋势',
-      'usage.removed': '不在当前技能库',
-      'usage.tableCaption': '{range} · 每个技能的周期调用次数及占全部调用的比例',
-      'usage.sort.descending': '降序',
-      'usage.sort.ascending': '升序',
-      'usage.column.share': '周期调用占比',
-      'usage.column.count': '调用次数',
-      'usage.column.name': '技能名称',
-      'usage.tableResults': '显示 {count} / {total} 个技能 · 按{column}{direction}',
-      'usage.searchTableOnly': '搜索只筛选表格；占比按周期内全部调用计算。点击技能名称查看趋势。',
-      'usage.searchPlaceholder': '输入技能名称…',
-      'usage.searchSkills': '搜索技能名称',
-      'usage.perSkill': '逐技能统计',
-      'usage.periodChartSummary': '{name} · {range} · 共 {count} 次，单日最高 {peak} 次。下方可展开逐日明细。',
-      'usage.allSkills': '全部技能',
-      'usage.trendSkill': '趋势范围',
-      'usage.periodTrend': '周期调用趋势',
-      'usage.periodActiveHint': '所选日期内至少调用一次，含当前技能库之外的技能',
-      'usage.periodActive': '周期内活跃技能',
-      'usage.periodCalls': '周期内调用',
-      'usage.rangeError.bounds': '日期必须在 {start} 至 {end} 之间。',
-      'usage.rangeError.order': '开始日期不能晚于结束日期。',
-      'usage.rangeError.invalid': '请输入有效日期。',
-      'usage.rangeError.required': '请选择开始日期和结束日期。',
-      'usage.rangeError.unavailable': '暂无逐日统计，请刷新或更新插件。',
-      'usage.boundedRange': '所选周期超出保留范围，当前仅统计 {start} 至 {end}，更早日期不计入统计。',
-      'usage.availableRange': '可用日期：{start} 至 {end}',
-      'usage.endDate': '结束日期',
-      'usage.startDate': '开始日期',
-      'usage.period.custom': '自定义日期',
-      'usage.period.60': '近 60 天',
-      'usage.period.30': '近 30 天',
-      'usage.period.14': '近 14 天',
-      'usage.period.7': '近 7 天',
-      'usage.period.today': '今天',
-      'usage.period': '统计周期',
-      'usage.periodBody': '按周期查看每个技能的调用情况，统计覆盖全部 Agent。',
-      'preview.action': '预览',
-      'preview.title': '技能预览',
-      'preview.open': '查看 {name} 的详情',
-      'preview.close': '关闭预览',
-      'preview.files': '技能文件',
-      'preview.fileCount': '共 {count} 个文件',
-      'preview.content': '文件内容',
-      'preview.instructions': '技能说明',
-      'preview.view': '内容显示方式',
-      'preview.read': '阅读',
-      'preview.source': '原文',
-      'preview.loading': '正在读取技能内容…',
-      'preview.failed': '无法读取预览内容，请稍后重试。',
-      'preview.filesLimited': '文件列表已达到预览上限，仅显示部分文件。',
-      'preview.noFiles': '暂无可预览文件。',
-      'preview.truncated': '文件较大，当前仅显示开头部分。',
-      'preview.emptyFile': '这是一个空文件。',
-      'preview.binaryShort': '二进制',
-      'preview.binary': '这是二进制文件，暂不支持内容预览。',
-      'preview.unavailable': '此文件暂时无法读取。',
-      'preview.readOnlyNotice': '只读预览，不会执行文件',
-      'preview.remoteNotice': '在线文件按需加载，二进制文件仅展示信息。',
-      'error.preview-unavailable': '此技能无法预览；如果刚更新插件，请重新加载插件后再试。',
-      'error.preview-failed': '无法读取预览内容，请稍后重试。',
-      'error.skill-not-found': '技能已不在当前目录中，请刷新技能列表。',
-      'error.file-not-found': '文件已不存在或不能预览，请选择其他文件。',
-      'panel.label': '技能看板',
-      'panel.title': '技能看板',
-      'panel.subtitle': '{skills} 个技能 · {agents} 个 Agent · {invocable} 个模型可调用',
-      'tab.list': '技能看板视图',
+      'panel.label': '技能',
+      'panel.title': '技能管理',
+      'panel.intro': '管理本地技能、调用权限、使用统计与清理诊断。',
+      'panel.subtitle': '{skills} 个技能 · {agents} 个 Agent · {invocable} 个已开启自动调用',
+      'tab.list': '技能管理视图',
       'tab.installed': '已安装',
       'tab.discover': '发现',
       'tab.usage': '统计',
       'tab.diagnosis': '诊断',
-      'diagnosis.title': '技能诊断',
-      'diagnosis.basis': '只依据看板观察到的调用判断，不评价技能本身。',
-      'diagnosis.horizon': '观察自 {date} · {days} 天 · {total} 个技能，其中 {active} 个最近 {activeDays} 天被调用过。',
-      'diagnosis.buckets': '按状态分组',
-      'diagnosis.bucket.cleanup': '可清理',
-      'diagnosis.bucket.dormant': '已停用',
-      'diagnosis.bucket.active': '在用',
-      'diagnosis.bucket.kept': '已保留',
-      'diagnosis.bucket.unknown': '观察中',
-      'diagnosis.queueCount': '{bucket}：{count} 个',
-      'diagnosis.searchLabel': '搜索技能名称',
-      'diagnosis.searchPlaceholder': '输入技能名称…',
-      'diagnosis.selectRow': '选择 {name}',
-      'diagnosis.selectAll': '全选本组',
-      'diagnosis.clearSelection': '清除选择',
-      'diagnosis.verdict.active': '在用',
-      'diagnosis.verdict.cooling': '调用减少',
-      'diagnosis.verdict.stale': '久未调用',
-      'diagnosis.verdict.unused': '从未调用',
-      'diagnosis.verdict.kept': '已保留',
-      'diagnosis.verdict.unknown': '观察中',
-      'diagnosis.closed': '已停用',
-      'diagnosis.evidence.idle': '{idle} 天未调用 · 共调用 {count} 次',
-      'diagnosis.evidence.never': '从未调用 · 观察 {watched} 天',
-      'diagnosis.evidence.lastUsed': '最近调用 {date}',
-      'diagnosis.evidence.kept': '保留于 {date}',
-      'diagnosis.disable': '停用',
-      'diagnosis.remove': '删除',
-      'diagnosis.keep': '保留',
-      'diagnosis.unkeep': '取消保留',
-      'diagnosis.rail': '批量操作',
-      'diagnosis.tally': '已选 {selected} · 可停用 {disable} · 可删除 {remove} · 只读 {readonly}',
-      'diagnosis.removeConfirmMany': '删除选中的 {count} 个技能（{names}{more}）？技能目录会一并移除，无法撤销。',
-      'diagnosis.moreNames': ' 等 {count} 个',
-      'diagnosis.policy': '判断依据',
-      'diagnosis.policy.active': '最近 {days} 天内有调用，算在用。',
-      'diagnosis.policy.stale': '超过 {days} 天没有调用，算久未调用，可以清理。',
-      'diagnosis.policy.watch': '至少观察 {days} 天后，没被调用才说明问题。',
-      'diagnosis.policy.keep': '保留会停止提醒，直到该技能再次被调用。',
-      'diagnosis.noCleanup.title': '没有需要清理的技能',
-      'diagnosis.noCleanup.body': '被观察满 {days} 天、期间没有调用的技能会出现在这里。',
-      'diagnosis.noCleanup.action': '查看在用的技能',
-      'diagnosis.noMatches.title': '没有匹配的技能',
-      'diagnosis.noMatches.body': '换个关键词，或清除搜索。',
-      'diagnosis.noMatches.action': '清除搜索',
-      'diagnosis.bucketEmpty': '这个分组里没有技能。',
-      'diagnosis.selectionStatus': '已选择 {count} 个技能',
-      'diagnosis.disableNote': '停用完成：成功 {ok} 个，失败 {failed} 个。',
-      'diagnosis.removeNote': '删除完成：成功 {ok} 个，失败 {failed} 个。',
-      'diagnosis.keepNote': '已更新 {ok} 个，失败 {failed} 个。',
-      'diagnosis.oldHost.title': '需要更新插件',
-      'diagnosis.oldHost.body': '这个 Host 还没有诊断数据。更新插件并重新加载页面后再看。',
-      'filter.label': '按 Agent 筛选',
-      'filter.all': '全部',
-      'filter.agentOption': '{name} ({count})',
       'action.refresh': '刷新',
       'action.retry': '重试',
       'action.cancel': '取消',
@@ -194,69 +63,11 @@ window.__ModuleLoader__.load({
       'action.switch': '切换',
       'action.reload': '重新加载页面',
       'action.dismiss': '关闭',
-      'skill.runtimesOne': '仅 {agent}',
-      'skill.runtimesSome': '{count}/{total} 个 Agent',
-      'skill.calls': '已调用 {count} 次',
-      'skill.callsLabel': '调用',
-      'skill.usageTitle': '共 {count} 次 · 模型 {model} · 手动 {user}',
-      'skill.readonly': '只读',
-      'skill.frequent': '高频',
-      'skill.closed': '已关闭',
-      'skill.model': '模型自动调用',
-      'skill.user': '/name 手动调用',
-      'skill.modelSwitchAria': '模型自动调用：{name}',
-      'skill.userSwitchAria': '/name 手动调用：{name}',
-      'skill.modelHint': '模型会根据技能描述自行决定是否调用。',
-      'skill.userHint': '在对话里输入 /技能名 手动调用。',
-      'skill.menuAria': '更多操作：{name}',
-      'skill.menu.update': '更新',
-      'skill.menu.remove': '删除',
-      'skill.menu.showPath': '查看路径',
-      'skill.menu.hidePath': '隐藏路径',
-      'skill.path': '路径',
-      'skill.empty.title': '还没有可管理的技能',
-      'skill.empty.body': '在「发现」里安装技能，或把 SKILL.md 放进个人技能目录。',
-      'skill.emptyFiltered': '这个 Agent 下没有技能。',
-      'skill.loading': '正在读取技能目录…',
-      'skill.removeConfirm': '删除「{name}」？技能目录会一并移除，无法撤销。',
-      'skill.removeConfirmAction': '确认删除',
-      'skill.busy': '正在保存…',
-      'discover.source': '技能来源',
-      'discover.placeholder': '技能名或仓库，回车搜索',
-      'discover.searchLabel': '搜索技能',
-      'discover.idle.title': '从一个来源开始',
-      'discover.idle.body': '在 skills.sh 或腾讯技能源里搜索，然后一键安装到个人技能目录。',
-      'discover.loading': '正在搜索…',
-      'discover.empty.title': '没有匹配的技能',
-      'discover.empty.body': '换个关键词，或切换到另一个来源。',
-      'discover.error.title': '这个来源暂时不可用',
-      'discover.error.hint': '先切到另一个来源，或稍后重试。',
-      'discover.otherSource': '换到 {source}',
-      'discover.install': '安装',
-      'discover.installAria': '安装：{name}',
-      'discover.installBlockedAria': '无法安装 {name}：{reason}',
-      'discover.notInstallable': '这个来源的条目无法直接安装',
-      'discover.installing': '正在安装…',
-      'discover.installed': '已安装',
-      'discover.version': 'v{version}',
-      'discover.updated': '更新于 {date}',
-      'discover.installs': '{count} 次安装',
-      'discover.note.suggestions': '空查询按热门排序展示',
-      'usage.total': '总调用',
-      'usage.active': '活跃技能',
-      'usage.today': '今日调用',
-      'usage.totalHint': '全部 Agent 累计',
-      'usage.split': '模型 {model} · 手动 {user}',
-      'usage.activeHint': '至少用过一次',
-      'usage.todayHint': '近 14 天 {count} 次',
-      'usage.chart': '调用趋势',
-      'usage.dayTitle': '{date} · {count} 次',
-      'usage.recent': '最近活动',
-      'usage.recentEmpty': '还没有调用记录。',
-      'usage.note': '统计仅包含看板启用后采集的调用。逐日数据保留 60 天，累计次数不受周期筛选影响。',
-      'usage.unknownAgent': '未知 Agent',
+      'action.discover': '发现技能',
+      'action.backLibrary': '返回已安装',
+      'action.skipContent': '跳到主要内容',
+      'status.ready': '已同步',
       'status.updatedAt': '更新于 {time}',
-      'status.counts': '{skills} 个技能 · {agents} 个 Agent',
       'status.saved': '已保存',
       'status.removed': '已删除 {name}',
       'status.installed': '已安装 {name}',
@@ -265,114 +76,476 @@ window.__ModuleLoader__.load({
       'status.busy': '正在处理…',
       'status.failed': '{action}失败：{message}',
       'status.failedPlain': '操作失败',
-      'status.offlineInline': '连不上 Host，改动状态未知。',
-      'offline.title': '连不上技能看板的 Host',
-      'offline.body': '插件路由没有响应。确认 Host 已加载该插件，然后重试。',
-      'crash.title': '技能看板渲染失败',
-      'crash.body': '重新加载页面会重新挂载插件；如果反复失败，请查看浏览器控制台。',
-      'error.read-only': '只读技能，无法修改',
-      'error.source-unavailable': '来源暂时不可用',
-      'error.invalid-response': 'Host 返回了无法读取的数据',
-      'panel.eyebrow': 'SKILLS / 工作空间',
-      'panel.intro': '管理技能、调用权限与使用情况。',
-      'overview.skills': '技能库',
-      'overview.enabled': '模型可调用',
+      'status.offlineInline': '暂时无法连接技能服务，当前显示缓存数据。',
+      'filter.label': '按 Agent 筛选',
+      'filter.all': '全部',
+      'filter.agentOption': '{name} ({count})',
+      'overview.skills': '已安装技能',
+      'overview.enabled': '自动调用',
       'overview.agents': '已检测 Agent',
       'overview.calls': '累计调用',
       'installed.title': '已安装技能',
-      'installed.body': '查找、筛选技能并管理调用权限。',
+      'installed.body': '查找、筛选本地技能并调整调用权限。',
       'installed.search': '搜索已安装技能',
       'installed.placeholder': '搜索技能名称、描述或来源…',
       'installed.results': '显示 {count} / {total} 个技能',
       'installed.noMatches': '没有符合条件的技能',
-      'installed.noMatchesBody': '试试其他关键词，或清除筛选条件。',
+      'installed.noMatchesBody': '换个关键词，或清除当前筛选条件。',
       'installed.reset': '清除筛选',
       'installed.status': '调用状态',
       'installed.all': '全部状态',
-      'installed.enabled': '模型已开启',
-      'installed.disabled': '模型已关闭',
+      'installed.enabled': '自动调用已开',
+      'installed.disabled': '自动调用已关',
       'installed.writable': '可管理',
       'installed.sort': '排序方式',
       'installed.sort.usage': '调用最多',
       'installed.sort.name': '名称 A–Z',
       'installed.sort.recent': '最近使用',
       'installed.permissions': '调用权限',
-      'installed.hint': '模型调用用于自动选择技能；手动调用用于 /技能名 指令。共享技能的权限调整会影响所有关联 Agent。',
+      'installed.hint': '自动调用由模型按需触发，/name 由你在对话中手动触发；共享技能的权限变更会影响全部关联 Agent。',
+      'skill.runtimesOne': '仅 {agent}',
+      'skill.runtimesSome': '{count}/{total} 个 Agent',
+      'skill.callsLabel': '调用',
+      'skill.usageTitle': '共 {count} 次 · 自动 {model} · 手动 {user}',
+      'skill.readonly': '只读',
+      'skill.frequent': '高频',
+      'skill.closed': '已停用',
+      'skill.model': '自动调用',
+      'skill.user': '/name 手动',
+      'skill.modelSwitchAria': '自动调用：{name}',
+      'skill.userSwitchAria': '/name 手动：{name}',
+      'skill.modelHint': '允许模型根据技能描述自动决定是否调用。',
+      'skill.userHint': '允许在对话中输入 /技能名 手动调用。',
+      'skill.menuAria': '更多操作：{name}',
+      'skill.menu.update': '更新',
+      'skill.menu.remove': '删除',
+      'skill.menu.showPath': '查看路径',
+      'skill.menu.hidePath': '隐藏路径',
+      'skill.path': '路径',
+      'skill.empty.title': '还没有可管理的技能',
+      'skill.empty.body': '前往「发现」安装社区技能，或将 SKILL.md 放入本地技能目录。',
+      'skill.emptyFiltered': '该 Agent 下暂无技能。',
+      'skill.loading': '正在加载技能…',
+      'skill.removeConfirm': '删除「{name}」？对应技能目录会一并移除且无法撤销。',
+      'skill.removeConfirmAction': '确认删除',
+      'skill.busy': '正在保存…',
+      'source.tencent': '腾讯 SkillHub',
       'discover.title': '发现技能',
-      'discover.body': '浏览社区技能，为 Agent 添加合适的能力。',
+      'discover.body': '从社区技能源搜索并一键安装到本地目录。',
+      'discover.source': '技能来源',
+      'discover.placeholder': '输入技能名或仓库，按回车搜索',
+      'discover.searchLabel': '搜索技能',
       'discover.popular': '浏览热门技能',
       'discover.results': '{count} 个搜索结果',
       'discover.queryScope': '{source} · 关键词：{query}',
-      'discover.unavailableTitle': '暂无可用技能源',
-      'discover.unavailableBody': '刷新看板以重新检查技能源。',
-      'usage.title': '使用概览',
-      'usage.body': '查看所有 Agent 的调用趋势与最近活动。',
+      'discover.idle.title': '从技能来源开始浏览',
+      'discover.idle.body': '在 skills.sh 或腾讯 SkillHub 中搜索技能，一键安装到本地技能目录。',
+      'discover.loading': '正在搜索技能…',
+      'discover.empty.title': '没有匹配的技能',
+      'discover.empty.body': '换个关键词，或切换到另一个技能来源。',
+      'discover.error.title': '该技能来源暂时不可用',
+      'discover.otherSource': '切换到 {source}',
+      'discover.unavailableTitle': '暂无可用技能来源',
+      'discover.unavailableBody': '请刷新页面以重新检查可用技能来源。',
+      'discover.install': '安装',
+      'discover.installAria': '安装：{name}',
+      'discover.installBlockedAria': '无法安装 {name}：{reason}',
+      'discover.notInstallable': '暂不支持直接安装',
+      'discover.installing': '正在安装…',
+      'discover.installed': '已安装',
+      'discover.version': 'v{version}',
+      'discover.updated': '更新于 {date}',
+      'discover.installs': '{count} 次安装',
+      'discover.note.suggestions': '当前展示热门技能',
+      'usage.title': '使用统计',
+      'usage.periodBody': '按所选时段查看每个技能的调用趋势与占比，统计覆盖全部 Agent。',
+      'usage.period': '统计时段',
+      'usage.period.today': '今天',
+      'usage.period.7': '近 7 天',
+      'usage.period.14': '近 14 天',
+      'usage.period.30': '近 30 天',
+      'usage.period.60': '近 60 天',
+      'usage.period.custom': '自定义日期',
+      'usage.startDate': '开始日期',
+      'usage.endDate': '结束日期',
+      'usage.availableRange': '可用日期：{start} 至 {end}',
+      'usage.boundedRange': '所选时段超出保留范围，当前仅统计 {start} 至 {end}，更早日期不计入。',
+      'usage.rangeError.required': '请选择开始日期和结束日期。',
+      'usage.rangeError.invalid': '请输入有效日期。',
+      'usage.rangeError.order': '开始日期不能晚于结束日期。',
+      'usage.rangeError.bounds': '日期必须在 {start} 至 {end} 之间。',
+      'usage.rangeError.unavailable': '暂无逐日统计数据，请刷新或更新插件。',
+      'usage.periodCalls': '时段调用',
+      'usage.periodActive': '时段活跃技能',
+      'usage.periodActiveHint': '所选时段内至少调用一次，含已移出技能库的技能',
+      'usage.total': '累计调用',
+      'usage.totalHint': '全部 Agent 累计',
+      'usage.periodTrend': '时段调用趋势',
+      'usage.trendSkill': '趋势范围',
+      'usage.allSkills': '全部技能',
+      'usage.periodChartSummary': '{name} · {range} · 共 {count} 次，单日最高 {peak} 次。下方可展开逐日明细。',
+      'usage.chart': '调用趋势',
+      'usage.dayTitle': '{date} · {count} 次',
       'usage.breakdown': '逐日调用明细',
       'usage.date': '日期',
       'usage.count': '调用次数',
-      'status.ready': '目录已同步',
-      'action.discover': '发现新技能',
-      'action.backLibrary': '返回技能库',
-      'source.tencent': '腾讯 SkillHub',
-      'action.skipContent': '跳到主要内容',
-      'usage.chartSummary': '近 14 天共调用 {count} 次，单日最高 {peak} 次。下方可展开逐日明细。',
+      'usage.perSkill': '按技能统计',
+      'usage.searchSkills': '搜索技能名称',
+      'usage.searchPlaceholder': '输入技能名称…',
+      'usage.searchTableOnly': '搜索仅筛选下方表格，占比按所选时段全部调用计算。点击技能名称可查看趋势。',
+      'usage.tableResults': '显示 {count} / {total} 个技能 · 按{column}{direction}',
+      'usage.column.name': '技能名称',
+      'usage.column.count': '调用次数',
+      'usage.column.share': '时段占比',
+      'usage.sort.ascending': '升序',
+      'usage.sort.descending': '降序',
+      'usage.tableCaption': '{range} · 各技能在所选时段内的调用次数及占比',
+      'usage.removed': '不在当前技能库',
+      'usage.showTrend': '查看 {name} 的时段趋势',
+      'usage.noMatchingSkills': '没有匹配的技能。',
+      'usage.recent': '最近活动',
+      'usage.recentAllTime': '最近调用记录，不受时段筛选影响。',
+      'usage.recentEmpty': '还没有调用记录。',
+      'usage.note': '仅统计插件启用期间记录的调用。逐日数据保留 60 天，累计次数不受时段筛选影响。',
+      'usage.unknownAgent': '未知 Agent',
+      'diagnosis.title': '技能诊断',
+      'diagnosis.basis': '仅根据本插件记录的调用情况判断，不评价技能本身质量。',
+      'diagnosis.horizon': '观察自 {date} · 共 {days} 天 · {total} 个技能，其中 {active} 个近 {activeDays} 天内被调用过。',
+      'diagnosis.buckets': '按状态分组',
+      'diagnosis.bucket.cleanup': '可清理',
+      'diagnosis.bucket.dormant': '已停用',
+      'diagnosis.bucket.active': '使用中',
+      'diagnosis.bucket.kept': '已保留',
+      'diagnosis.bucket.unknown': '观察中',
+      'diagnosis.queueCount': '{bucket}：{count} 个',
+      'diagnosis.searchLabel': '搜索技能名称',
+      'diagnosis.searchPlaceholder': '输入技能名称…',
+      'diagnosis.selectRow': '选择 {name}',
+      'diagnosis.selectAll': '全选本组',
+      'diagnosis.clearSelection': '取消全选',
+      'diagnosis.verdict.active': '使用中',
+      'diagnosis.verdict.cooling': '近期未用',
+      'diagnosis.verdict.stale': '久未调用',
+      'diagnosis.verdict.unused': '从未调用',
+      'diagnosis.verdict.kept': '已保留',
+      'diagnosis.verdict.unknown': '观察中',
+      'diagnosis.closed': '已停用',
+      'diagnosis.evidence.idle': '{idle} 天未调用 · 共调用 {count} 次',
+      'diagnosis.evidence.never': '从未调用 · 已观察 {watched} 天',
+      'diagnosis.evidence.lastUsed': '最近调用 {date}',
+      'diagnosis.evidence.kept': '保留于 {date}',
+      'diagnosis.disable': '停用',
+      'diagnosis.remove': '删除',
+      'diagnosis.keep': '保留',
+      'diagnosis.unkeep': '取消保留',
+      'diagnosis.rail': '批量操作',
+      'diagnosis.tally': '已选 {selected} · 可停用 {disable} · 可删除 {remove} · 只读 {readonly}',
+      'diagnosis.removeConfirmMany': '删除选中的 {count} 个技能（{names}{more}）？技能目录会一并移除且无法撤销。',
+      'diagnosis.moreNames': ' 等 {count} 个',
+      'diagnosis.policy': '判断规则',
+      'diagnosis.policy.active': '近 {days} 天内有调用，归类为使用中。',
+      'diagnosis.policy.stale': '超过 {days} 天没有调用，归类为久未调用并建议清理。',
+      'diagnosis.policy.watch': '技能至少观察 {days} 天后，未调用才会被标记为可清理。',
+      'diagnosis.policy.keep': '标记为保留后将暂停清理提醒，直到再次被调用。',
+      'diagnosis.noCleanup.title': '暂无需要清理的技能',
+      'diagnosis.noCleanup.body': '观察满 {days} 天且期间无调用的技能会出现在这里。',
+      'diagnosis.noCleanup.action': '查看使用中的技能',
+      'diagnosis.noMatches.title': '没有匹配的技能',
+      'diagnosis.noMatches.body': '换个关键词，或清除搜索。',
+      'diagnosis.noMatches.action': '清除搜索',
+      'diagnosis.bucketEmpty': '当前分组下暂无技能。',
+      'diagnosis.selectionStatus': '已选择 {count} 个技能',
+      'diagnosis.disableNote': '停用完成：成功 {ok} 个，失败 {failed} 个。',
+      'diagnosis.removeNote': '删除完成：成功 {ok} 个，失败 {failed} 个。',
+      'diagnosis.keepNote': '已更新 {ok} 个，失败 {failed} 个。',
+      'diagnosis.oldHost.title': '需要更新插件',
+      'diagnosis.oldHost.body': '当前运行的服务版本暂不支持诊断数据，请更新并重新加载插件后重试。',
+      'preview.action': '预览',
+      'preview.title': '技能预览',
+      'preview.open': '查看 {name} 的详情',
+      'preview.close': '关闭预览',
+      'preview.restore': '还原窗口',
+      'preview.maximize': '最大化窗口',
+      'preview.grow': '放大窗口',
+      'preview.shrink': '缩小窗口',
+      'preview.refresh': '刷新预览',
+      'preview.files': '技能文件',
+      'preview.fileCount': '共 {count} 个文件',
+      'preview.content': '文件内容',
+      'preview.instructions': '技能说明',
+      'preview.view': '显示方式',
+      'preview.read': '阅读',
+      'preview.source': '原文',
+      'preview.loading': '正在加载技能内容…',
+      'preview.failed': '无法加载预览内容，请稍后重试。',
+      'preview.filesLimited': '文件数已达到预览上限，仅展示部分文件。',
+      'preview.noFiles': '暂无可预览文件。',
+      'preview.truncated': '文件较大，当前仅显示开头部分。',
+      'preview.emptyFile': '该文件为空。',
+      'preview.binaryShort': '二进制',
+      'preview.binary': '该文件为二进制格式，暂不支持预览内容。',
+      'preview.unavailable': '该文件暂时无法读取。',
+      'preview.readOnlyNotice': '只读预览，不会执行文件',
+      'preview.remoteNotice': '在线文件按需加载，二进制文件仅展示基本信息。',
+      'offline.title': '无法连接到技能服务',
+      'offline.body': '技能服务未响应。请确认插件已启用，然后重试。',
+      'crash.title': '技能管理页面渲染失败',
+      'crash.body': '重新加载页面可重新挂载插件；若持续失败，请查看浏览器控制台。',
+      'error.read-only': '只读技能，无法修改',
+      'error.source-unavailable': '技能来源暂时不可用',
+      'error.source-rate-limited': '请求过于频繁，请稍后重试',
+      'error.invalid-response': '技能服务返回了无法解析的数据',
+      'error.preview-unavailable': '此技能暂不支持预览；如刚更新插件，请重新加载后再试',
+      'error.preview-failed': '无法加载预览内容，请稍后重试',
+      'error.skill-not-found': '技能已不在当前目录中，请刷新列表',
+      'error.file-not-found': '文件不存在或无法预览，请选择其他文件',
+      'error.bad-request': '请求参数无效',
+      'error.not-found': '未找到目标技能或资源',
+      'error.unknown-action': '不支持的操作类型',
+      'error.unknown-source': '未知的技能来源',
+      'error.invalid-frontmatter': 'SKILL.md 元数据格式无效，无法保存',
+      'error.missing-frontmatter': 'SKILL.md 缺少元数据头，无法修改',
+      'error.write-failed': '写入技能文件失败，请检查目录权限',
+      'error.delete-failed': '删除技能目录失败，请检查文件占用或权限',
+      'error.name-mismatch': '目标技能名称与目录不匹配，已中止操作',
+      'error.payload-too-large': '请求体过大，请减少批量选择数量后重试',
+      'error.state-unavailable': '技能状态暂时无法读取，请稍后重试',
+      'error.internal-error': '技能服务内部错误，请稍后重试',
+      'error.already-installed': '该技能已安装，无需重复安装',
+      'error.not-installed': '该技能尚未安装或缺少来源记录，无法更新',
+      'error.not-installable': '该技能暂不支持直接安装',
+      'error.install-failed': '安装技能失败，请检查网络后重试',
+      'error.update-failed': '更新技能失败，请检查网络后重试',
     };
 
-    /** English dictionary; read in channels that name no registered language. */
     const en = {
+      'panel.label': 'Skills',
+      'panel.title': 'Skills',
+      'panel.intro': 'Manage local skills, invocation permissions, usage, and cleanup.',
+      'panel.subtitle': '{skills} skills · {agents} agents · {invocable} auto-invoke enabled',
+      'tab.list': 'Skills sections',
+      'tab.installed': 'Installed',
+      'tab.discover': 'Discover',
+      'tab.usage': 'Usage',
+      'tab.diagnosis': 'Diagnosis',
+      'action.refresh': 'Refresh',
+      'action.retry': 'Retry',
+      'action.cancel': 'Cancel',
+      'action.search': 'Search',
+      'action.switch': 'Switch',
+      'action.reload': 'Reload page',
+      'action.dismiss': 'Dismiss',
+      'action.discover': 'Discover skills',
+      'action.backLibrary': 'Back to installed',
+      'action.skipContent': 'Skip to main content',
+      'status.ready': 'Synced',
+      'status.updatedAt': 'Updated {time}',
+      'status.saved': 'Saved',
+      'status.removed': 'Deleted {name}',
+      'status.installed': 'Installed {name}',
+      'status.updatedSkill': 'Updated {name}',
+      'status.upToDate': '{name} is up to date',
+      'status.busy': 'Working…',
+      'status.failed': '{action} failed: {message}',
+      'status.failedPlain': 'Action failed',
+      'status.offlineInline': 'Could not reach the skill service. Showing cached data.',
+      'filter.label': 'Filter by agent',
+      'filter.all': 'All',
+      'filter.agentOption': '{name} ({count})',
+      'overview.skills': 'Installed',
+      'overview.enabled': 'Auto-invoke',
+      'overview.agents': 'Detected agents',
+      'overview.calls': 'Total calls',
+      'installed.title': 'Installed skills',
+      'installed.body': 'Find and filter local skills, then manage invocation permissions.',
+      'installed.search': 'Search installed skills',
+      'installed.placeholder': 'Search by name, description, or source…',
+      'installed.results': 'Showing {count} of {total} skills',
+      'installed.noMatches': 'No skills match your filters',
+      'installed.noMatchesBody': 'Try another keyword, or clear your filters.',
+      'installed.reset': 'Clear filters',
+      'installed.status': 'Invocation status',
+      'installed.all': 'All statuses',
+      'installed.enabled': 'Auto-invoke on',
+      'installed.disabled': 'Auto-invoke off',
+      'installed.writable': 'Manageable',
+      'installed.sort': 'Sort by',
+      'installed.sort.usage': 'Most used',
+      'installed.sort.name': 'Name A–Z',
+      'installed.sort.recent': 'Recently used',
+      'installed.permissions': 'Invocation permissions',
+      'installed.hint': 'Auto-invoke lets agents choose a skill automatically; /name lets you invoke it explicitly. Changes to shared skills apply to all linked agents.',
+      'skill.runtimesOne': '{agent} only',
+      'skill.runtimesSome': '{count}/{total} agents',
+      'skill.callsLabel': 'Calls',
+      'skill.usageTitle': '{count} calls · {model} auto · {user} manual',
+      'skill.readonly': 'Read-only',
+      'skill.frequent': 'Frequent',
+      'skill.closed': 'Disabled',
+      'skill.model': 'Auto-invoke',
+      'skill.user': '/name manual',
+      'skill.modelSwitchAria': 'Auto-invoke: {name}',
+      'skill.userSwitchAria': '/name manual: {name}',
+      'skill.modelHint': 'Allow agents to invoke this skill automatically based on its description.',
+      'skill.userHint': 'Allow invoking this skill explicitly in chat with /skill-name.',
+      'skill.menuAria': 'More actions: {name}',
+      'skill.menu.update': 'Update',
+      'skill.menu.remove': 'Delete',
+      'skill.menu.showPath': 'Show path',
+      'skill.menu.hidePath': 'Hide path',
+      'skill.path': 'Path',
+      'skill.empty.title': 'No skills to manage yet',
+      'skill.empty.body': 'Install a skill from Discover, or add a SKILL.md into your local skills directory.',
+      'skill.emptyFiltered': 'No skills found for this agent.',
+      'skill.loading': 'Loading skills…',
+      'skill.removeConfirm': 'Delete “{name}”? Its skill folder will be removed permanently.',
+      'skill.removeConfirmAction': 'Delete',
+      'skill.busy': 'Saving…',
+      'source.tencent': 'Tencent SkillHub',
+      'discover.title': 'Discover skills',
+      'discover.body': 'Search community catalogs and install directly into your local skills directory.',
+      'discover.source': 'Skill source',
+      'discover.placeholder': 'Skill name or repo, then Enter',
+      'discover.searchLabel': 'Search skills',
+      'discover.popular': 'Browse popular skills',
+      'discover.results': '{count} search results',
+      'discover.queryScope': '{source} · “{query}”',
+      'discover.idle.title': 'Browse a skill source',
+      'discover.idle.body': 'Search skills.sh or Tencent SkillHub and install directly into your local skills directory.',
+      'discover.loading': 'Searching skills…',
+      'discover.empty.title': 'No matching skills',
+      'discover.empty.body': 'Try another keyword, or switch to the other source.',
+      'discover.error.title': 'This source is unavailable',
+      'discover.otherSource': 'Switch to {source}',
+      'discover.unavailableTitle': 'No sources available',
+      'discover.unavailableBody': 'Refresh to check available skill sources again.',
+      'discover.install': 'Install',
+      'discover.installAria': 'Install: {name}',
+      'discover.installBlockedAria': 'Cannot install {name}: {reason}',
+      'discover.notInstallable': 'Not directly installable',
+      'discover.installing': 'Installing…',
+      'discover.installed': 'Installed',
+      'discover.version': 'v{version}',
+      'discover.updated': 'Updated {date}',
+      'discover.installs': '{count} installs',
+      'discover.note.suggestions': 'Showing popular skills',
+      'usage.title': 'Usage',
+      'usage.periodBody': 'View per-skill call trends and shares over a selected period across all agents.',
+      'usage.period': 'Period',
+      'usage.period.today': 'Today',
+      'usage.period.7': 'Last 7 days',
+      'usage.period.14': 'Last 14 days',
+      'usage.period.30': 'Last 30 days',
+      'usage.period.60': 'Last 60 days',
+      'usage.period.custom': 'Custom dates',
+      'usage.startDate': 'Start date',
+      'usage.endDate': 'End date',
+      'usage.availableRange': 'Available dates: {start} to {end}',
+      'usage.boundedRange': 'This period exceeds retained history. Showing only {start} to {end}; earlier dates are excluded.',
+      'usage.rangeError.required': 'Choose both a start and an end date.',
+      'usage.rangeError.invalid': 'Enter valid dates.',
+      'usage.rangeError.order': 'Start date must be on or before end date.',
+      'usage.rangeError.bounds': 'Dates must fall between {start} and {end}.',
+      'usage.rangeError.unavailable': 'No daily statistics available. Refresh or update the plugin.',
+      'usage.periodCalls': 'Calls in period',
+      'usage.periodActive': 'Active in period',
+      'usage.periodActiveHint': 'Called at least once in this period, including removed skills',
+      'usage.total': 'Total calls',
+      'usage.totalHint': 'Across all agents',
+      'usage.periodTrend': 'Calls over period',
+      'usage.trendSkill': 'Trend scope',
+      'usage.allSkills': 'All skills',
+      'usage.periodChartSummary': '{name} · {range} · {count} calls, daily peak {peak}. Expand daily details below.',
+      'usage.chart': 'Call trend',
+      'usage.dayTitle': '{date} · {count} calls',
+      'usage.breakdown': 'Daily call details',
+      'usage.date': 'Date',
+      'usage.count': 'Calls',
+      'usage.perSkill': 'By skill',
+      'usage.searchSkills': 'Search skill names',
+      'usage.searchPlaceholder': 'Enter a skill name…',
+      'usage.searchTableOnly': 'Search filters this table only. Shares reflect all calls in the selected period. Click a skill to view its trend.',
+      'usage.tableResults': 'Showing {count} of {total} skills · {column}, {direction}',
+      'usage.column.name': 'Skill name',
+      'usage.column.count': 'Calls',
+      'usage.column.share': 'Share',
+      'usage.sort.ascending': 'ascending',
+      'usage.sort.descending': 'descending',
+      'usage.tableCaption': '{range} · Calls per skill and share of all calls in this period',
+      'usage.removed': 'Outside current library',
+      'usage.showTrend': 'Show period trend for {name}',
+      'usage.noMatchingSkills': 'No matching skills.',
+      'usage.recent': 'Recent activity',
+      'usage.recentAllTime': 'Latest calls, independent of the selected period.',
+      'usage.recentEmpty': 'No calls recorded yet.',
+      'usage.note': 'Includes calls observed while this plugin is enabled. Daily history is kept for 60 days; cumulative totals are independent of period filters.',
+      'usage.unknownAgent': 'Unknown agent',
+      'diagnosis.title': 'Skill diagnosis',
+      'diagnosis.basis': 'Based only on calls observed by this plugin; not a measure of skill quality.',
+      'diagnosis.horizon': 'Observed since {date} · {days} days · {total} skills, {active} called in the last {activeDays} days.',
+      'diagnosis.buckets': 'Group by state',
+      'diagnosis.bucket.cleanup': 'Clean up',
+      'diagnosis.bucket.dormant': 'Disabled',
+      'diagnosis.bucket.active': 'In use',
+      'diagnosis.bucket.kept': 'Kept',
+      'diagnosis.bucket.unknown': 'Observing',
+      'diagnosis.queueCount': '{bucket}: {count}',
+      'diagnosis.searchLabel': 'Search skill names',
+      'diagnosis.searchPlaceholder': 'Enter a skill name…',
+      'diagnosis.selectRow': 'Select {name}',
+      'diagnosis.selectAll': 'Select group',
+      'diagnosis.clearSelection': 'Clear selection',
+      'diagnosis.verdict.active': 'In use',
+      'diagnosis.verdict.cooling': 'Idle recently',
+      'diagnosis.verdict.stale': 'Unused',
+      'diagnosis.verdict.unused': 'Never used',
+      'diagnosis.verdict.kept': 'Kept',
+      'diagnosis.verdict.unknown': 'Observing',
+      'diagnosis.closed': 'Disabled',
+      'diagnosis.evidence.idle': 'Idle {idle} days · {count} calls',
+      'diagnosis.evidence.never': 'Never called · observed {watched} days',
+      'diagnosis.evidence.lastUsed': 'Last call {date}',
+      'diagnosis.evidence.kept': 'Kept {date}',
+      'diagnosis.disable': 'Disable',
+      'diagnosis.remove': 'Delete',
+      'diagnosis.keep': 'Keep',
+      'diagnosis.unkeep': 'Unkeep',
+      'diagnosis.rail': 'Bulk actions',
+      'diagnosis.tally': '{selected} selected · {disable} disable · {remove} delete · {readonly} read-only',
+      'diagnosis.removeConfirmMany': 'Delete {count} selected skills ({names}{more})? Their folders will be removed permanently.',
+      'diagnosis.moreNames': ' and {count} more',
+      'diagnosis.policy': 'Diagnosis rules',
+      'diagnosis.policy.active': 'Called within the last {days} days: in use.',
+      'diagnosis.policy.stale': 'No calls for more than {days} days: unused and ready to clean up.',
+      'diagnosis.policy.watch': 'Skills are observed for at least {days} days before unused reminders apply.',
+      'diagnosis.policy.keep': 'Keep pauses cleanup reminders until the skill is called again.',
+      'diagnosis.noCleanup.title': 'Nothing to clean up',
+      'diagnosis.noCleanup.body': 'Skills observed for {days} days without a call appear here.',
+      'diagnosis.noCleanup.action': 'View skills in use',
+      'diagnosis.noMatches.title': 'No matching skills',
+      'diagnosis.noMatches.body': 'Try another keyword, or clear the search.',
+      'diagnosis.noMatches.action': 'Clear search',
+      'diagnosis.bucketEmpty': 'No skills in this group.',
+      'diagnosis.selectionStatus': '{count} skills selected',
+      'diagnosis.disableNote': 'Disabled {ok}, failed {failed}.',
+      'diagnosis.removeNote': 'Deleted {ok}, failed {failed}.',
+      'diagnosis.keepNote': 'Updated {ok}, failed {failed}.',
+      'diagnosis.oldHost.title': 'Update the plugin',
+      'diagnosis.oldHost.body': 'The running service does not provide diagnosis data yet. Update and reload the plugin, then try again.',
+      'preview.action': 'Preview',
+      'preview.title': 'Skill preview',
+      'preview.open': 'View details: {name}',
+      'preview.close': 'Close preview',
       'preview.restore': 'Restore preview',
       'preview.maximize': 'Maximize preview',
       'preview.grow': 'Enlarge preview',
       'preview.shrink': 'Shrink preview',
       'preview.refresh': 'Refresh preview',
-      'usage.recentAllTime': 'Latest calls, independent of the selected period.',
-      'usage.noMatchingSkills': 'No matching skills.',
-      'usage.showTrend': 'Show period trend for {name}',
-      'usage.removed': 'Outside current library',
-      'usage.tableCaption': '{range} · Calls per skill and share of all calls in this period',
-      'usage.sort.descending': 'descending',
-      'usage.sort.ascending': 'ascending',
-      'usage.column.share': 'Share of period calls',
-      'usage.column.count': 'Calls',
-      'usage.column.name': 'Skill name',
-      'usage.tableResults': 'Showing {count} of {total} skills · {column}, {direction}',
-      'usage.searchTableOnly': 'Search filters this table. Shares use all calls in the period. Select a skill to view its trend.',
-      'usage.searchPlaceholder': 'Enter a skill name…',
-      'usage.searchSkills': 'Search skill names',
-      'usage.perSkill': 'Usage by skill',
-      'usage.periodChartSummary': '{name} · {range} · {count} calls, with a daily peak of {peak}. Expand daily details below.',
-      'usage.allSkills': 'All skills',
-      'usage.trendSkill': 'Trend scope',
-      'usage.periodTrend': 'Calls over selected period',
-      'usage.periodActiveHint': 'Called in this period, including skills outside the current library',
-      'usage.periodActive': 'Active skills in period',
-      'usage.periodCalls': 'Calls in period',
-      'usage.rangeError.bounds': 'Dates must fall between {start} and {end}.',
-      'usage.rangeError.order': 'The start date must be on or before the end date.',
-      'usage.rangeError.invalid': 'Enter valid dates.',
-      'usage.rangeError.required': 'Choose both a start and an end date.',
-      'usage.rangeError.unavailable': 'No daily statistics available. Refresh or update the plugin.',
-      'usage.boundedRange': 'This period exceeds retained history. Showing only {start} to {end}; earlier dates are excluded.',
-      'usage.availableRange': 'Available dates: {start} to {end}',
-      'usage.endDate': 'End date',
-      'usage.startDate': 'Start date',
-      'usage.period.custom': 'Custom dates',
-      'usage.period.60': 'Last 60 days',
-      'usage.period.30': 'Last 30 days',
-      'usage.period.14': 'Last 14 days',
-      'usage.period.7': 'Last 7 days',
-      'usage.period.today': 'Today',
-      'usage.period': 'Period',
-      'usage.periodBody': 'View each skill’s calls over a selected period across all agents.',
-      'preview.action': 'Preview',
-      'preview.title': 'Skill preview',
-      'preview.open': 'View details: {name}',
-      'preview.close': 'Close preview',
       'preview.files': 'Skill files',
       'preview.fileCount': '{count} files',
       'preview.content': 'File content',
       'preview.instructions': 'Instructions',
-      'preview.view': 'Content display',
+      'preview.view': 'Display mode',
       'preview.read': 'Read',
       'preview.source': 'Source',
       'preview.loading': 'Loading skill content…',
@@ -386,769 +559,503 @@ window.__ModuleLoader__.load({
       'preview.unavailable': 'This file cannot be read right now.',
       'preview.readOnlyNotice': 'Read-only preview. Files are never executed.',
       'preview.remoteNotice': 'Online files load on demand. Binary files show metadata only.',
-      'error.preview-unavailable': 'Preview is unavailable. Reload the plugin if it was just updated.',
-      'error.preview-failed': 'Could not load the preview. Please retry.',
-      'error.skill-not-found': 'The skill is no longer in the catalog. Refresh the library.',
-      'error.file-not-found': 'The file no longer exists or cannot be previewed. Choose another file.',
-      'panel.label': 'Skill dashboard',
-      'panel.title': 'Skill dashboard',
-      'panel.subtitle': '{skills} skills · {agents} agents · {invocable} model-invocable',
-      'tab.list': 'Skill dashboard views',
-      'tab.installed': 'Installed',
-      'tab.discover': 'Discover',
-      'tab.usage': 'Usage',
-      'tab.diagnosis': 'Diagnosis',
-      'diagnosis.title': 'Skill diagnosis',
-      'diagnosis.basis': 'Judged only from calls this dashboard observed; it says nothing about skill quality.',
-      'diagnosis.horizon': 'Observed since {date} · {days} days · {total} skills, {active} of them called in the last {activeDays} days.',
-      'diagnosis.buckets': 'Group by state',
-      'diagnosis.bucket.cleanup': 'Clean up',
-      'diagnosis.bucket.dormant': 'Off',
-      'diagnosis.bucket.active': 'In use',
-      'diagnosis.bucket.kept': 'Kept',
-      'diagnosis.bucket.unknown': 'Too new',
-      'diagnosis.queueCount': '{bucket}: {count}',
-      'diagnosis.searchLabel': 'Search skill names',
-      'diagnosis.searchPlaceholder': 'Enter a skill name…',
-      'diagnosis.selectRow': 'Select {name}',
-      'diagnosis.selectAll': 'Select this group',
-      'diagnosis.clearSelection': 'Clear selection',
-      'diagnosis.verdict.active': 'In use',
-      'diagnosis.verdict.cooling': 'Slowing down',
-      'diagnosis.verdict.stale': 'Stale',
-      'diagnosis.verdict.unused': 'Never used',
-      'diagnosis.verdict.kept': 'Kept',
-      'diagnosis.verdict.unknown': 'Too new',
-      'diagnosis.closed': 'Off',
-      'diagnosis.evidence.idle': 'Idle {idle} days · {count} calls',
-      'diagnosis.evidence.never': 'Never called · observed {watched} days',
-      'diagnosis.evidence.lastUsed': 'Last call {date}',
-      'diagnosis.evidence.kept': 'Kept {date}',
-      'diagnosis.disable': 'Disable',
-      'diagnosis.remove': 'Delete',
-      'diagnosis.keep': 'Keep',
-      'diagnosis.unkeep': 'Unkeep',
-      'diagnosis.rail': 'Bulk actions',
-      'diagnosis.tally': '{selected} selected · {disable} disable · {remove} delete · {readonly} read-only',
-      'diagnosis.removeConfirmMany': 'Delete {count} selected skills ({names}{more})? Their folders are removed and this cannot be undone.',
-      'diagnosis.moreNames': ' and {count} more',
-      'diagnosis.policy': 'How this is judged',
-      'diagnosis.policy.active': 'Called within the last {days} days: in use.',
-      'diagnosis.policy.stale': 'No call for more than {days} days: stale enough to clean up.',
-      'diagnosis.policy.watch': 'A skill has to be observed for {days} days before a missing call means anything.',
-      'diagnosis.policy.keep': 'Keep stops the reminder until the skill is called again.',
-      'diagnosis.noCleanup.title': 'Nothing to clean up',
-      'diagnosis.noCleanup.body': 'Skills observed for {days} days without a single call appear here.',
-      'diagnosis.noCleanup.action': 'View skills in use',
-      'diagnosis.noMatches.title': 'No matching skills',
-      'diagnosis.noMatches.body': 'Try another keyword, or clear the search.',
-      'diagnosis.noMatches.action': 'Clear search',
-      'diagnosis.bucketEmpty': 'No skills in this group.',
-      'diagnosis.selectionStatus': '{count} skills selected',
-      'diagnosis.disableNote': 'Disabled {ok}, failed {failed}.',
-      'diagnosis.removeNote': 'Deleted {ok}, failed {failed}.',
-      'diagnosis.keepNote': 'Updated {ok}, failed {failed}.',
-      'diagnosis.oldHost.title': 'Update the plugin',
-      'diagnosis.oldHost.body': 'This host sends no diagnosis data yet. Update the plugin, reload the page, and look again.',
-      'filter.label': 'Filter by agent',
-      'filter.all': 'All',
-      'filter.agentOption': '{name} ({count})',
-      'action.refresh': 'Refresh',
-      'action.retry': 'Retry',
-      'action.cancel': 'Cancel',
-      'action.search': 'Search',
-      'action.switch': 'Switch',
-      'action.reload': 'Reload the page',
-      'action.dismiss': 'Dismiss',
-      'skill.runtimesOne': '{agent} only',
-      'skill.runtimesSome': '{count}/{total} agents',
-      'skill.calls': '{count} calls',
-      'skill.callsLabel': 'Calls',
-      'skill.usageTitle': '{count} calls · {model} by model · {user} manual',
-      'skill.readonly': 'Read-only',
-      'skill.frequent': 'Frequent',
-      'skill.closed': 'Off',
-      'skill.model': 'Model auto',
-      'skill.user': '/name manual',
-      'skill.modelSwitchAria': 'Model auto: {name}',
-      'skill.userSwitchAria': '/name manual: {name}',
-      'skill.modelHint': 'The model decides from the description whether to call it.',
-      'skill.userHint': 'Type /skill-name in chat to call it yourself.',
-      'skill.menuAria': 'More actions: {name}',
-      'skill.menu.update': 'Update',
-      'skill.menu.remove': 'Delete',
-      'skill.menu.showPath': 'Show path',
-      'skill.menu.hidePath': 'Hide path',
-      'skill.path': 'Path',
-      'skill.empty.title': 'No skills to manage yet',
-      'skill.empty.body': 'Install one from Discover, or drop a SKILL.md into your skill folder.',
-      'skill.emptyFiltered': 'This agent resolves no skills.',
-      'skill.loading': 'Reading the skill catalog…',
-      'skill.removeConfirm': 'Delete “{name}”? Its skill folder is removed and this cannot be undone.',
-      'skill.removeConfirmAction': 'Delete',
-      'skill.busy': 'Saving…',
-      'discover.source': 'Skill source',
-      'discover.placeholder': 'Skill name or repo, then Enter',
-      'discover.searchLabel': 'Search skills',
-      'discover.idle.title': 'Start with a source',
-      'discover.idle.body': 'Search skills.sh or the Tencent source, then install into your skill folder in one click.',
-      'discover.loading': 'Searching…',
-      'discover.empty.title': 'No matching skills',
-      'discover.empty.body': 'Try another keyword, or switch to the other source.',
-      'discover.error.title': 'This source is unavailable',
-      'discover.error.hint': 'Switch to the other source, or retry later.',
-      'discover.otherSource': 'Try {source}',
-      'discover.install': 'Install',
-      'discover.installAria': 'Install: {name}',
-      'discover.installBlockedAria': 'Cannot install {name}: {reason}',
-      'discover.notInstallable': 'This entry cannot be installed from this source',
-      'discover.installing': 'Installing…',
-      'discover.installed': 'Installed',
-      'discover.version': 'v{version}',
-      'discover.updated': 'Updated {date}',
-      'discover.installs': '{count} installs',
-      'discover.note.suggestions': 'Empty search fell back to a popular listing',
-      'usage.total': 'Total calls',
-      'usage.active': 'Active skills',
-      'usage.today': 'Calls today',
-      'usage.totalHint': 'Across all agents',
-      'usage.split': '{model} by model · {user} manual',
-      'usage.activeHint': 'Used at least once',
-      'usage.todayHint': '{count} in the last 14 days',
-      'usage.chart': 'Call trend',
-      'usage.dayTitle': '{date} · {count} calls',
-      'usage.recent': 'Recent activity',
-      'usage.recentEmpty': 'No calls recorded yet.',
-      'usage.note': 'Only calls observed while the dashboard is enabled are recorded. Daily history is kept for 60 days; cumulative counts are independent of the period.',
-      'usage.unknownAgent': 'Unknown agent',
-      'status.updatedAt': 'Updated {time}',
-      'status.counts': '{skills} skills · {agents} agents',
-      'status.saved': 'Saved',
-      'status.removed': 'Deleted {name}',
-      'status.installed': 'Installed {name}',
-      'status.updatedSkill': 'Updated {name}',
-      'status.upToDate': '{name} is up to date',
-      'status.busy': 'Working…',
-      'status.failed': '{action} failed: {message}',
-      'status.failedPlain': 'The action failed',
-      'status.offlineInline': 'Host unreachable; the change is unconfirmed.',
-      'offline.title': 'Cannot reach the skill dashboard host',
-      'offline.body': 'The plugin route did not answer. Make sure the host loaded this plugin, then retry.',
-      'crash.title': 'The skill dashboard failed to render',
+      'offline.title': 'Skill service unavailable',
+      'offline.body': 'The skill service did not respond. Make sure the plugin is enabled, then try again.',
+      'crash.title': 'Skills page failed to render',
       'crash.body': 'Reloading the page re-mounts the plugin; check the browser console if it keeps failing.',
       'error.read-only': 'Read-only skill; it cannot be changed',
-      'error.source-unavailable': 'The source is temporarily unavailable',
-      'error.invalid-response': 'The host returned data this page cannot read',
-      'panel.eyebrow': 'SKILLS / WORKSPACE',
-      'panel.intro': 'Manage skills, invocation, and activity.',
-      'overview.skills': 'Skill library',
-      'overview.enabled': 'Model enabled',
-      'overview.agents': 'Coding agents',
-      'overview.calls': 'Total calls',
-      'installed.title': 'Installed skills',
-      'installed.body': 'Find and filter skills, then manage invocation permissions.',
-      'installed.search': 'Search installed skills',
-      'installed.placeholder': 'Search by name, description, or source…',
-      'installed.results': 'Showing {count} of {total} skills',
-      'installed.noMatches': 'No skills match your filters',
-      'installed.noMatchesBody': 'Try another keyword, or clear your filters.',
-      'installed.reset': 'Clear filters',
-      'installed.status': 'Invocation status',
-      'installed.all': 'All statuses',
-      'installed.enabled': 'Model enabled',
-      'installed.disabled': 'Model disabled',
-      'installed.writable': 'Manageable',
-      'installed.sort': 'Sort by',
-      'installed.sort.usage': 'Most used',
-      'installed.sort.name': 'Name A–Z',
-      'installed.sort.recent': 'Recently used',
-      'installed.permissions': 'Invocation permissions',
-      'installed.hint': 'Model invocation lets an agent choose a skill automatically. Manual invocation uses /skill-name. Changes to shared skills affect every associated agent.',
-      'discover.title': 'Discover skills',
-      'discover.body': 'Find community skills to extend what your agents can do.',
-      'discover.popular': 'Browse popular skills',
-      'discover.results': '{count} search results',
-      'discover.queryScope': '{source} · Search for “{query}”',
-      'discover.unavailableTitle': 'No sources available',
-      'discover.unavailableBody': 'Refresh the dashboard to check the sources again.',
-      'usage.title': 'Usage overview',
-      'usage.body': 'Call trends and recent activity across all agents.',
-      'usage.breakdown': 'Daily call details',
-      'usage.date': 'Date',
-      'usage.count': 'Calls',
-      'status.ready': 'Catalog synced',
-      'action.discover': 'Discover skills',
-      'action.backLibrary': 'Back to library',
-      'source.tencent': 'Tencent SkillHub',
-      'action.skipContent': 'Skip to main content',
-      'usage.chartSummary': '{count} calls in the last 14 days, with a daily peak of {peak}. Expand the daily details below.',
+      'error.source-unavailable': 'This skill source is temporarily unavailable',
+      'error.source-rate-limited': 'Too many requests; please try again shortly',
+      'error.invalid-response': 'The skill service returned unreadable data',
+      'error.preview-unavailable': 'Preview is unavailable. Reload the plugin if it was just updated.',
+      'error.preview-failed': 'Could not load the preview. Please retry.',
+      'error.skill-not-found': 'This skill is no longer in the catalog. Refresh the list.',
+      'error.file-not-found': 'This file no longer exists or cannot be previewed. Choose another file.',
+      'error.bad-request': 'Invalid request parameters',
+      'error.not-found': 'Requested skill or resource was not found',
+      'error.unknown-action': 'Unsupported action',
+      'error.unknown-source': 'Unknown skill source',
+      'error.invalid-frontmatter': 'Invalid SKILL.md frontmatter; cannot save changes',
+      'error.missing-frontmatter': 'SKILL.md is missing frontmatter; cannot update',
+      'error.write-failed': 'Failed to write skill file; check folder permissions',
+      'error.delete-failed': 'Failed to delete skill folder; check permissions or open files',
+      'error.name-mismatch': 'Skill name does not match its directory; action aborted',
+      'error.payload-too-large': 'Request payload is too large; select fewer items and try again',
+      'error.state-unavailable': 'Skill catalog state is temporarily unavailable',
+      'error.internal-error': 'Internal skill service error; please retry',
+      'error.already-installed': 'This skill is already installed',
+      'error.not-installed': 'This skill is not managed by an install source and cannot be updated',
+      'error.not-installable': 'This entry cannot be installed directly',
+      'error.install-failed': 'Failed to install skill; check your network and retry',
+      'error.update-failed': 'Failed to update skill; check your network and retry',
     };
 
     // ---------------------------------------------------------------- css
-    /**
-     * Scoped semantic colours follow the host theme. Container queries respond to the
-     * panel width even when the surrounding app changes its sidebar layout. The skd-
-     * prefix prevents collisions with host styles.
-     */
     const CSS = `
-.skd-page{--skd-bg:var(--dsw-alias-bg-base,#fff);--skd-fg:var(--dsw-alias-label-primary,#20252d);--skd-muted:color-mix(in srgb,var(--skd-fg) 70%,var(--skd-bg));--skd-soft:color-mix(in srgb,var(--skd-fg) 4%,var(--skd-bg));--skd-line:color-mix(in srgb,var(--skd-fg) 13%,var(--skd-bg));--skd-control-line:color-mix(in srgb,var(--skd-fg) 16%,var(--skd-bg));--skd-accent:var(--dsw-alias-state-business-primary,#416fe1);--skd-accent-label:color-mix(in srgb,var(--skd-accent) 70%,var(--skd-fg));--skd-on-accent:var(--dsw-alias-label-primary-foreground,#fff);--skd-radius:12px;box-sizing:border-box;container:dashboard / inline-size;display:flex;flex-direction:column;width:100%;height:100%;min-height:0;color:var(--skd-fg);background:var(--skd-bg);font-family:"IBM Plex Sans","Segoe UI Variable","Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;font-size:0.875rem;line-height:1.6;overflow:hidden;font-variant-numeric:tabular-nums}
-.skd-page *{box-sizing:border-box}
-.skd-wrap{width:100%;max-width:1280px;margin:0 auto;padding-inline:clamp(20px,4cqw,56px)}
+.skd-page,.skd-previewDialog{
+  --skd-bg:var(--dsw-alias-bg-base,#fff);
+  --skd-surface:var(--dsw-alias-bg-layer-1,#f7f8fa);
+  --skd-surface-2:var(--dsw-alias-bg-layer-2,#eff1f5);
+  --skd-overlay:var(--dsw-alias-bg-overlay,var(--skd-bg));
+  --skd-mask:var(--dsw-alias-bg-mask-1,rgb(0 0 0 / .45));
+  --skd-skeleton:var(--dsw-alias-bg-skeleton,var(--skd-surface-2));
+  --skd-fg:var(--dsw-alias-label-primary,#1f2329);
+  --skd-muted:var(--dsw-alias-label-secondary,#5a6270);
+  --skd-subtle:var(--dsw-alias-label-tertiary,#848c99);
+  --skd-line:var(--dsw-alias-border-l1,rgb(0 0 0 / .08));
+  --skd-control-line:var(--dsw-alias-border-l2,rgb(0 0 0 / .14));
+  --skd-hover:var(--dsw-alias-interactive-bg-hover,rgb(0 0 0 / .04));
+  --skd-active:var(--dsw-alias-interactive-bg-active,rgb(0 0 0 / .08));
+  --skd-accent:var(--dsw-alias-state-business-primary,#4d6bfe);
+  --skd-accent-fill:var(--dsw-alias-button-primary-fill,var(--skd-accent));
+  --skd-accent-hover:var(--dsw-alias-button-primary-hover,var(--skd-accent));
+  --skd-accent-bg:var(--dsw-alias-interactive-bg-hover-business,rgb(77 107 254 / .1));
+  --skd-on-accent:var(--dsw-alias-label-primary-foreground,#fff);
+  --skd-success:var(--dsw-alias-state-success-primary,#16a34a);
+  --skd-error:var(--dsw-alias-state-error-primary,#dc2626);
+  --skd-error-bg:var(--dsw-alias-interactive-bg-hover-danger,rgb(220 38 38 / .08));
+  --skd-warn:var(--dsw-alias-state-warn-primary,#d97706);
+  --skd-radius-sm:var(--dsw-radius-sm,6px);
+  --skd-radius:var(--dsw-radius-md,10px);
+  --skd-radius-lg:var(--dsw-radius-lg,12px);
+  --skd-font:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI Variable","Segoe UI","PingFang SC","Microsoft YaHei",sans-serif);
+  --skd-mono:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
+  --skd-ease:var(--ds-ease-in-out,cubic-bezier(.4,0,.2,1));
+  box-sizing:border-box;
+  color:var(--skd-fg);
+  font-family:var(--skd-font);
+  font-size:.875rem;
+  line-height:1.55;
+  font-variant-numeric:tabular-nums;
+}
+.skd-page *,.skd-previewDialog *{box-sizing:border-box}
+.skd-page{container:dashboard / inline-size;display:flex;flex-direction:column;width:100%;height:100%;min-height:0;background:var(--skd-bg);overflow:hidden}
+.skd-wrap{width:100%;max-width:1120px;margin:0 auto;padding-inline:clamp(20px,3cqw,36px)}
+.skd-visuallyHidden{position:absolute;inline-size:1px;block-size:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.skd-skipLink{position:absolute;inset-block-start:8px;inset-inline-start:16px;z-index:40;padding:8px 14px;border-radius:var(--skd-radius-sm);background:var(--skd-accent-fill);color:var(--skd-on-accent);font-size:.8125rem;font-weight:500;text-decoration:none;transform:translateY(-200%)}
+.skd-skipLink:focus{transform:translateY(0)}
+
 .skd-top{flex:none;border-bottom:1px solid var(--skd-line);background:var(--skd-bg)}
-.skd-header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:24px;padding-top:32px;padding-bottom:24px}
-[data-platform=darwin] .skd-header{padding-top:calc(32px + var(--dsh-frame-top-clearance,0px))}
-.skd-headText{min-width:0;flex:1}
-.skd-eyebrow{display:block;margin-bottom:8px;font-size:0.6875rem;line-height:1.636;font-weight:600;letter-spacing:.12em;color:var(--skd-muted)}
-.skd-title{margin:0;font-size:1.875rem;font-weight:650;line-height:1.25;letter-spacing:-.035em;text-wrap:balance}
-.skd-subtitle{margin:8px 0 0;color:var(--skd-muted);font-size:0.875rem;line-height:1.571;overflow-wrap:anywhere;text-wrap:balance;max-width:60ch}
-.skd-headerTools{display:flex;align-items:center;gap:10px;flex:none}
-.skd-tabbar{display:flex;flex-wrap:wrap;align-items:stretch;column-gap:1.75rem;row-gap:0;min-height:48px}
-.skd-tab{position:relative;display:inline-flex;align-items:center;gap:8px;padding:0 2px 14px;border:0;background:none;color:var(--skd-muted);font:inherit;font-size:0.875rem;font-weight:500;cursor:pointer;transition:color .15s}
-.skd-tab:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:transparent}
-.skd-tab[aria-selected=true]{color:var(--skd-accent);font-weight:600}
-.skd-tab[aria-selected=true]:after{background:var(--skd-accent)}
+.skd-header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:16px;padding:24px 0 14px}
+[data-platform=darwin] .skd-header{padding-top:calc(24px + var(--dsh-frame-top-clearance,0px))}
+.skd-headText{min-width:0}
+.skd-title{margin:0;font-size:1.25rem;line-height:1.4;font-weight:600;letter-spacing:-.015em;overflow-wrap:anywhere}
+.skd-subtitle{margin:3px 0 0;color:var(--skd-muted);font-size:.8125rem;line-height:1.5;overflow-wrap:anywhere}
+.skd-headerTools{display:flex;align-items:center;gap:8px;flex:none}
+.skd-statusPill{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 10px;border:1px solid var(--skd-line);border-radius:999px;background:var(--skd-surface);color:var(--skd-muted);font-size:.75rem;line-height:1.4;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skd-statusPill[data-tone=ok]{color:var(--skd-success)}
+.skd-statusPill[data-tone=error]{border-color:color-mix(in srgb,var(--skd-error) 30%,transparent);background:var(--skd-error-bg);color:var(--skd-error)}
+.skd-statusDot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--skd-subtle)}
+.skd-statusDot[data-tone=ok]{background:var(--skd-success)}
+.skd-statusDot[data-tone=error]{background:var(--skd-error)}
+.skd-statusDot[data-busy]{background:var(--skd-accent);animation:skd-skeleton-pulse 1.4s var(--skd-ease) infinite}
+
+.skd-tabbar{display:flex;flex-wrap:nowrap;align-items:stretch;gap:22px;width:100%;overflow-x:auto;scrollbar-width:none}
+.skd-tabbar::-webkit-scrollbar{display:none}
+.skd-tab{position:relative;flex:none;display:inline-flex;align-items:center;gap:7px;min-height:38px;padding:0 2px 10px;border:0;background:none;color:var(--skd-muted);font:inherit;font-size:.8125rem;font-weight:500;white-space:nowrap;cursor:pointer;transition:color .15s var(--skd-ease)}
+.skd-tab[aria-selected=true]{color:var(--skd-fg);font-weight:600}
+.skd-tab[aria-selected=true]::after{content:"";position:absolute;inset:auto 0 0;height:2px;border-radius:2px 2px 0 0;background:var(--skd-accent)}
+.skd-tabIcon{display:inline-flex;align-items:center;opacity:.75}
+.skd-tab[aria-selected=true] .skd-tabIcon{color:var(--skd-accent);opacity:1}
+.skd-tabCount{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--skd-surface-2);color:var(--skd-muted);font-size:.6875rem;font-weight:500;line-height:1}
+.skd-tab[aria-selected=true] .skd-tabCount{background:var(--skd-accent-bg);color:var(--skd-accent)}
+.skd-tabCount[data-tone=warn]{background:color-mix(in srgb,var(--skd-warn) 14%,transparent);color:var(--skd-warn)}
+
 .skd-scroll{flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable;--dsh-scrollbar-width:9px;--dsh-scrollbar-thumb-border:2px}
-.skd-content{padding-top:28px;padding-bottom:48px}
-.skd-panel{display:flex;flex-direction:column;gap:20px;min-width:0}
-.skd-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;margin-bottom:32px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-soft);overflow:hidden}
-.skd-overviewItem{display:flex;flex-direction:column;gap:4px;padding:18px 24px;border-inline-end:1px solid var(--skd-line)}
-.skd-overviewItem:last-child{border:0}
-.skd-overviewLabel{font-size:0.75rem;color:var(--skd-muted)}
-.skd-overviewValue{font-size:1.625rem;line-height:1.308;font-weight:600;letter-spacing:-.03em}
-.skd-sectionHead{display:flex;align-items:center;justify-content:space-between;gap:20px}
-.skd-sectionTitle{margin:0;font-size:1.25rem;font-weight:600;line-height:1.4;letter-spacing:-.025em;text-wrap:balance}
-.skd-sectionBody{margin:5px 0 0;color:var(--skd-muted);font-size:0.8125rem;line-height:1.615;max-width:72ch;text-wrap:pretty}
-.skd-toolbar{display:flex;flex-direction:column;gap:14px;padding:16px;background:var(--skd-soft);border:1px solid var(--skd-line);border-radius:var(--skd-radius)}
-.skd-field{display:flex;align-items:center;gap:8px;min-width:0;color:var(--skd-muted);font-size:0.75rem}
-.skd-field>span{flex-shrink:0;white-space:normal;overflow-wrap:anywhere}
-.skd-select{max-width:100%;min-width:120px;min-height:36px;padding:6px 30px 6px 10px;border:1px solid var(--skd-control-line);border-radius:7px;background:var(--skd-bg);color:var(--skd-fg);font:inherit;font-size:0.8125rem;cursor:pointer}
-.skd-searchBox{position:relative;display:flex;align-items:center;flex:1;min-width:160px;gap:8px}
-.skd-searchBox>svg{position:absolute;left:12px;pointer-events:none;color:var(--skd-muted)}
-.skd-searchBox .skd-input{padding-left:38px;width:100%}
-.skd-resultLine{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--skd-muted);font-size:0.75rem;min-height:24px}
-.skd-tableHeading{display:grid;grid-template-columns:minmax(0,1fr) 3.5rem 10.5rem 2.25rem;gap:0 20px;padding:0 17px 7px;margin-bottom:0;color:var(--muted-foreground);font-size:.6875rem;letter-spacing:.02em;border-bottom:0}
-.skd-tableHeading span:nth-child(2){text-align:right}
-.skd-footer{flex:none;border-top:1px solid var(--skd-line);background:var(--skd-bg)}
-.skd-footerInner{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:40px;font-size:0.6875rem;line-height:1.636;color:var(--skd-muted)}
-.skd-footerStats,.skd-footerNote{display:flex;align-items:center;gap:.75rem;min-width:0;flex-wrap:wrap;overflow-wrap:anywhere}
-.skd-footerNote{gap:0;text-align:right;justify-content:flex-end}
-.skd-footerNote[data-tone=ok]{color:var(--dsw-alias-state-success-primary)}
-.skd-footerNote[data-tone=error]{color:var(--dsw-alias-state-error-primary)}
-.skd-statusDot{flex:none;width:6px;height:6px;border-radius:50%;margin-right:8px;background:var(--skd-muted)}
-.skd-statusDot[data-tone=ok]{background:var(--dsw-alias-state-success-primary)}
-.skd-statusDot[data-tone=error]{background:var(--dsw-alias-state-error-primary)}
-.skd-micro{font-size:0.6875rem;line-height:1.636;color:var(--skd-muted);font-weight:500}
-.skd-iconButton{display:inline-flex;align-items:center;justify-content:center;flex:none;width:36px;height:36px;padding:0;border:1px solid transparent;border-radius:8px;background:none;color:var(--skd-muted);cursor:pointer;transition:background-color .15s,color .15s}
-.skd-headerTools .skd-iconButton{border-color:var(--skd-line);width:40px;height:40px}
-.skd-iconButton[data-open]{background:var(--skd-soft);color:var(--skd-fg)}
+.skd-content{padding-top:20px;padding-bottom:44px}
+.skd-panel{display:flex;flex-direction:column;gap:16px;min-width:0}
+.skd-panel:focus{outline:none}
+
+.skd-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:12px 0 0;padding:10px 14px;border:1px solid color-mix(in srgb,var(--skd-error) 28%,transparent);border-radius:var(--skd-radius);background:var(--skd-error-bg);color:var(--skd-error);font-size:.8125rem;line-height:1.5}
+.skd-banner .skd-button{min-height:28px;padding:3px 10px;font-size:.75rem}
+
+.skd-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:16px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-surface);overflow:hidden}
+.skd-overviewItem{display:flex;flex-direction:column;gap:2px;padding:12px 16px;border-inline-end:1px solid var(--skd-line)}
+.skd-overviewItem:last-child{border-inline-end:0}
+.skd-overviewLabel{font-size:.75rem;color:var(--skd-muted);line-height:1.4}
+.skd-overviewValue{font-size:1.375rem;line-height:1.3;font-weight:600;letter-spacing:-.02em;color:var(--skd-fg)}
+
+.skd-sectionHead{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px}
+.skd-sectionTitle{margin:0;font-size:1rem;font-weight:600;line-height:1.4;letter-spacing:-.01em}
+.skd-sectionBody{margin:2px 0 0;color:var(--skd-muted);font-size:.8125rem;line-height:1.5;max-width:72ch}
+.skd-noteLine{margin:0;max-width:92ch;color:var(--skd-muted);font-size:.75rem;line-height:1.6;overflow-wrap:anywhere}
+.skd-micro{font-size:.6875rem;line-height:1.5;color:var(--skd-muted);font-weight:500}
+.skd-resultLine{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;color:var(--skd-muted);font-size:.75rem;min-height:22px}
+.skd-libraryResults .skd-button[data-variant=text]{color:var(--skd-accent);margin-inline-start:auto}
+.skd-libraryResults+.skd-noteLine{margin-top:-8px}
+
+.skd-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;min-height:34px;padding:6px 12px;border:1px solid var(--skd-control-line);border-radius:var(--skd-radius-sm);background:var(--skd-bg);color:var(--skd-fg);font:inherit;font-size:.8125rem;font-weight:500;line-height:1.4;cursor:pointer;white-space:nowrap;transition:background-color .15s var(--skd-ease),border-color .15s var(--skd-ease),color .15s var(--skd-ease)}
+.skd-button:disabled{opacity:.48;cursor:default}
+.skd-button[data-variant=primary]{border-color:transparent;background:var(--skd-accent-fill);color:var(--skd-on-accent)}
+.skd-button[data-variant=outline]{border-color:var(--skd-control-line);background:var(--skd-bg);color:var(--skd-fg)}
+.skd-button[data-variant=danger]{border-color:color-mix(in srgb,var(--skd-error) 35%,transparent);background:var(--skd-bg);color:var(--skd-error)}
+.skd-button[data-variant=text]{min-height:auto;padding:2px 4px;border-color:transparent;background:none;color:var(--skd-accent)}
+.skd-button[data-done]{border-color:var(--skd-line);background:var(--skd-surface);color:var(--skd-muted)}
+
+.skd-iconButton{display:inline-flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;padding:0;border:1px solid transparent;border-radius:var(--skd-radius-sm);background:none;color:var(--skd-muted);cursor:pointer;transition:background-color .15s var(--skd-ease),color .15s var(--skd-ease),border-color .15s var(--skd-ease)}
+.skd-headerTools .skd-iconButton{border-color:var(--skd-control-line);width:34px;height:34px;background:var(--skd-bg)}
+.skd-iconButton[data-open]{background:var(--skd-active);color:var(--skd-fg)}
 .skd-iconButton:disabled{opacity:.45;cursor:default}
-.skd-iconButton[data-spinning] svg{animation:skd-spin .9s linear infinite}
+.skd-iconButton[data-spinning] svg{animation:skd-spin .85s linear infinite}
 @keyframes skd-spin{to{transform:rotate(360deg)}}
-.skd-segmented{display:inline-flex;align-items:center;gap:4px;padding:4px;border:1px solid var(--skd-line);border-radius:9px;background:var(--skd-soft);max-width:100%;overflow-x:auto}
-.skd-segment{flex:none;max-width:176px;min-height:34px;padding:5px 14px;border:1px solid transparent;border-radius:6px;background:none;color:var(--skd-muted);font:inherit;font-size:0.8125rem;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:background-color .15s,color .15s}
+
+.skd-fieldLabel{display:block;font-size:.75rem;font-weight:500;color:var(--skd-muted);margin-bottom:4px}
+.skd-field{display:flex;flex-direction:column;align-items:stretch;gap:4px;min-width:0;color:var(--skd-muted);font-size:.75rem}
+.skd-field>span{font-weight:500;overflow-wrap:anywhere}
+.skd-searchField{display:flex;flex-direction:column;min-width:0;flex:1}
+.skd-searchBox{position:relative;display:flex;align-items:center;min-width:0;width:100%}
+.skd-searchBox>svg{position:absolute;inset-inline-start:11px;pointer-events:none;color:var(--skd-subtle)}
+.skd-input{flex:1;min-width:0;min-height:36px;padding:6px 11px;border:1px solid var(--skd-control-line);border-radius:var(--skd-radius-sm);background:var(--skd-bg);color:var(--skd-fg);font:inherit;font-size:.8125rem;line-height:1.45;transition:border-color .15s var(--skd-ease)}
+.skd-searchBox .skd-input{padding-inline-start:34px;width:100%}
+.skd-input:focus{border-color:var(--skd-accent);outline:none}
+.skd-input::placeholder{color:var(--skd-subtle)}
+
+.skd-select{max-width:100%;min-width:116px;min-height:36px;padding:6px 28px 6px 10px;border:1px solid var(--skd-control-line);border-radius:var(--skd-radius-sm);background:var(--skd-bg);color:var(--skd-fg);font:inherit;font-size:.8125rem;line-height:1.45;cursor:pointer;transition:border-color .15s var(--skd-ease),background-color .15s var(--skd-ease)}
+@supports (appearance:base-select){
+  .skd-select,.skd-select::picker(select){appearance:base-select}
+  .skd-select{display:inline-flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px 6px 11px;white-space:nowrap;overflow:hidden}
+  .skd-select::picker-icon{flex:none;margin-inline-start:4px;color:var(--skd-subtle);font-size:.625rem;transition:transform .16s var(--skd-ease)}
+  .skd-select:open::picker-icon{transform:rotate(180deg)}
+  .skd-select:open{border-color:var(--skd-accent)}
+  .skd-select::picker(select){margin-block-start:4px;padding:4px;border:1px solid var(--skd-control-line);border-radius:var(--skd-radius);background:var(--skd-overlay);color:var(--skd-fg);box-shadow:0 10px 30px rgb(0 0 0 / .16);min-inline-size:anchor-size(width);max-inline-size:min(28rem,calc(100vw - 2rem));max-block-size:min(20rem,48dvh);overflow:auto;overscroll-behavior:contain}
+  .skd-select option{padding:6px 10px;border-radius:var(--skd-radius-sm);font-size:.8125rem;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .skd-select option:checked{font-weight:600;background:var(--skd-active)}
+}
+
+.skd-segmented{display:inline-flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--skd-line);border-radius:8px;background:var(--skd-surface);max-width:100%;overflow-x:auto}
+.skd-segment{flex:none;max-width:190px;min-height:30px;padding:4px 11px;border:1px solid transparent;border-radius:var(--skd-radius-sm);background:none;color:var(--skd-muted);font:inherit;font-size:.8125rem;font-weight:500;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:background-color .15s var(--skd-ease),color .15s var(--skd-ease)}
 .skd-segment[data-active]{border-color:var(--skd-line);background:var(--skd-bg);color:var(--skd-fg);font-weight:600}
 .skd-segment:disabled{opacity:.45;cursor:default}
-.skd-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;min-height:36px;padding:7px 14px;border:1px solid var(--input);border-radius:8px;background:var(--skd-bg);color:var(--skd-fg);font:inherit;font-size:0.8125rem;font-weight:500;line-height:1.538;cursor:pointer;white-space:nowrap;transition:background-color .15s,border-color .15s,transform .1s}
-.skd-button:active:not(:disabled),.skd-iconButton:active:not(:disabled){transform:translateY(1px)}
-.skd-button:disabled{opacity:.5;cursor:default}
-.skd-button[data-variant=primary]{border-color:transparent;background:var(--skd-accent);color:var(--skd-on-accent)}
-.skd-button[data-variant=danger]{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 40%,transparent);color:var(--dsw-alias-state-error-primary)}
-.skd-button[data-variant=text]{padding:2px 4px;border-color:transparent;background:none;color:var(--skd-accent)}
-.skd-button[data-done]{border-color:transparent;background:var(--skd-soft);color:var(--skd-muted)}
-.skd-input{flex:1;min-width:0;min-height:40px;padding:9px 12px;border:1px solid var(--skd-line);border-radius:8px;background:var(--skd-bg);color:var(--skd-fg);font:inherit;font-size:0.8125rem;line-height:1.538;transition:border-color .15s}
-.skd-input:focus{border-color:var(--skd-accent)}
-.skd-input::placeholder{color:var(--skd-muted)}
-.skd-searchRow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:16px;background:var(--skd-soft);border:1px solid var(--skd-line);border-radius:var(--skd-radius)}
-.skd-searchRow>.skd-input{min-width:160px}
-.skd-searchRow>.skd-button{min-height:40px}
-.skd-list{margin:0;padding:0;list-style:none;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card)}
-.skd-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 3.5rem 10.5rem 2.25rem;gap:4px 20px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--skd-line);transition:background-color .15s}
-.skd-list>li:last-child .skd-row{border-bottom:0}
-.skd-row[data-busy]{opacity:.72}
-.skd-rowMain{display:flex;flex-direction:column;gap:3px;min-width:0}
-.skd-rowHead{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}
-.skd-rowName{min-width:0;max-width:100%;font-size:0.875rem;font-weight:600;line-height:1.571;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 .skd-badges{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
-.skd-badge{display:inline-flex;align-items:center;gap:4px;max-width:100%;min-height:20px;padding:1px 6px;border-radius:4px;background:var(--skd-soft);color:var(--skd-muted);font-size:0.6875rem;line-height:1.636;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.skd-badge[data-tone=accent]{background:color-mix(in srgb,var(--skd-accent) 10%,var(--skd-bg));color:var(--skd-accent-label)}
-.skd-badge[data-tone=muted]{border:1px solid var(--skd-line);background:none;color:var(--skd-muted)}
-.skd-rowDesc{margin:0;max-width:96ch;color:var(--muted-foreground);font-size:.78125rem;line-height:1.55;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:1;line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.skd-badge{display:inline-flex;align-items:center;gap:4px;max-width:100%;min-height:20px;padding:1px 7px;border-radius:999px;background:var(--skd-surface-2);color:var(--skd-muted);font-size:.6875rem;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.skd-badge[data-tone=accent]{background:var(--skd-accent-bg);color:var(--skd-accent)}
+.skd-badge[data-tone=muted]{border:1px solid var(--skd-line);background:none;color:var(--skd-subtle)}
+
+.skd-toolbar{display:flex;flex-direction:column;gap:12px;padding:14px;background:var(--skd-surface);border:1px solid var(--skd-line);border-radius:var(--skd-radius)}
+.skd-filterBar{display:grid;grid-template-columns:minmax(14rem,1fr) auto auto auto;align-items:end;gap:10px 12px;padding:0 0 14px;border:0;border-bottom:1px solid var(--skd-line);border-radius:0;background:none}
+.skd-filterBar>.skd-field>.skd-select{inline-size:100%;min-inline-size:8.5rem;max-inline-size:15rem}
+
+.skd-tableHeading{display:grid;grid-template-columns:minmax(0,1fr) 3.75rem 10.5rem 2.25rem;gap:0 18px;padding:0 16px 4px;margin-bottom:-10px;color:var(--skd-subtle);font-size:.6875rem;font-weight:500;letter-spacing:.01em}
+.skd-tableHeading span:nth-child(2){text-align:end}
+.skd-list{margin:0;padding:0;list-style:none;border:1px solid var(--skd-line);border-radius:var(--skd-radius);overflow:hidden;background:var(--skd-bg)}
+.skd-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 3.75rem 10.5rem 2.25rem;gap:4px 18px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--skd-line);transition:background-color .15s var(--skd-ease)}
+.skd-list>li:last-child .skd-row{border-bottom:0}
+.skd-row[data-closed] .skd-rowMain{opacity:.72}
+.skd-row[data-busy]{opacity:.68}
+.skd-rowMain{position:relative;display:flex;flex-direction:column;gap:3px;min-width:0;cursor:pointer}
+.skd-rowHead{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+.skd-nameButton{display:inline;padding:0;border:0;background:none;color:inherit;font:inherit;font-weight:600;text-align:start;cursor:pointer;text-decoration:none;border-radius:4px}
+.skd-rowName{min-width:0;max-width:100%;font-size:.875rem;font-weight:600;line-height:1.45;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skd-rowName::after{content:"";position:absolute;inset:0;border-radius:6px}
+.skd-row:has(.skd-rowName:focus-visible) .skd-rowMain{outline:2px solid var(--skd-accent);outline-offset:2px;border-radius:6px}
+.skd-rowDesc{margin:0;max-width:90ch;color:var(--skd-muted);font-size:.78125rem;line-height:1.5;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:1;line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
 .skd-rowRail{display:grid;grid-template-columns:subgrid;grid-column:2 / -1;align-items:center}
-.skd-metric{display:flex;flex-direction:column;align-items:flex-end;gap:2px;width:auto;text-align:end}
+.skd-metric{display:flex;flex-direction:column;align-items:flex-end;gap:2px;text-align:end}
 .skd-metric .skd-micro{display:none}
-.skd-metricValue{font-size:.9375rem;line-height:1.5;font-weight:550}
-.skd-switchGroup{display:flex;flex-direction:column;gap:2px;width:auto;border:0;padding:0}
+.skd-metricValue{font-size:.875rem;line-height:1.4;font-weight:500;color:var(--skd-fg)}
+
+.skd-switchGroup{display:flex;flex-direction:column;gap:4px;border:0;padding:0}
 .skd-switchRow{display:flex;align-items:center;min-width:0}
 .skd-switchControl{position:relative;display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:10px;min-block-size:1.5rem;width:100%;cursor:pointer}
-.skd-switchControl:has(:disabled){cursor:default;opacity:.6}
-.skd-switchLabel{color:var(--skd-muted);font-size:0.6875rem;line-height:1.5;overflow-wrap:anywhere}
-.skd-switchInput{position:absolute;clip-path:inset(50%);overflow:hidden;inline-size:1px;block-size:1px;margin:-1px;padding:0;border:0;white-space:nowrap;accent-color:var(--skd-accent)}
-.skd-switch{position:relative;flex:none;inline-size:2rem;block-size:1.125rem;border:1px solid var(--skd-control-line);border-radius:1rem;background:color-mix(in srgb,var(--skd-fg) 22%,var(--skd-bg));transition:background-color .16s}
-.skd-switchThumb{position:absolute;inset-block-start:2px;inset-inline-start:2px;inline-size:.875rem;block-size:.875rem;border-radius:50%;background:var(--dsw-alias-switch-thumb,#fff);transition:transform .16s}
+.skd-switchControl:has(:disabled){cursor:default;opacity:.55}
+.skd-switchLabel{color:var(--skd-muted);font-size:.75rem;line-height:1.4;overflow-wrap:anywhere}
+.skd-switchInput{position:absolute;clip-path:inset(50%);overflow:hidden;inline-size:1px;block-size:1px;margin:-1px;padding:0;border:0;white-space:nowrap}
+.skd-switch{position:relative;flex:none;inline-size:32px;block-size:18px;border:1px solid var(--skd-control-line);border-radius:999px;background:var(--skd-surface-2);transition:background-color .16s var(--skd-ease),border-color .16s var(--skd-ease)}
+.skd-switchThumb{position:absolute;inset-block-start:2px;inset-inline-start:2px;inline-size:12px;block-size:12px;border-radius:50%;background:var(--dsw-alias-switch-thumb,#fff);box-shadow:0 1px 2px rgb(0 0 0 / .2);transition:transform .16s var(--skd-ease)}
 .skd-switchInput:checked~.skd-switch{border-color:var(--skd-accent);background:var(--skd-accent)}
-.skd-switchInput:checked~.skd-switch .skd-switchThumb{transform:translateX(.875rem)}
-.skd-switchControl:has(.skd-switchInput:focus-visible) .skd-switch{outline:2px solid var(--skd-accent);outline-offset:3px}
-.skd-menuWrap{position:relative;flex:none}
-.skd-menu{position:fixed;inset:auto;margin:0;z-index:20;min-inline-size:10.5rem;max-inline-size:calc(100vw - 1rem);max-block-size:calc(100dvh - 1rem);overflow:auto;padding:6px;border:1px solid var(--skd-control-line);border-radius:10px;background:var(--dsw-alias-bg-overlay,var(--skd-bg));color:var(--skd-fg);font:inherit;box-shadow:0 8px 32px color-mix(in srgb,var(--skd-fg) 12%,transparent)}
+.skd-switchInput:checked~.skd-switch .skd-switchThumb{transform:translateX(14px)}
+.skd-switchControl:has(.skd-switchInput:focus-visible) .skd-switch{outline:2px solid var(--skd-accent);outline-offset:2px}
+
+.skd-menuWrap{position:relative;flex:none;justify-self:end}
+.skd-menu{position:fixed;inset:auto;margin:0;z-index:20;min-inline-size:10.5rem;max-inline-size:calc(100vw - 1rem);max-block-size:calc(100dvh - 1rem);overflow:auto;padding:5px;border:1px solid var(--skd-control-line);border-radius:var(--skd-radius);background:var(--skd-overlay);color:var(--skd-fg);font:inherit;box-shadow:0 10px 28px rgb(0 0 0 / .16)}
 .skd-menu[hidden]{display:none}
 .skd-menu[popover]:not(:popover-open){display:none}
 .skd-menuGroup{display:flex;flex-direction:column;gap:2px}
 .skd-page .skd-menu[data-position-fallback]{position-area:none;left:var(--skd-menu-left);top:var(--skd-menu-top);margin:0}
 @supports(position-area:block-end){.skd-menu[popover]{position-area:block-end span-inline-start;position-try-fallbacks:flip-block,flip-inline,flip-block flip-inline;margin-block:6px}}
 @supports not (position-area:block-end){.skd-menu[popover]{left:var(--skd-menu-left);top:var(--skd-menu-top)}}
-.skd-menuItem{display:flex;align-items:center;gap:8px;width:100%;min-height:36px;padding:8px 10px;border:0;border-radius:5px;background:none;color:var(--skd-fg);font:inherit;font-size:0.8125rem;line-height:1.538;text-align:left;white-space:nowrap;cursor:pointer}
+.skd-menuItem{display:flex;align-items:center;gap:8px;width:100%;min-height:34px;padding:6px 10px;border:0;border-radius:var(--skd-radius-sm);background:none;color:var(--skd-fg);font:inherit;font-size:.8125rem;line-height:1.45;text-align:start;white-space:nowrap;cursor:pointer;transition:background-color .12s var(--skd-ease)}
 .skd-menuItem:disabled{opacity:.45;cursor:default}
-.skd-menuItem[data-danger]{color:var(--dsw-alias-state-error-primary)}
-.skd-confirm{grid-column:1 / -1;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover-danger)}
-.skd-confirmText{flex:1;min-width:160px;font-size:0.8125rem;line-height:1.615}
-.skd-path{grid-column:1 / -1;display:flex;align-items:baseline;gap:10px;min-width:0;padding:12px;border-radius:6px;background:var(--skd-soft)}
-.skd-pathValue{min-width:0;color:var(--skd-muted);font-family:var(--ds-font-family-code,ui-monospace,Consolas,monospace);font-size:0.75rem;line-height:1.667;overflow-wrap:anywhere}
-.skd-empty,.skd-state{display:flex;flex-direction:column;gap:8px;align-items:center;padding:56px 24px;text-align:center;border:1px dashed var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-soft)}
-.skd-stateTitle{margin:0;font-size:1rem;font-weight:600;line-height:1.5}
-.skd-stateBody{margin:0;max-width:52ch;color:var(--skd-muted);font-size:0.8125rem;line-height:1.692;overflow-wrap:anywhere}
-.skd-stateActions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;justify-content:center}
-.skd-stateIcon{display:grid;place-items:center;width:48px;height:48px;border:1px solid var(--skd-line);border-radius:12px;margin-bottom:10px;color:var(--skd-accent);background:var(--skd-bg)}
-.skd-skeleton{display:flex;flex-direction:column;gap:10px;padding:16px 0;width:min(360px,80%)}
-.skd-skeletonRow{height:14px;border-radius:5px;background:var(--dsw-alias-bg-skeleton,var(--skd-line));animation:skd-pulse 1.4s ease-in-out infinite}
-.skd-skeletonRow:nth-child(2n){width:72%}
-@keyframes skd-pulse{0%,100%{opacity:1}50%{opacity:.5}}
-.skd-cardList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:0;padding:0}
-.skd-card{display:flex;flex-direction:column;gap:12px;min-width:0;padding:22px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);transition:border-color .15s,background-color .15s}
-.skd-cardHead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.skd-cardTitleWrap{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;flex:1}
-.skd-cardName{margin:0;font-size:0.9375rem;font-weight:600;line-height:1.6;overflow-wrap:anywhere}
-.skd-cardDesc{margin:0;color:var(--skd-muted);font-size:0.8125rem;line-height:1.692;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.skd-cardFoot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:auto;padding-top:16px;border-top:1px solid var(--skd-line)}
-.skd-metaList{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
-.skd-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-.skd-statCard{display:flex;flex-direction:column;gap:10px;padding:24px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-soft)}
-.skd-statValue{font-size:2.25rem;line-height:1.222;font-weight:600;letter-spacing:-.04em}
-.skd-statHint{color:var(--skd-muted);font-size:0.75rem;line-height:1.667}
-.skd-panelCard{margin:0;min-width:0;padding:24px;border:1px solid var(--skd-line);border-radius:var(--skd-radius)}
-.skd-cardTitleRow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:24px;flex-wrap:wrap}
-.skd-cardTitleRow .skd-micro{margin:0;font-size:0.875rem;font-weight:600;color:var(--skd-fg)}
-.skd-chart{display:flex;align-items:flex-end;gap:8px;height:200px;padding:12px 4px 0;border-bottom:1px solid var(--skd-line);background:repeating-linear-gradient(to top,transparent 0,transparent calc(25% - 1px),var(--skd-line) calc(25% - 1px),var(--skd-line) 25%)}
-.skd-chartCol{position:relative;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;flex:1;min-width:0;height:100%;outline-offset:3px}
-.skd-bar{width:100%;max-width:48px;border-radius:4px 4px 0 0;background:color-mix(in srgb,var(--skd-accent) 72%,var(--skd-bg));transition:background-color .15s}
-.skd-chartCol:hover .skd-bar,.skd-chartCol:focus-visible .skd-bar{background:var(--skd-accent)}
-.skd-chartCol:after{content:attr(data-count);position:absolute;bottom:100%;font-size:0.6875rem;color:var(--skd-muted);opacity:0}
-.skd-chartCol:hover:after,.skd-chartCol:focus-visible:after{opacity:1}
-.skd-bar[data-empty]{background:var(--skd-line)}
-.skd-slug{min-width:0;max-width:100%;color:var(--skd-muted);font-family:var(--ds-font-family-code,ui-monospace,Consolas,monospace);font-size:0.6875rem;line-height:1.636;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.skd-chartAxis{display:flex;justify-content:space-between;margin-top:10px;color:var(--skd-muted);font-size:0.6875rem;line-height:1.636}
-.skd-chartDetails{margin-top:16px;color:var(--skd-muted);font-size:0.75rem}
-.skd-chartDetails summary{cursor:pointer;min-height:32px;padding:6px 0}
-.skd-chartDetails table{width:100%;border-collapse:collapse;text-align:left}
-.skd-chartDetails td,.skd-chartDetails th{padding:6px 10px;border-bottom:1px solid var(--skd-line)}
-.skd-activity{display:flex;flex-direction:column;margin:0;padding:0}
-.skd-activityRow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid var(--skd-line)}
-.skd-activityRow:last-child{border-bottom:0}
-.skd-activityMain{display:flex;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}
-.skd-activityName{min-width:0;color:var(--skd-fg);font-size:0.8125rem;font-weight:500;line-height:1.538;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-.skd-activityTime{flex:none;color:var(--skd-muted);font-size:0.75rem;line-height:1.5}
-.skd-noteLine{margin:0;max-width:92ch;color:var(--skd-muted);font-size:0.75rem;line-height:1.75;overflow-wrap:anywhere}
-.skd-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:12px 0 0;padding:12px 16px;border:1px solid color-mix(in srgb,var(--dsw-alias-state-error-primary) 32%,transparent);border-radius:8px;background:var(--dsw-alias-interactive-bg-hover-danger);color:var(--dsw-alias-state-error-primary);font-size:0.8125rem;line-height:1.538}
-.skd-offline{display:flex;flex-direction:column;align-items:center;gap:12px;padding-block:72px;text-align:center}
-.skd-offlineTitle{margin:0;font-size:1.25rem;font-weight:600;line-height:1.4}
-.skd-offlineBody{margin:0;max-width:52ch;color:var(--skd-muted);font-size:0.875rem;line-height:1.571}
-.skd-page :focus-visible{outline:2px solid var(--skd-accent);outline-offset:3px}
-.skd-page .skd-input:focus-visible,.skd-page .skd-select:focus-visible{outline-offset:1px}
-.skd-page .skd-menuItem:focus-visible{outline-offset:-2px}
-@media (hover:hover){.skd-tab:hover,.skd-segment:not(:disabled):hover{color:var(--skd-fg)}.skd-row:hover,.skd-menuItem:not(:disabled):hover,.skd-iconButton:not(:disabled):hover,.skd-button:not(:disabled):hover{background:var(--skd-soft)}.skd-button[data-variant=primary]:not(:disabled):hover{background:color-mix(in srgb,var(--skd-accent) 88%,var(--skd-fg))}.skd-card:hover{border-color:color-mix(in srgb,var(--skd-fg) 30%,var(--skd-bg))}.skd-input:hover,.skd-select:hover{border-color:var(--skd-muted)}}
-@container dashboard (max-width:800px){.skd-wrap{padding-inline:24px}.skd-row{padding-inline:8px;gap:16px}.skd-rowRail{gap:12px}.skd-tableHeading{padding-inline:8px;gap:12px}.skd-overviewItem{padding:16px}.skd-cardList{grid-template-columns:minmax(0,1fr)}.skd-header{align-items:flex-start}.skd-headerTools .skd-button{padding-inline:10px}}
-@container dashboard (max-width:600px){.skd-wrap{padding-inline:18px}.skd-header{gap:16px;padding-top:24px;padding-bottom:20px;flex-wrap:wrap}.skd-title{font-size:1.625rem}.skd-headerTools{width:100%;justify-content:space-between}.skd-subtitle{font-size:0.8125rem}.skd-tabbar{gap:24px}.skd-content{padding-top:20px}.skd-overview{grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:24px}.skd-overviewItem:nth-child(2){border-inline-end:0}.skd-overviewItem:nth-child(-n+2){border-bottom:1px solid var(--skd-line)}.skd-overviewValue{font-size:1.5rem}.skd-sectionTitle{font-size:1.125rem}.skd-sectionHead{align-items:flex-start}.skd-tableHeading{display:none}.skd-row{grid-template-columns:minmax(0,1fr);padding:18px 0}.skd-rowRail{justify-content:space-between;width:100%}.skd-metric{width:auto;align-items:flex-start}.skd-metric .skd-micro{display:block}.skd-switchGroup{width:auto;flex:1;max-width:220px;border:0;padding:0;gap:8px}.skd-switchRow{min-height:36px}.skd-iconButton{width:44px;height:44px}.skd-input,.skd-button,.skd-select,.skd-segment{min-height:44px}.skd-select{min-width:0;width:100%}.skd-searchRow>.skd-segmented{width:100%}.skd-searchRow .skd-segment{flex:1;max-width:none}.skd-toolbar{padding:12px}.skd-stats{grid-template-columns:minmax(0,1fr);gap:12px}.skd-statCard{display:grid;grid-template-columns:1fr auto;gap:4px;padding:18px}.skd-statValue{grid-column:2;grid-row:1 / 3;font-size:1.875rem}.skd-panelCard,.skd-card{padding:18px}.skd-chart{gap:5px;height:160px}.skd-footerNote{max-width:65%}.skd-activityRow{align-items:flex-start}.skd-activityTime{font-size:0.6875rem}.skd-panel{gap:16px}.skd-menuItem{min-height:44px}}
-@container dashboard (max-width:600px){.skd-header{flex-wrap:nowrap;padding-top:20px;gap:12px}.skd-eyebrow{font-size:0.625rem;margin-bottom:6px}.skd-headerTools{width:auto;align-items:flex-start;gap:8px}.skd-headerTools .skd-buttonLabel{display:none}.skd-headerTools .skd-button{width:44px;padding:0}.skd-headerTools .skd-iconButton{width:44px;height:44px}.skd-overviewItem{flex-direction:row;align-items:center;justify-content:space-between;gap:8px;padding:12px}.skd-overviewLabel{font-size:0.6875rem}.skd-overviewValue{font-size:1.375rem;line-height:1.364}}
-@media (prefers-reduced-motion:reduce){.skd-page *,.skd-page *:before,.skd-page *:after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+.skd-menuItem[data-danger]{color:var(--skd-error)}
+.skd-confirm{grid-column:1 / -1;display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px;padding:10px 12px;border-radius:var(--skd-radius-sm);background:var(--skd-error-bg)}
+.skd-confirmText{flex:1;min-width:160px;font-size:.8125rem;line-height:1.5;color:var(--skd-fg)}
+.skd-path{grid-column:1 / -1;display:flex;align-items:baseline;gap:10px;min-width:0;margin-top:6px;padding:8px 12px;border-radius:var(--skd-radius-sm);background:var(--skd-surface)}
+.skd-pathValue{min-width:0;color:var(--skd-muted);font-family:var(--skd-mono);font-size:.75rem;line-height:1.55;overflow-wrap:anywhere}
 
-.skd-visuallyHidden{position:absolute;clip-path:inset(50%);overflow:hidden;width:1px;height:1px;margin:-1px;padding:0;border:0;white-space:nowrap}
-.skd-skipLink{position:absolute;inset-block-start:8px;inset-inline-start:8px;z-index:30;padding:.625rem 1rem;background:var(--skd-bg);color:var(--skd-fg);border:2px solid var(--skd-accent);border-radius:8px;transform:translateY(-200%)}
-.skd-skipLink:focus{transform:none}
-.skd-searchField{display:flex;flex-direction:column;gap:.375rem;flex:1;min-inline-size:min(100%,12rem)}
-.skd-fieldLabel{font-size:.75rem;color:var(--skd-muted);line-height:1.5}
-.skd-field{flex-direction:column;align-items:stretch;gap:.375rem}
-.skd-searchRow{align-items:flex-end}
-.skd-chartSummary{margin-block-end:1rem}
-.skd-rowName,.skd-cardName{overflow-wrap:anywhere;white-space:normal}
-.skd-menuItem{font-size:.8125rem;white-space:normal;overflow-wrap:anywhere}
-.skd-confirmText{min-inline-size:min(100%,12rem)}
-@container dashboard (max-width:600px){.skd-header{flex-wrap:wrap}.skd-headText{flex-basis:100%}.skd-headerTools{margin-inline-start:auto}.skd-headerTools .skd-buttonLabel{display:inline}.skd-headerTools .skd-button{width:auto;padding-inline:12px}.skd-searchRow>.skd-searchField{flex-basis:100%}.skd-searchRow>.skd-segmented{width:100%}.skd-searchRow .skd-segment{flex:1;max-width:none}.skd-switchControl{min-height:3rem}.skd-input,.skd-select,.skd-button,.skd-segment,.skd-menuItem,.skd-iconButton{min-block-size:3rem}.skd-input,.skd-select{font-size:max(1rem,1em)}.skd-overviewItem{flex-wrap:wrap}.skd-overviewLabel{overflow-wrap:anywhere}}
-@media(pointer:coarse){.skd-switchControl{min-block-size:3rem}.skd-button,.skd-select,.skd-input,.skd-iconButton,.skd-segment,.skd-menuItem{min-block-size:3rem;min-inline-size:3rem}.skd-input,.skd-select{font-size:max(1rem,1em)}}
-@media(max-height:35rem){.skd-page{display:block;overflow:auto}.skd-scroll{overflow:visible}.skd-top,.skd-footer{position:static}.skd-header{padding-block:16px}.skd-content{padding-block:20px}.skd-overview{margin-block-end:20px}}
-@media(forced-colors:active){.skd-page{--skd-bg:Canvas;--skd-fg:CanvasText;--skd-muted:CanvasText;--skd-soft:Canvas;--skd-line:ButtonText;--skd-control-line:ButtonText;--skd-accent:Highlight;--skd-accent-label:Highlight;--skd-on-accent:HighlightText}.skd-button[data-variant=primary]{background:ButtonFace;color:ButtonText;border-color:ButtonText}.skd-button[data-variant=primary] .skd-buttonLabel{color:ButtonText;background:ButtonFace}.skd-switch{border:1px solid ButtonText;background:Canvas}.skd-switchThumb{forced-color-adjust:none;background:ButtonText}.skd-switchInput:checked~.skd-switch{background:Canvas;border-color:Highlight}.skd-switchInput:checked~.skd-switch .skd-switchThumb{background:Highlight}.skd-tab[aria-selected=true]{border-block-end:2px solid Highlight}.skd-tab:after{display:none}.skd-menu{background:Canvas;color:CanvasText;box-shadow:none}.skd-switchControl:has(:disabled){color:GrayText}.skd-bar{forced-color-adjust:none;background:Highlight}.skd-bar[data-empty]{background:GrayText}.skd-statusDot{forced-color-adjust:none;background:CanvasText}}
-/* Source-owned, shadcn-style semantic layer; values are inherited from DSH. */
-.skd-page{--background:var(--skd-bg);--foreground:var(--skd-fg);--card:var(--background);--card-foreground:var(--foreground);--muted:var(--skd-soft);--muted-foreground:var(--skd-muted);--primary:var(--foreground);--primary-foreground:var(--background);--border:var(--skd-line);--input:color-mix(in srgb,var(--skd-fg) 50%,var(--skd-bg));--ring:var(--skd-accent);font-family:var(--dsw-font-family,system-ui,"Segoe UI","Microsoft YaHei",sans-serif);color-scheme:inherit}
-.skd-wrap{max-width:1680px;padding-inline:clamp(24px,2.6cqw,44px)}
-.skd-top{border-bottom:1px solid var(--border)}
-.skd-header{padding-top:20px;padding-bottom:14px;gap:16px}
-.skd-headText{display:grid;grid-template-columns:auto 1fr;align-items:center;column-gap:12px}
-.skd-pageMark{display:grid;place-items:center;grid-row:1 / 3;inline-size:34px;block-size:34px;border:1px solid var(--border);border-radius:10px;background:var(--muted);color:var(--foreground)}
-.skd-title{font-size:1.3125rem;letter-spacing:-.03em;font-weight:600;line-height:1.35}
-.skd-subtitle{font-size:.8125rem;line-height:1.5;margin-top:3px;max-width:70ch;text-wrap:pretty}
-.skd-headerTools{gap:8px}
-.skd-button{border-radius:7px;min-height:36px;font-size:.8125rem;font-weight:500;box-shadow:0 1px 2px color-mix(in srgb,var(--foreground) 4%,transparent)}
-.skd-button[data-variant=primary]{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
-.skd-button[data-variant=text]{box-shadow:none}
-.skd-button svg{pointer-events:none;flex-shrink:0}
-.skd-iconButton{border-radius:7px}
-.skd-headerTools .skd-iconButton{width:36px;height:36px;background:var(--background)}
-.skd-tabbar{gap:4px;padding:4px;background:var(--muted);width:fit-content;max-width:100%;border-radius:8px;min-height:0;margin-bottom:18px}
-.skd-tab{gap:7px;min-height:32px;padding:5px 13px;border-radius:5px;font-size:.8125rem;color:var(--muted-foreground)}
-.skd-tab:after{display:none}
-.skd-tab[aria-selected=true]{background:var(--background);color:var(--foreground);font-weight:500;box-shadow:0 1px 3px color-mix(in srgb,var(--foreground) 10%,transparent)}
-.skd-tabIcon{display:flex;align-items:center;opacity:.85}
-.skd-content{padding-top:20px}
-.skd-panel{gap:14px}
-.skd-sectionHead{align-items:baseline;gap:16px}
-.skd-sectionTitle{font-size:.9375rem;line-height:1.5;letter-spacing:-.015em;font-weight:600}
-.skd-sectionBody{font-size:.75rem;line-height:1.6;margin-top:2px;max-width:96ch}
-.skd-overview{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 28px;background:none;border:0;border-radius:0;margin:0 0 18px;padding:0 0 14px;border-bottom:1px solid var(--border);overflow:visible}
-.skd-overviewItem{flex:0 0 auto;flex-direction:row;align-items:baseline;gap:7px;padding:0;border:0}
-.skd-overviewLabel{font-size:.75rem;color:var(--muted-foreground)}
-.skd-overviewValue{font-size:1.0625rem;line-height:1.35;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.skd-toolbar{padding:16px;border-radius:10px;background:var(--background);gap:12px}
-.skd-input,.skd-select{border-color:var(--input);border-radius:8px;min-height:36px;background:var(--background);box-shadow:none;font-size:.8125rem;transition:border-color .15s,background-color .15s}
-.skd-input{padding-block:7px}
-.skd-fieldLabel,.skd-field{font-size:.75rem}
-.skd-searchRow{padding:0;border:0;background:none;gap:12px;align-items:flex-end}
-.skd-searchRow>.skd-button{min-height:36px;padding-inline:18px}
-.skd-sourceField{display:flex;flex-direction:column;gap:6px;min-width:0}
-.skd-segmented{border:0;padding:3px;background:var(--muted);border-radius:7px;gap:2px}
-.skd-segment{min-height:30px;padding:4px 12px;border-radius:4px;font-size:.75rem}
-.skd-segment[data-active]{border-color:transparent;box-shadow:0 1px 3px color-mix(in srgb,var(--foreground) 10%,transparent);font-weight:500}
-.skd-resultLine{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding-block:0;color:var(--muted-foreground);font-size:.75rem;flex:none;min-height:0}
-.skd-cardList{gap:18px}
-.skd-card{border-radius:11px;padding:20px;gap:13px;background:var(--card);color:var(--card-foreground);box-shadow:0 1px 2px color-mix(in srgb,var(--foreground) 3%,transparent)}
-.skd-cardHead{gap:10px;align-items:flex-start;flex-wrap:nowrap}
-.skd-cardIdentity{display:flex;gap:12px;align-items:center;min-width:0;flex:1}
-.skd-skillMark{display:grid;place-items:center;flex:none;inline-size:36px;block-size:36px;border:1px solid var(--border);border-radius:8px;background:var(--muted);color:var(--muted-foreground)}
-.skd-cardTitleWrap{display:block;min-width:0}
-.skd-cardName{font-size:.875rem;line-height:1.6;font-weight:600;letter-spacing:-.015em;margin:0}
-.skd-cardName .skd-nameButton{display:-webkit-box;max-inline-size:100%;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:clip}
-.skd-cardVersion{flex:none;padding-top:3px;color:var(--muted-foreground);font-size:.6875rem}
-.skd-cardDesc{font-size:.8125rem;line-height:1.8;-webkit-line-clamp:3;line-clamp:3;color:var(--muted-foreground)}
-.skd-cardFoot{padding-top:13px;gap:12px;border-top:1px solid var(--border)}
-.skd-cardFoot .skd-button{min-height:32px;font-size:.75rem;padding:5px 11px}
-.skd-cardFoot .skd-metaList{gap:4px}
-.skd-cardDownloads{font-size:.6875rem;color:var(--muted-foreground)}
-.skd-slug{font-family:inherit;font-size:.6875rem;opacity:.9}
-.skd-badge{min-height:18px;padding:1px 7px;border-radius:999px;background:var(--muted);color:var(--muted-foreground);font-size:.6875rem;line-height:1.6;letter-spacing:.01em}
-.skd-badge[data-tone=accent]{background:color-mix(in srgb,var(--skd-accent) 12%,var(--background));color:var(--skd-accent-label)}
-.skd-badge[data-tone=muted]{background:none}
-.skd-rowDesc{font-size:.8125rem;line-height:1.75}
-.skd-statCard{background:var(--background);padding:20px;gap:6px;border-radius:10px;box-shadow:0 1px 2px color-mix(in srgb,var(--foreground) 3%,transparent)}
-.skd-statValue{font-size:1.875rem;line-height:1.4;font-weight:550}
-.skd-panelCard{border-radius:10px;padding:20px;background:var(--background)}
-.skd-footerInner{min-height:34px;font-size:.6875rem}
-.skd-statusDot{width:5px;height:5px}
-.skd-empty,.skd-state{border:1px dashed var(--border);background:none;padding-block:48px}
-/* One flat control bar, not a tinted form slab: the border does the grouping. */
-.skd-filterBar{display:grid;grid-template-columns:minmax(12rem,1fr) auto auto auto;align-items:end;gap:10px 12px;padding:0 0 14px;border:0;border-bottom:1px solid var(--border);border-radius:0;background:none}
-.skd-filterBar>.skd-field>.skd-select{inline-size:100%;min-inline-size:8.5rem;max-inline-size:16rem}
-/* Customisable select: base-select paints the trigger and its top-layer picker in host tokens. */
-@supports (appearance:base-select){
-.skd-select,.skd-select::picker(select){appearance:base-select}
-.skd-select{display:inline-flex;align-items:center;justify-content:space-between;gap:8px;min-block-size:36px;padding:7px 10px 7px 12px;border:1px solid var(--input);border-radius:8px;background:var(--background);color:var(--foreground);font-size:.8125rem;line-height:1.45;white-space:nowrap;overflow:hidden;cursor:pointer;box-shadow:0 1px 1.5px color-mix(in srgb,var(--foreground) 4%,transparent)}
-.skd-select::picker-icon{flex:none;margin-inline-start:4px;color:var(--muted-foreground);font-size:.625rem;transition:transform .18s cubic-bezier(.2,.8,.2,1)}
-.skd-select:open::picker-icon{transform:rotate(180deg)}
-.skd-select:hover{border-color:color-mix(in srgb,var(--foreground) 62%,var(--background));background:color-mix(in srgb,var(--foreground) 3%,var(--background))}
-.skd-select:open{border-color:var(--ring);background:var(--background)}
-.skd-page .skd-select:focus-visible{outline:2px solid var(--ring);outline-offset:1px;border-color:var(--ring)}
-.skd-select::picker(select){margin-block-start:6px;padding:4px;border:1px solid var(--border);border-radius:12px;background:var(--dsw-alias-bg-overlay,var(--background));color:var(--foreground);box-shadow:0 16px 40px -.75rem color-mix(in srgb,var(--foreground) 22%,transparent);min-inline-size:anchor-size(width);max-inline-size:min(30rem,calc(100vw - 2rem));max-block-size:min(20rem,48dvh);overflow:auto;overscroll-behavior:contain;opacity:0;translate:0 -4px;transition:opacity .16s ease,translate .16s ease,display .16s allow-discrete,overlay .16s allow-discrete}
-.skd-select:open::picker(select){opacity:1;translate:0}
-.skd-select option{padding:7px 10px;border-radius:7px;font-size:.8125rem;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.skd-select option:hover,.skd-select option:focus{background:color-mix(in srgb,var(--foreground) 7%,var(--background))}
-.skd-select option:checked{font-weight:600;background:color-mix(in srgb,var(--foreground) 6%,var(--background))}
-.skd-select option::checkmark{color:var(--foreground)}
-@media(prefers-reduced-motion:reduce){.skd-select::picker(select),.skd-select::picker-icon{transition:none}}
-}
-@starting-style{.skd-select:open::picker(select){opacity:0;translate:0 -4px}}
-@media(forced-colors:active){.skd-select{border-color:ButtonText}.skd-select::picker(select){border-color:CanvasText;background:Canvas;color:CanvasText;box-shadow:none}.skd-select option:checked{forced-color-adjust:none;background:Highlight;color:HighlightText;font-weight:700}}
-@media(hover:hover){.skd-button[data-variant=primary]:not(:disabled):hover{background:color-mix(in srgb,var(--primary) 90%,var(--background))}.skd-card:hover{border-color:color-mix(in srgb,var(--foreground) 25%,var(--background));box-shadow:0 3px 12px color-mix(in srgb,var(--foreground) 5%,transparent)}.skd-tab:hover{color:var(--foreground)}.skd-row:hover{background:color-mix(in srgb,var(--foreground) 3.5%,var(--card))}.skd-list>li:hover .skd-rowName{color:var(--foreground)}}
-@container dashboard (min-width:1200px){.skd-cardList{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@container dashboard (max-width:800px){.skd-wrap{padding-inline:22px}.skd-cardList{grid-template-columns:repeat(2,minmax(0,1fr))}.skd-card{padding:17px}.skd-row{padding-inline:8px;column-gap:12px}.skd-filterBar{grid-template-columns:repeat(3,minmax(0,1fr))}.skd-searchField{grid-column:1 / -1}.skd-filterBar>.skd-field>.skd-select{max-inline-size:none}.skd-overview{gap:18px}}
-@container dashboard (max-width:600px){.skd-wrap{padding-inline:18px}.skd-header{padding-block:20px;gap:16px}.skd-headText{flex-basis:100%;column-gap:12px}.skd-title{font-size:1.25rem}.skd-pageMark{inline-size:38px;block-size:38px}.skd-headerTools{margin-inline-start:0;width:100%;justify-content:flex-end}.skd-headerTools .skd-button{width:auto}.skd-headerTools .skd-iconButton{width:44px;height:44px}.skd-tabbar{margin-bottom:16px;width:100%}.skd-tab{flex:1;justify-content:center;min-height:40px;padding-inline:7px}.skd-overview{gap:20px 24px;padding-bottom:20px}.skd-overviewItem{flex-direction:column;align-items:flex-start;gap:6px;padding:0;border:0!important}.skd-overviewLabel{font-size:.75rem}.skd-overviewValue{font-size:1.5rem}.skd-cardList{grid-template-columns:minmax(0,1fr)}.skd-sourceField{width:100%}.skd-sourceField .skd-segmented{display:flex;width:100%}.skd-segment{flex:1;min-height:42px}.skd-searchRow>.skd-searchField{flex-basis:calc(100% - 84px);min-inline-size:0}.skd-searchRow>.skd-button{min-height:48px;padding-inline:15px}.skd-cardFoot .skd-button{min-height:44px}.skd-input,.skd-select{font-size:1rem;min-height:48px}.skd-filterBar{grid-template-columns:minmax(0,1fr)}.skd-filterBar>.skd-field>.skd-select{min-inline-size:0;max-inline-size:none}.skd-rowRail{display:flex;grid-column:auto;align-items:flex-start;gap:14px}.skd-metric{flex-direction:column;align-items:flex-start;gap:0;min-inline-size:3rem;padding-inline-end:14px;border-inline-end:1px solid var(--border)}.skd-metric .skd-micro{display:block}.skd-metricValue{font-size:1rem}.skd-switchGroup{flex:1;max-width:none;gap:6px}.skd-switchControl{grid-template-columns:1fr auto}.skd-cardDesc{min-height:0}.skd-tableHeading{display:none}.skd-toolbar{padding:14px}.skd-row{padding-block:18px}.skd-switchControl{min-height:44px}.skd-footerInner{min-height:38px}}
-@media(forced-colors:active){.skd-page{--primary:ButtonText;--primary-foreground:ButtonFace}.skd-tab[aria-selected=true]{border:1px solid Highlight}.skd-card,.skd-input,.skd-select{box-shadow:none}.skd-button[data-variant=primary]{background:ButtonFace;color:ButtonText}.skd-tabIcon{opacity:1}}
-.skd-nameButton{display:inline;padding:0;border:0;background:none;color:inherit;font:inherit;font-weight:600;text-align:start;cursor:pointer;text-decoration:none;border-radius:3px}
-.skd-nameButton:hover{color:var(--skd-accent-label);text-decoration:underline;text-underline-offset:3px}
-.skd-cardName .skd-nameButton{color:var(--skd-accent-label);text-decoration:underline;text-decoration-color:var(--skd-control-line);text-underline-offset:.2em;overflow-wrap:anywhere}
-.skd-previewDialog{box-sizing:border-box;inline-size:min(1120px,calc(100vw - 48px));block-size:min(800px,calc(100dvh - 48px));max-inline-size:none;max-block-size:none;padding:0;border:1px solid var(--dsw-alias-border-l2,#d5d7dc);border-radius:14px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#20252d);box-shadow:0 24px 90px #0004;overflow:auto;font:inherit}
-.skd-previewDialog:modal{overscroll-behavior:contain}
-.skd-previewDialog::backdrop{background:#10141c66;backdrop-filter:blur(3px);overflow:hidden;overscroll-behavior:contain}
-.skd-previewRoot{height:100%;min-height:0;overflow:hidden;display:flex!important}
-.skd-previewHeader{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;padding:22px 24px;border-bottom:1px solid var(--skd-line);flex:none}
-.skd-previewIdentity{min-width:0;max-width:90%}
-.skd-previewEyebrow{font-size:.6875rem;color:var(--skd-muted)}
-.skd-previewTitle{margin:3px 0 6px;font-size:1.25rem;line-height:1.4;letter-spacing:-.025em;font-weight:600;overflow-wrap:anywhere}
-.skd-previewDescription{margin:0 0 10px;color:var(--skd-muted);font-size:.8125rem;line-height:1.6;max-width:85ch;max-height:4.8em;overflow:auto}
-.skd-previewHeader form{flex:none;margin:0}
-.skd-previewHeader .skd-iconButton{border:1px solid var(--skd-control-line);width:34px;height:34px}
-.skd-previewLayout{display:grid;grid-template-columns:minmax(200px,260px) minmax(0,1fr);flex:1;min-height:0;min-width:0}
-.skd-previewFiles{display:flex;flex-direction:column;min-height:0;min-width:0;border-right:1px solid var(--skd-line);background:var(--skd-soft)}
-.skd-previewFilesHead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:15px 16px 10px;flex:none}
-.skd-previewFilesHead h3{margin:0;font-size:.75rem;line-height:1.5;font-weight:600}
-.skd-fileList{list-style:none;margin:0;padding:0 8px 12px;overflow:auto;overscroll-behavior:contain;min-height:0}
-.skd-fileButton{display:flex;align-items:flex-start;gap:8px;width:100%;min-height:36px;padding:9px 10px;border:1px solid transparent;border-radius:6px;background:none;color:var(--skd-muted);font:inherit;font-size:.75rem;line-height:1.6;text-align:start;cursor:pointer}
-.skd-fileButton svg{flex:none;margin-top:2px}
-.skd-fileButton>span:not(.skd-fileKind){min-width:0;overflow-wrap:anywhere}
-.skd-fileButton:hover{background:var(--skd-bg);color:var(--skd-fg)}
-.skd-fileButton[aria-pressed=true]{background:var(--skd-bg);color:var(--skd-fg);border-color:var(--skd-line);font-weight:500;box-shadow:0 1px 2px #00000008}
-.skd-fileKind{flex:none;margin-left:auto;font-size:.625rem;color:var(--skd-muted)}
-.skd-previewViewer{display:flex;flex-direction:column;min-width:0;min-height:0}
-.skd-previewViewerHead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;min-height:54px;padding:10px 20px;border-bottom:1px solid var(--skd-line);flex:none}
-.skd-previewFilename{font-size:.75rem;font-family:var(--ds-font-family-code,ui-monospace,monospace);color:var(--skd-muted);min-width:0;overflow-wrap:anywhere}
-.skd-previewViewerHead .skd-segmented{margin-left:auto}
-.skd-previewViewerHead .skd-segment{min-height:26px;padding:2px 10px;font-size:.6875rem}
-.skd-previewContent{min-height:0;overflow:auto;overscroll-behavior:contain;padding:24px;flex:1}
-.skd-prose{max-width:78ch;margin:0 auto;font-size:.875rem;line-height:1.85;overflow-wrap:anywhere}
-.skd-prose h3,.skd-prose h4,.skd-prose h5,.skd-prose h6{margin:1.3em 0 .6em;font-size:1em;line-height:1.5;font-weight:600;color:var(--skd-fg)}
-.skd-prose h3{font-size:1.25rem;letter-spacing:-.025em}
-.skd-prose h4{font-size:1rem}
-.skd-prose>:first-child{margin-top:0}
-.skd-prose p{margin:.8em 0}
-.skd-prose ul{padding-left:1.5em;margin:.8em 0}
-.skd-prose li{margin:.35em 0}
-.skd-prose code{font-family:var(--ds-font-family-code,ui-monospace,monospace);font-size:.85em;background:var(--skd-soft);padding:.15em .3em;border-radius:4px;box-decoration-break:clone}
-.skd-prose pre{margin:1em 0;max-width:100%;padding:14px;border:1px solid var(--skd-line);border-radius:7px;background:var(--skd-soft);white-space:pre;overflow:auto;overscroll-behavior:contain}
-.skd-prose pre code{padding:0;background:none}
-.skd-fileCode{margin:0;max-width:100%;overflow:auto;white-space:pre;font: .75rem/1.8 var(--ds-font-family-code,ui-monospace,monospace);tab-size:2;overscroll-behavior:contain}
-.skd-previewMessage{display:flex;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:28px;color:var(--skd-muted);font-size:.8125rem;text-align:center;line-height:1.75;overflow:auto}
-.skd-previewNotice{margin:0 0 16px;padding:10px 12px;border:1px solid var(--skd-line);border-radius:7px;background:var(--skd-soft);font-size:.75rem;line-height:1.6;color:var(--skd-muted)}
-.skd-previewFiles .skd-previewNotice{margin:10px;font-size:.6875rem;flex:none}
-.skd-previewFooter{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;flex:none;padding:10px 20px;border-top:1px solid var(--skd-line);font-size:.6875rem;color:var(--skd-muted);line-height:1.5}
-.skd-previewFooter>span:first-child{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@media(max-width:700px){.skd-previewDialog{inline-size:calc(100vw - 16px);block-size:calc(100dvh - 16px);border-radius:10px}.skd-previewHeader{padding:16px;gap:12px}.skd-previewTitle{font-size:1.125rem}.skd-previewDescription{max-height:3.2em}.skd-previewLayout{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(100px,24%) minmax(0,1fr)}.skd-previewFiles{border-right:0;border-bottom:1px solid var(--skd-line)}.skd-previewFilesHead{padding:8px 14px}.skd-fileList{padding-bottom:8px}.skd-fileButton{min-height:44px;padding-block:10px}.skd-previewViewerHead{padding:8px 14px;min-height:48px}.skd-previewContent{padding:18px}.skd-previewHeader .skd-iconButton{min-width:44px;min-height:44px}.skd-previewFooter{padding:8px 14px}.skd-previewViewerHead .skd-segment{min-height:44px}}
-@media(max-height:480px){.skd-previewDialog{block-size:calc(100dvh - 16px)}.skd-previewHeader{padding-block:12px}.skd-previewDescription,.skd-previewFooter{display:none}}
-@media(forced-colors:active){.skd-previewDialog{border-color:CanvasText;box-shadow:none}.skd-previewDialog::backdrop{backdrop-filter:none}.skd-fileButton[aria-pressed=true]{outline:1px solid Highlight}.skd-nameButton{text-decoration:underline}}
-.skd-previewDialog{inline-size:min(1440px,94vw);block-size:92dvh;min-inline-size:min(680px,calc(100vw - 24px));min-block-size:min(420px,calc(100dvh - 24px));max-inline-size:calc(100vw - 24px);max-block-size:calc(100dvh - 24px);resize:both}
-.skd-previewDialog[data-maximized]{inline-size:calc(100vw - 16px);block-size:calc(100dvh - 16px);max-inline-size:calc(100vw - 16px);max-block-size:calc(100dvh - 16px);resize:none;border-radius:8px}
-.skd-windowTools{display:flex;align-items:center;gap:6px;flex:none}
-.skd-previewHeader .skd-previewIdentity{max-width:none;flex:1}
-.skd-previewHeader .skd-windowTools form{margin:0}
-.skd-previewFooter{padding-inline-end:28px}
-.skd-fileList .skd-treeChildren{padding:0 0 0 16px;margin:0 0 0 12px;border-left:1px solid var(--skd-line);list-style:none}
-.skd-folderLabel{display:flex;align-items:center;gap:7px;min-height:36px;padding:7px 8px;border-radius:5px;color:var(--skd-fg);font-size:.75rem;line-height:1.6;cursor:pointer;list-style:none}
-.skd-folderLabel::-webkit-details-marker{display:none}
-.skd-folderLabel>span{overflow-wrap:anywhere;min-width:0}
-.skd-folderLabel svg{flex:none}
-.skd-folderLabel>svg:first-child{transform:rotate(-90deg)}
-.skd-folder[open]>.skd-folderLabel>svg:first-child{transform:rotate(0)}
-.skd-folderLabel:hover{background:var(--skd-bg)}
-.skd-treeChildren .skd-fileButton{padding-inline:8px}
-@media(max-width:700px){.skd-previewDialog{inline-size:calc(100vw - 16px);block-size:calc(100dvh - 16px);max-inline-size:calc(100vw - 16px);max-block-size:calc(100dvh - 16px);min-inline-size:0;resize:none}.skd-windowTools{gap:4px}.skd-windowTools .skd-sizeStep{display:none}.skd-previewHeader .skd-iconButton{min-width:36px;min-height:44px;width:36px}.skd-folderLabel{min-height:44px}.skd-previewHeader{padding:14px;gap:8px}.skd-previewDescription{font-size:.75rem}.skd-previewTitle{font-size:1rem}}
-@media(forced-colors:active){.skd-treeChildren{border-color:CanvasText}.skd-folderLabel:hover{outline:1px solid Highlight}}
-.skd-top{background:color-mix(in srgb,var(--skd-soft) 50%,var(--skd-bg))}
-.skd-header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
-.skd-headText{min-inline-size:0}
-.skd-title{overflow-wrap:anywhere}
-.skd-headerTools{width:auto}
-.skd-sectionHead{flex-wrap:wrap;gap:.5rem 1rem}
-.skd-sectionTitle{font-size:1.125rem}
-.skd-sectionBody{font-size:.8125rem}
-.skd-tab[aria-selected=true]{font-weight:650}
-.skd-tab[aria-selected=true] .skd-tabIcon{color:var(--skd-accent-label)}
-.skd-libraryResults,.skd-discoverResults{justify-content:space-between;flex-wrap:wrap;overflow-wrap:anywhere;min-block-size:1.5rem}
-.skd-libraryResults .skd-button[data-variant=text]{color:var(--skd-accent-label);margin-inline-start:auto}
-.skd-searchBox{min-inline-size:0}
-.skd-searchBox>svg{left:auto;inset-inline-start:.75rem}
-.skd-searchBox .skd-input{padding-left:.75rem;padding-inline-start:2.375rem}
-.skd-previewFilesToggle{display:none}
-@container dashboard (max-width:600px){
-  .skd-header{padding-block:.75rem;gap:.75rem}
-  .skd-headerTools{width:auto}
-  .skd-pageMark{inline-size:2rem;block-size:2rem}
-  .skd-subtitle{display:none}
-  .skd-tabbar{margin-block-end:.75rem}
-  .skd-tab{min-block-size:2.75rem;min-inline-size:0;white-space:normal;overflow-wrap:anywhere;text-align:center}
-  .skd-content{padding-block-start:1rem}
-  .skd-filterBar{grid-template-columns:repeat(auto-fit,minmax(min(100%,7.5rem),1fr));padding-inline:0}
-  .skd-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem 1rem;margin-block-end:1rem;padding-block-end:.75rem}
-  .skd-overviewItem{flex-direction:row;align-items:baseline;justify-content:space-between;gap:.25rem .5rem}
-  .skd-overviewValue{font-size:1rem}
-  .skd-searchRow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.75rem}
-  .skd-searchRow>.skd-sourceField{grid-column:1 / -1}
-  .skd-searchRow>.skd-searchField{grid-column:1}
-}
-@media(max-width:700px){
-  .skd-previewLayout{grid-template-rows:auto minmax(0,1fr)}
-  .skd-previewLayout[data-files-expanded]{grid-template-rows:auto auto minmax(0,1fr)}
-  .skd-previewLayout:not([data-files-expanded]) .skd-previewFiles{display:none}
-  .skd-previewFiles{max-block-size:min(38dvh,18rem);overflow:auto}
-  .skd-previewFiles .skd-fileList{overflow:visible}
-  .skd-previewFilesHead{display:none}
-  .skd-previewFilesToggle{display:flex;align-items:center;justify-content:flex-start;border-width:0 0 1px;border-color:var(--skd-line);border-radius:0;padding-inline:.875rem;min-block-size:2.75rem}
-  .skd-previewFilesToggle .skd-micro{margin-inline-start:auto}
-  .skd-previewFilesToggle:focus-visible{outline-offset:-3px}
-  .skd-previewHeader .skd-iconButton{inline-size:2.75rem;min-inline-size:2.75rem}
-}
+.skd-empty,.skd-state{display:flex;flex-direction:column;gap:8px;align-items:center;padding:44px 24px;text-align:center;border:1px dashed var(--skd-control-line);border-radius:var(--skd-radius);background:var(--skd-surface)}
+.skd-stateTitle{margin:0;font-size:.9375rem;font-weight:600;line-height:1.45}
+.skd-stateBody{margin:0;max-width:52ch;color:var(--skd-muted);font-size:.8125rem;line-height:1.55;overflow-wrap:anywhere}
+.skd-stateActions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;justify-content:center}
+.skd-stateIcon{display:grid;place-items:center;width:44px;height:44px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);margin-bottom:4px;color:var(--skd-accent);background:var(--skd-bg)}
+.skd-offline{display:flex;flex-direction:column;align-items:center;gap:10px;padding-block:72px;text-align:center}
+.skd-offlineTitle{margin:0;font-size:1.125rem;font-weight:600;line-height:1.4}
+.skd-offlineBody{margin:0;max-width:48ch;color:var(--skd-muted);font-size:.875rem;line-height:1.55}
+
+@keyframes skd-skeleton-pulse{0%,100%{opacity:1}50%{opacity:.55}}
+@keyframes skd-indeterminate{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
+.skd-skelBlock{display:block;border-radius:var(--skd-radius-sm);background:var(--skd-skeleton);animation:skd-skeleton-pulse 2s cubic-bezier(.36,0,.64,1) infinite}
+.skd-skelFilterBar{display:grid;grid-template-columns:minmax(14rem,1fr) 9rem 9rem 9rem;gap:12px;padding:0 0 14px;border-bottom:1px solid var(--skd-line)}
+.skd-skelInput{height:36px;border-radius:var(--skd-radius-sm)}
+.skd-skelRow{display:grid;grid-template-columns:minmax(0,1fr) 3.75rem 10.5rem 2.25rem;gap:6px 18px;align-items:center;padding:13px 16px;border-bottom:1px solid var(--skd-line)}
+.skd-skelRow:last-child{border-bottom:0}
+.skd-skelRowMain{display:flex;flex-direction:column;gap:8px;min-width:0}
+.skd-skelSwitches{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.skd-skelCard{display:flex;flex-direction:column;gap:12px;padding:18px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-bg)}
+.skd-skelCardHead{display:flex;align-items:center;gap:10px}
+.skd-skelCardFoot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:auto;padding-top:12px;border-top:1px solid var(--skd-line)}
+.skd-previewProgress{position:relative;height:2px;width:100%;overflow:hidden;background:var(--skd-line);flex:none}
+.skd-previewProgress::after{content:"";position:absolute;inset:0 auto 0 0;width:35%;background:var(--skd-accent);animation:skd-indeterminate 1.2s var(--skd-ease) infinite}
+.skd-previewSkelTree{display:flex;flex-direction:column;gap:10px;padding:8px 14px 16px}
+.skd-previewSkelDoc{display:flex;flex-direction:column;gap:12px;max-width:72ch;margin:0 auto;padding:24px 28px;width:100%}
+
+.skd-searchRow{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;padding:14px;background:var(--skd-surface);border:1px solid var(--skd-line);border-radius:var(--skd-radius)}
+.skd-sourceField{display:flex;flex-direction:column;flex:none}
+.skd-searchRow>.skd-button{min-height:36px}
+.skd-cardList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:0;padding:0}
+.skd-card{position:relative;display:flex;flex-direction:column;gap:10px;min-width:0;padding:18px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-bg);transition:border-color .15s var(--skd-ease),background-color .15s var(--skd-ease)}
+.skd-cardHead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.skd-cardIdentity{display:flex;gap:10px;align-items:center;min-width:0;flex:1}
+.skd-skillMark{display:grid;place-items:center;flex:none;inline-size:34px;block-size:34px;border:1px solid var(--skd-line);border-radius:8px;background:var(--skd-surface);color:var(--skd-muted)}
+.skd-cardTitleWrap{display:block;min-width:0;flex:1}
+.skd-cardName{margin:0;font-size:.875rem;line-height:1.45;font-weight:600;overflow-wrap:anywhere}
+.skd-cardName .skd-nameButton{display:-webkit-box;max-inline-size:100%;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:clip;color:var(--skd-fg)}
+.skd-cardName .skd-nameButton::after{content:"";position:absolute;inset:0;border-radius:inherit}
+.skd-card:has(.skd-nameButton:focus-visible){outline:2px solid var(--skd-accent);outline-offset:2px}
+.skd-cardVersion{flex:none;padding-top:2px;color:var(--skd-subtle);font-size:.6875rem}
+.skd-cardDesc{margin:0;color:var(--skd-muted);font-size:.8125rem;line-height:1.6;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.skd-cardFoot{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:auto;padding-top:12px;border-top:1px solid var(--skd-line)}
+.skd-card .skd-noteLine{position:relative;z-index:1}
+.skd-cardFoot .skd-button{min-height:30px;padding:4px 11px;font-size:.75rem}
+.skd-metaList{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.skd-slug{min-width:0;max-width:100%;color:var(--skd-muted);font-size:.6875rem;line-height:1.45;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skd-cardDownloads{font-size:.6875rem;color:var(--skd-subtle)}
+
 .skd-periodControls{display:flex;flex-direction:row;flex-wrap:wrap;align-items:flex-end;justify-content:flex-start;gap:12px}
-.skd-periodField{display:flex;flex-direction:column;align-items:stretch;gap:6px;min-inline-size:0;font-size:.8125rem;color:var(--skd-muted)}
+.skd-periodField{display:flex;flex-direction:column;align-items:stretch;gap:4px;min-inline-size:0;font-size:.75rem;color:var(--skd-muted)}
 .skd-periodField .skd-input,.skd-periodField .skd-select{min-inline-size:0;max-inline-size:100%;color:var(--skd-fg)}
-.skd-periodRange{flex:1 1 16rem;margin:0 0 8px;text-align:end}
+.skd-periodRange{flex:1 1 14rem;margin:0 0 6px;text-align:end}
 .skd-periodValidation{flex-basis:100%}
 .skd-periodValidation:empty{position:absolute;inline-size:1px;block-size:1px;clip-path:inset(50%)}
-.skd-usagePanel .skd-statValue{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.skd-usagePanel .skd-panelCard>h3{margin:0 0 12px;color:var(--skd-fg);font-size:.875rem;font-weight:600}
+.skd-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.skd-statCard{display:flex;flex-direction:column;gap:4px;padding:16px 18px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-surface)}
+.skd-statValue{font-size:1.625rem;line-height:1.25;font-weight:600;letter-spacing:-.025em;overflow-wrap:anywhere}
+.skd-statHint{color:var(--skd-muted);font-size:.75rem;line-height:1.5}
+.skd-panelCard{margin:0;min-width:0;padding:18px 20px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-bg)}
+.skd-usagePanel .skd-panelCard>h3{margin:0 0 10px;color:var(--skd-fg);font-size:.875rem;font-weight:600}
 .skd-usagePanel .skd-panelCard>.skd-periodField{margin-block-end:6px}
-.skd-usagePanel .skd-activityName{white-space:normal;overflow-wrap:anywhere}
+.skd-cardTitleRow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.skd-cardTitleRow .skd-micro{margin:0;font-size:.875rem;font-weight:600;color:var(--skd-fg)}
 .skd-cardTitleRow>.skd-periodField{max-inline-size:min(100%,18rem)}
-.skd-periodTrendTitle{scroll-margin-block-start:16px;border-radius:3px;overflow-wrap:anywhere}
-.skd-periodTrendTitle:focus,.skd-periodTableScroll:focus-visible{outline:2px solid var(--skd-accent);outline-offset:3px}
-.skd-periodChart{gap:clamp(2px,.5vw,8px)}
-.skd-periodTableScroll{max-inline-size:100%;overflow:auto;overscroll-behavior-inline:contain;border:1px solid var(--skd-line);border-radius:8px;margin-block-start:12px;max-block-size:32rem;scroll-padding-block-start:3.5rem}
+.skd-periodTrendTitle{scroll-margin-block-start:16px;border-radius:4px;overflow-wrap:anywhere}
+.skd-chartSummary{margin-bottom:8px}
+.skd-chart{display:flex;align-items:flex-end;gap:clamp(2px,.5vw,8px);height:180px;padding:12px 4px 0;border-bottom:1px solid var(--skd-line);background:repeating-linear-gradient(to top,transparent 0,transparent calc(25% - 1px),var(--skd-line) calc(25% - 1px),var(--skd-line) 25%)}
+.skd-chartCol{position:relative;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;flex:1;min-width:0;height:100%}
+.skd-bar{width:100%;max-width:44px;border-radius:3px 3px 0 0;background:color-mix(in srgb,var(--skd-accent) 78%,var(--skd-bg));transition:background-color .15s var(--skd-ease)}
+.skd-bar[data-empty]{background:var(--skd-line)}
+.skd-chartCol::after{content:attr(data-count);position:absolute;bottom:100%;font-size:.6875rem;color:var(--skd-muted);opacity:0;pointer-events:none}
+.skd-chartAxis{display:flex;justify-content:space-between;margin-top:8px;color:var(--skd-subtle);font-size:.6875rem;line-height:1.5}
+.skd-chartDetails{margin-top:12px;color:var(--skd-muted);font-size:.75rem}
+.skd-chartDetails summary{cursor:pointer;min-height:30px;padding:4px 0;font-weight:500}
+.skd-chartDetails table{width:100%;border-collapse:collapse;text-align:start}
+.skd-chartDetails td,.skd-chartDetails th{padding:6px 10px;border-bottom:1px solid var(--skd-line)}
+.skd-periodTableScroll{max-inline-size:100%;overflow:auto;overscroll-behavior-inline:contain;border:1px solid var(--skd-line);border-radius:var(--skd-radius-sm);margin-block-start:10px;max-block-size:28rem;scroll-padding-block-start:3.25rem}
 .skd-periodTable{--skd-cell-padding:12px;inline-size:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-size:.8125rem;line-height:1.45;text-align:start}
-.skd-periodTable caption{padding:12px;text-align:start;color:var(--skd-muted);font-size:.75rem;overflow-wrap:anywhere}
-.skd-periodTable th,.skd-periodTable td{padding:8px var(--skd-cell-padding);border-block-end:1px solid var(--skd-line);text-align:start;font-weight:400;overflow-wrap:anywhere}
-.skd-periodTable thead th{position:sticky;inset-block-start:0;z-index:2;background:var(--skd-soft);font-weight:600;padding:0}
-.skd-periodTable thead th:first-child{inline-size:50%}
-.skd-periodTable th:not(:first-child),.skd-periodTable td{text-align:end;font-variant-numeric:tabular-nums}
+.skd-periodTable caption{padding:10px 12px;text-align:start;color:var(--skd-muted);font-size:.75rem;overflow-wrap:anywhere}
+.skd-periodTable th,.skd-periodTable td{padding:7px var(--skd-cell-padding);border-block-end:1px solid var(--skd-line);text-align:start;font-weight:400;overflow-wrap:anywhere}
+.skd-periodTable thead th{position:sticky;inset-block-start:0;z-index:2;background:var(--skd-surface);font-weight:600;padding:0}
+.skd-periodTable thead th:first-child{inline-size:52%}
+.skd-periodTable th:not(:first-child),.skd-periodTable td{text-align:end}
 .skd-periodTable td[colspan]{text-align:start}
-.skd-periodSort{display:flex;justify-content:flex-end;align-items:center;gap:8px;inline-size:100%;min-block-size:44px;padding:8px var(--skd-cell-padding);border:0;background:transparent;color:inherit;font:inherit;font-weight:600;text-align:inherit;cursor:pointer}
+.skd-periodSort{display:flex;justify-content:flex-end;align-items:center;gap:6px;inline-size:100%;min-block-size:38px;padding:6px var(--skd-cell-padding);border:0;background:transparent;color:inherit;font:inherit;font-weight:600;text-align:inherit;cursor:pointer}
 .skd-periodTable th:first-child .skd-periodSort{justify-content:space-between}
 .skd-periodSort>span:first-child{min-inline-size:0;overflow-wrap:anywhere}
 .skd-periodSort>span:last-child{flex:none}
-.skd-periodSort:hover{background:var(--skd-bg)}
-.skd-periodSkill{display:block;max-inline-size:100%;border:0;background:transparent;color:var(--skd-accent-label,var(--skd-accent));font:inherit;font-weight:500;text-align:start;cursor:pointer;padding:4px;min-block-size:32px;overflow-wrap:anywhere}
-.skd-periodSkill:hover,.skd-periodSkill[aria-pressed=true]{text-decoration:underline;text-underline-offset:4px}
-.skd-periodSkill+.skd-badge{max-inline-size:100%;margin:3px 0 0 4px;white-space:normal;overflow-wrap:anywhere}
-.skd-periodSkill:focus-visible,.skd-periodSort:focus-visible{outline:2px solid var(--skd-accent);outline-offset:-2px;border-radius:4px}
+.skd-periodSkill{display:inline-block;max-inline-size:100%;border:0;background:transparent;color:var(--skd-accent);font:inherit;font-weight:500;text-align:start;cursor:pointer;padding:3px 2px;min-block-size:28px;overflow-wrap:anywhere}
+.skd-periodSkill[aria-pressed=true]{text-decoration:underline;text-underline-offset:3px}
+.skd-periodSkill+.skd-badge{margin-inline-start:6px}
 .skd-periodTable tbody tr:last-child>*{border-block-end:0}
-@container dashboard (max-width:600px){
-  .skd-periodControls>.skd-periodField{flex:1 1 8rem}
-  .skd-periodControls>.skd-periodField:first-child,.skd-periodRange{flex-basis:100%}
-  .skd-periodRange{text-align:start;margin:0}
-  .skd-periodControls .skd-input,.skd-periodControls .skd-select{inline-size:100%}
-  .skd-usagePanel .skd-panelCard{padding:14px}
-  .skd-cardTitleRow>.skd-periodField{flex:1 1 100%;max-inline-size:100%}
-  .skd-periodChart{gap:2px}
-  .skd-periodTableScroll{scroll-padding-block-start:5rem}
-  .skd-periodTable{--skd-cell-padding:8px}
-  .skd-periodTable thead th:first-child{inline-size:44%}
-  .skd-periodSort{gap:4px}
-  .skd-periodSkill{min-block-size:44px}
-}
-@media(forced-colors:active){.skd-periodSkill{color:LinkText}.skd-periodTable thead th{background:Canvas}.skd-periodSkill[aria-pressed=true]{outline:1px solid Highlight}}
-/* Diagnosis: a checkbox queue with a sticky bulk rail; every colour comes from the panel tokens. */
+.skd-activity{display:flex;flex-direction:column}
+.skd-activityRow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--skd-line)}
+.skd-activityRow:last-child{border-bottom:0}
+.skd-activityMain{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+.skd-activityName{min-width:0;color:var(--skd-fg);font-size:.8125rem;font-weight:500;line-height:1.45;overflow-wrap:anywhere}
+.skd-activityTime{flex:none;color:var(--skd-subtle);font-size:.75rem;line-height:1.45}
+
 .skd-diagnosisHeading{scroll-margin-block-start:16px;border-radius:4px}
-.skd-diagnosisHeading:focus-visible{outline:2px solid var(--skd-accent);outline-offset:3px}
 .skd-diagnosisHorizon{margin:0}
 .skd-diagnosisBuckets{display:flex;align-items:center;flex-wrap:wrap}
-.skd-diagnosisBuckets .skd-segmented{flex-wrap:wrap;overflow:visible;max-width:100%}
+.skd-diagnosisBuckets .skd-segmented{flex-wrap:wrap;overflow:visible}
 .skd-diagnosisBuckets .skd-segment{flex:0 0 auto}
-.skd-diagnosisBuckets .skd-bucketOption{display:inline-flex;align-items:baseline;gap:6px}
-.skd-diagnosisBuckets .skd-bucketCount{font-weight:600;font-variant-numeric:tabular-nums;color:var(--skd-fg)}
-.skd-diagnosisBuckets .skd-segment[data-active] .skd-bucketName{color:var(--skd-fg)}
-.skd-diagnosisQueue{display:grid;grid-template-columns:auto minmax(0,22rem) auto;align-items:end;gap:10px 16px}
+.skd-bucketOption{display:inline-flex;align-items:baseline;gap:6px}
+.skd-bucketCount{font-weight:600;color:var(--skd-fg)}
+.skd-diagnosisQueue{display:grid;grid-template-columns:auto minmax(0,22rem) auto;align-items:end;gap:10px 14px}
 .skd-diagnosisQueue>.skd-button{justify-self:end}
 .skd-diagnosisResults{grid-column:1;align-self:center;justify-content:flex-start}
-.skd-diagnosisNoAction{color:var(--skd-muted);font-size:.875rem}
+.skd-diagnosisNoAction{color:var(--skd-subtle);font-size:.8125rem}
 .skd-diagnosisList{background:var(--skd-bg);border-color:var(--skd-line)}
 .skd-diagnosisItem{list-style:none}
-.skd-diagnosisRow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:4px 14px;padding:9px 16px;border-block-end:1px solid var(--skd-line)}
+.skd-diagnosisRow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:4px 14px;padding:10px 16px;border-block-end:1px solid var(--skd-line);transition:background-color .15s var(--skd-ease)}
 .skd-diagnosisList>li:last-child .skd-diagnosisRow{border-block-end:0}
 .skd-diagnosisCheck{position:relative;display:inline-flex;align-items:center;justify-content:center;inline-size:1.5rem;block-size:1.5rem;cursor:pointer;border-radius:4px}
 .skd-diagnosisCheckInput{margin:0;inline-size:1rem;block-size:1rem;accent-color:var(--skd-accent);cursor:inherit}
 .skd-diagnosisCheckInput:disabled{cursor:default;opacity:.5}
 .skd-diagnosisMain{display:flex;flex-direction:column;gap:3px;min-inline-size:0}
-.skd-diagnosisEvidence{margin:0;color:var(--skd-muted);font-size:.75rem;line-height:1.6;overflow-wrap:anywhere}
-.skd-diagnosisActions{display:flex;align-items:center;gap:8px;flex:none}
-.skd-diagnosisActions .skd-button{min-block-size:30px;padding:4px 11px;font-size:.75rem}
+.skd-diagnosisEvidence{margin:0;color:var(--skd-muted);font-size:.75rem;line-height:1.5;overflow-wrap:anywhere}
+.skd-diagnosisActions{display:flex;align-items:center;gap:6px;flex:none}
+.skd-diagnosisActions .skd-button{min-block-size:28px;padding:3px 10px;font-size:.75rem}
 .skd-diagnosisRowNote{margin-block:0 8px;padding-inline-start:40px}
 .skd-diagnosisConfirm{grid-column:1 / -1}
-.skd-diagnosisRail{position:sticky;inset-block-end:10px;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:10px 16px;flex-wrap:wrap;padding:12px 16px;border:1px solid var(--skd-control-line);border-radius:10px;background:var(--dsw-alias-bg-overlay,var(--skd-bg));box-shadow:0 8px 24px color-mix(in srgb,var(--skd-fg) 12%,transparent)}
-.skd-diagnosisTally{margin:0;color:var(--skd-muted);font-size:.75rem;line-height:1.6;overflow-wrap:anywhere}
+.skd-diagnosisRail{position:sticky;inset-block-end:12px;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:10px 16px;flex-wrap:wrap;padding:10px 14px;border:1px solid var(--skd-control-line);border-radius:var(--skd-radius);background:var(--skd-overlay);box-shadow:0 8px 24px rgb(0 0 0 / .14)}
+.skd-diagnosisTally{margin:0;color:var(--skd-muted);font-size:.75rem;line-height:1.5;overflow-wrap:anywhere}
 .skd-diagnosisRailActions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.skd-diagnosisPolicyList{margin:0;padding-inline-start:1.25em;font-size:.75rem;line-height:1.75;color:var(--skd-muted)}
-@container dashboard (max-width:1200px){
+.skd-diagnosisPolicyList{margin:0;padding-inline-start:1.25em;font-size:.75rem;line-height:1.7;color:var(--skd-muted)}
+
+.skd-previewDialog{inline-size:min(1280px,92vw);block-size:min(860px,88dvh);min-inline-size:min(640px,calc(100vw - 24px));min-block-size:min(400px,calc(100dvh - 24px));max-inline-size:calc(100vw - 24px);max-block-size:calc(100dvh - 24px);padding:0;border:1px solid var(--skd-control-line);border-radius:var(--skd-radius-lg);background:var(--skd-overlay);box-shadow:0 24px 72px rgb(0 0 0 / .24);overflow:hidden;resize:both}
+.skd-previewDialog:modal{overscroll-behavior:contain}
+.skd-previewDialog::backdrop{background:var(--skd-mask);backdrop-filter:blur(3px);overflow:hidden}
+.skd-previewDialog[data-maximized]{inline-size:calc(100vw - 16px);block-size:calc(100dvh - 16px);max-inline-size:calc(100vw - 16px);max-block-size:calc(100dvh - 16px);resize:none;border-radius:var(--skd-radius)}
+.skd-previewRoot{height:100%;min-height:0;overflow:hidden;display:flex!important;flex-direction:column;background:var(--skd-overlay)}
+.skd-previewHeader{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 20px;border-bottom:1px solid var(--skd-line);flex:none}
+.skd-previewIdentity{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.skd-previewEyebrow{font-size:.6875rem;color:var(--skd-subtle)}
+.skd-previewTitle{margin:0;font-size:1.0625rem;line-height:1.35;font-weight:600;overflow-wrap:anywhere}
+.skd-previewDescription{margin:0;color:var(--skd-muted);font-size:.8125rem;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:clip}
+.skd-previewHeader .skd-badges{margin-top:2px}
+.skd-windowTools{display:flex;align-items:center;gap:2px;flex:none;padding:3px;border:1px solid var(--skd-line);border-radius:8px;background:var(--skd-surface)}
+.skd-windowTools .skd-iconButton{border:0;width:30px;height:30px;border-radius:var(--skd-radius-sm)}
+.skd-windowTools form{margin:0;padding-inline-start:3px;border-inline-start:1px solid var(--skd-line)}
+.skd-previewLayout{display:grid;grid-template-columns:minmax(210px,270px) minmax(0,1fr);flex:1;min-height:0;min-width:0}
+.skd-previewFilesToggle{display:none}
+.skd-previewFiles{display:flex;flex-direction:column;min-height:0;min-width:0;border-inline-end:1px solid var(--skd-line);background:var(--skd-surface)}
+.skd-previewFilesHead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px 8px;flex:none}
+.skd-previewFilesHead h3{margin:0;font-size:.75rem;line-height:1.4;font-weight:600;color:var(--skd-muted)}
+.skd-fileCount{display:inline-flex;align-items:center;min-height:20px;padding:0 7px;border:1px solid var(--skd-line);border-radius:999px;background:var(--skd-bg);color:var(--skd-muted);font-size:.6875rem}
+.skd-fileList{list-style:none;margin:0;padding:0 8px 12px;overflow:auto;overscroll-behavior:contain;min-height:0}
+.skd-fileList .skd-treeChildren{padding:0 0 0 14px;margin:0 0 0 10px;border-inline-start:1px solid var(--skd-line);list-style:none}
+.skd-folderLabel{display:flex;align-items:center;gap:6px;min-height:30px;padding:5px 8px;border-radius:var(--skd-radius-sm);color:var(--skd-fg);font-size:.75rem;line-height:1.5;cursor:pointer;list-style:none}
+.skd-folderLabel::-webkit-details-marker{display:none}
+.skd-folderLabel>span{overflow-wrap:anywhere;min-width:0}
+.skd-folderLabel svg{flex:none}
+.skd-folderLabel>svg:first-child{transform:rotate(-90deg)}
+.skd-folder[open]>.skd-folderLabel>svg:first-child{transform:rotate(0)}
+.skd-fileButton{display:flex;align-items:flex-start;gap:7px;width:100%;min-height:30px;padding:6px 8px;border:1px solid transparent;border-radius:var(--skd-radius-sm);background:none;color:var(--skd-muted);font:inherit;font-size:.75rem;line-height:1.5;text-align:start;cursor:pointer}
+.skd-fileButton svg{flex:none;margin-top:2px}
+.skd-fileButton>span:not(.skd-fileKind){min-width:0;overflow-wrap:anywhere}
+.skd-fileButton[aria-pressed=true]{background:var(--skd-bg);color:var(--skd-fg);border-color:var(--skd-line);font-weight:500}
+.skd-fileKind{flex:none;margin-inline-start:auto;font-size:.625rem;color:var(--skd-subtle)}
+.skd-previewViewer{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--skd-bg)}
+.skd-previewViewerHead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;min-height:44px;padding:6px 20px;border-bottom:1px solid var(--skd-line);flex:none}
+.skd-previewFilename{display:flex;align-items:center;gap:6px;font-size:.75rem;font-family:var(--skd-mono);color:var(--skd-muted);min-width:0;overflow-wrap:anywhere}
+.skd-previewViewerHead .skd-segmented{margin-inline-start:auto}
+.skd-previewViewerHead .skd-segment{min-height:24px;padding:2px 9px;font-size:.6875rem}
+.skd-previewContent{min-height:0;overflow:auto;overscroll-behavior:contain;padding:24px 28px 32px;flex:1;scrollbar-gutter:stable}
+.skd-prose{max-inline-size:min(100%,86ch);margin-inline:auto;font-size:.9rem;line-height:1.75;overflow-wrap:anywhere}
+.skd-prose h3,.skd-prose h4,.skd-prose h5,.skd-prose h6{margin:1.3em 0 .55em;line-height:1.4;font-weight:600;color:var(--skd-fg)}
+.skd-prose h3{font-size:1.25rem;letter-spacing:-.015em}
+.skd-prose h4{font-size:1rem}
+.skd-prose>:first-child{margin-top:0}
+.skd-prose p{margin:.75em 0}
+.skd-prose ul{padding-inline-start:1.5em;margin:.75em 0}
+.skd-prose li{margin:.3em 0}
+.skd-prose code{font-family:var(--skd-mono);font-size:.85em;background:var(--skd-surface-2);padding:.12em .32em;border-radius:4px;box-decoration-break:clone}
+.skd-prose pre{margin:.9em 0;max-width:100%;padding:14px 16px;border:1px solid var(--skd-line);border-radius:var(--skd-radius-sm);background:var(--skd-surface);white-space:pre;overflow:auto;overscroll-behavior:contain}
+.skd-prose pre code{padding:0;background:none}
+.skd-fileCode{margin:0;max-width:100%;overflow:auto;white-space:pre;font:.75rem/1.75 var(--skd-mono);tab-size:2;overscroll-behavior:contain}
+.skd-previewMessage{display:flex;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:28px;color:var(--skd-muted);font-size:.8125rem;text-align:center;line-height:1.65;overflow:auto}
+.skd-previewNotice{margin:0 0 14px;padding:9px 12px;border:1px solid var(--skd-line);border-radius:var(--skd-radius-sm);background:var(--skd-surface);font-size:.75rem;line-height:1.55;color:var(--skd-muted)}
+.skd-previewFiles .skd-previewNotice{margin:8px;font-size:.6875rem;flex:none}
+.skd-previewFooter{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;flex:none;padding:8px 20px;border-top:1px solid var(--skd-line);font-size:.6875rem;color:var(--skd-subtle);line-height:1.45}
+.skd-previewFooter>span:first-child{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.skd-page :focus-visible,.skd-previewDialog :focus-visible{outline:2px solid var(--skd-accent);outline-offset:2px}
+.skd-page .skd-input:focus-visible,.skd-page .skd-select:focus-visible{outline-offset:1px}
+.skd-page .skd-menuItem:focus-visible,.skd-periodSkill:focus-visible,.skd-periodSort:focus-visible{outline-offset:-2px;border-radius:4px}
+
+@media (hover:hover){
+  .skd-tab:hover,.skd-segment:not(:disabled):hover{color:var(--skd-fg)}
+  .skd-button:not(:disabled):hover,.skd-iconButton:not(:disabled):hover,.skd-menuItem:not(:disabled):hover,.skd-periodSort:hover,.skd-fileButton:hover,.skd-folderLabel:hover{background:var(--skd-hover);color:var(--skd-fg)}
+  .skd-button[data-variant=primary]:not(:disabled):hover{background:var(--skd-accent-hover);color:var(--skd-on-accent)}
+  .skd-button[data-variant=danger]:not(:disabled):hover{background:var(--skd-error-bg);color:var(--skd-error)}
+  .skd-button[data-variant=text]:not(:disabled):hover{background:none;text-decoration:underline;text-underline-offset:3px}
+  .skd-row:hover,.skd-diagnosisRow:hover{background:var(--skd-hover)}
+  .skd-row:hover .skd-rowName,.skd-nameButton:hover,.skd-periodSkill:hover{color:var(--skd-accent);text-decoration:underline;text-underline-offset:3px}
+  .skd-card:hover{border-color:var(--skd-control-line);background:var(--skd-surface)}
+  .skd-input:hover,.skd-select:hover{border-color:var(--skd-subtle)}
+  .skd-chartCol:hover .skd-bar{background:var(--skd-accent)}
+  .skd-chartCol:hover::after{opacity:1}
+  .skd-windowTools .skd-iconButton:hover{background:var(--skd-bg)}
+}
+
+@container dashboard (min-width:1060px){
+  .skd-cardList{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@container dashboard (max-width:820px){
+  .skd-filterBar,.skd-skelFilterBar{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .skd-searchField{grid-column:1 / -1}
+  .skd-filterBar>.skd-field>.skd-select{max-inline-size:none}
   .skd-diagnosisQueue{grid-template-columns:minmax(0,1fr) auto}
   .skd-diagnosisResults{grid-column:1 / -1}
   .skd-diagnosisRow{grid-template-columns:auto minmax(0,1fr)}
   .skd-diagnosisActions{grid-column:2;justify-content:flex-start;flex-wrap:wrap}
 }
 @container dashboard (max-width:600px){
+  .skd-wrap{padding-inline:16px}
+  .skd-header{padding:16px 0 10px;gap:10px}
+  .skd-subtitle,.skd-statusPill{display:none}
+  .skd-tabbar{gap:14px}
+  .skd-tab{min-height:42px;padding-bottom:8px}
+  .skd-content{padding-top:14px}
+  .skd-overview{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .skd-overviewItem:nth-child(2){border-inline-end:0}
+  .skd-overviewItem:nth-child(-n+2){border-bottom:1px solid var(--skd-line)}
+  .skd-filterBar,.skd-skelFilterBar{grid-template-columns:minmax(0,1fr)}
+  .skd-tableHeading{display:none}
+  .skd-row,.skd-skelRow{grid-template-columns:minmax(0,1fr);padding:14px 12px;gap:10px}
+  .skd-rowRail{display:flex;grid-column:auto;align-items:center;justify-content:space-between;gap:12px}
+  .skd-metric{align-items:flex-start;text-align:start}
+  .skd-metric .skd-micro{display:block}
+  .skd-switchGroup{flex:1;max-width:220px;gap:6px}
+  .skd-switchControl{min-block-size:40px}
+  .skd-cardList{grid-template-columns:minmax(0,1fr)}
+  .skd-searchRow{display:grid;grid-template-columns:minmax(0,1fr) auto}
+  .skd-searchRow>.skd-sourceField{grid-column:1 / -1}
+  .skd-stats{grid-template-columns:minmax(0,1fr)}
+  .skd-periodControls>.skd-periodField{flex:1 1 8rem}
+  .skd-periodControls>.skd-periodField:first-child,.skd-periodRange{flex-basis:100%;text-align:start;margin:0}
   .skd-diagnosisQueue{grid-template-columns:minmax(0,1fr)}
-  .skd-diagnosisRow{padding-inline:8px;gap:6px 10px}
   .skd-diagnosisActions{grid-column:1 / -1}
-  .skd-diagnosisActions .skd-button{flex:1;min-block-size:44px}
-  .skd-diagnosisCheck{inline-size:2.75rem;justify-content:flex-start}
-  .skd-diagnosisRowNote{padding-inline-start:0}
-  .skd-diagnosisRail{inset-block-end:6px;padding:10px 12px}
+  .skd-diagnosisActions .skd-button,.skd-diagnosisRailActions .skd-button{flex:1;min-block-size:40px}
   .skd-diagnosisRailActions{width:100%}
-  .skd-diagnosisRailActions .skd-button{flex:1;min-block-size:44px}
+  .skd-diagnosisRowNote{padding-inline-start:0}
 }
-@media(prefers-reduced-motion:reduce){.skd-diagnosisRow,.skd-diagnosisRail{transition:none}}
-@media(forced-colors:active){.skd-diagnosisRail{border-color:ButtonText;box-shadow:none}}
-.skd-tabbar{display:flex;flex-wrap:nowrap;align-items:stretch;gap:1.5rem;width:100%;min-height:0;margin:0;padding:0;border:0;border-radius:0;background:none;overflow-x:auto;scrollbar-width:none}
-.skd-tabbar::-webkit-scrollbar{display:none}
-.skd-top{padding-block-end:0}
-.skd-tab{position:relative;flex:none;min-height:40px;padding:0 1px 12px;border:0;border-radius:0;background:none;box-shadow:none;color:var(--muted-foreground);font-size:.8125rem;font-weight:500;white-space:nowrap}
-.skd-tab[aria-selected=true]{background:none;color:var(--foreground);font-weight:500;box-shadow:none}
-.skd-tab[aria-selected=true]::after{display:block;content:"";position:absolute;inset:auto 0 0;height:0;background:none;border-block-end:2px solid var(--skd-accent)}
-.skd-tab:hover{color:var(--foreground)}
-.skd-tab:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:4px}
-.skd-tabIcon{opacity:.75}
-.skd-tab[aria-selected=true] .skd-tabIcon{color:var(--skd-accent-label);opacity:1}
-@container dashboard (max-width:600px){.skd-tabbar{gap:1rem;margin-block-end:0}.skd-tab{min-height:44px;padding-bottom:10px;text-align:start}}
-.skd-previewDialog{border-radius:var(--skd-radius);border-color:var(--skd-control-line);box-shadow:0 24px 80px color-mix(in srgb,var(--skd-fg) 22%,transparent)}
-.skd-previewHeader{align-items:center;gap:18px;padding:18px 22px}
-.skd-previewIdentity{display:flex;flex-direction:column;gap:4px;min-width:0;max-width:none;flex:1}
-.skd-previewEyebrow{font-size:.6875rem;letter-spacing:.01em}
-.skd-previewTitle{margin:0;font-size:1.125rem;line-height:1.35}
-.skd-previewDescription{margin:0;max-width:none;max-height:none;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:clip;font-size:.8125rem}
-.skd-previewHeader .skd-badges{margin-top:2px}
-.skd-windowTools{gap:2px;padding:3px;border:1px solid var(--skd-line);border-radius:9px;background:var(--skd-soft)}
-.skd-windowTools .skd-iconButton{border:0;width:30px;height:30px;border-radius:6px}
-.skd-windowTools .skd-iconButton:hover{background:var(--skd-bg)}
-.skd-windowTools form{margin:0;padding-inline-start:3px;border-inline-start:1px solid var(--skd-line)}
-.skd-windowTools form .skd-iconButton{width:32px;height:30px}
-.skd-previewLayout{grid-template-columns:minmax(220px,300px) minmax(0,1fr)}
-.skd-previewFiles{background:color-mix(in srgb,var(--skd-soft) 65%,var(--skd-bg))}
-.skd-previewFilesHead{padding:14px 16px 8px}
-.skd-previewFilesHead h3{font-size:.75rem;letter-spacing:.01em}
-.skd-fileCount{display:inline-flex;align-items:center;min-height:20px;padding:0 7px;border:1px solid var(--skd-line);border-radius:999px;background:var(--skd-bg);color:var(--skd-muted);font-size:.6875rem;font-variant-numeric:tabular-nums}
-.skd-previewFilesToggle .skd-fileCount{margin-inline-start:auto}
-.skd-fileList{padding:0 10px 12px}
-.skd-fileButton{min-height:32px;padding:7px 8px;border-radius:6px;font-size:.75rem}
-.skd-folderLabel{min-height:32px;padding:6px 8px;border-radius:6px}
-.skd-fileList .skd-treeChildren{padding-inline-start:14px;margin-inline-start:10px}
-.skd-previewViewerHead{min-height:48px;padding:8px 22px}
-.skd-previewFilename{display:flex;align-items:center;gap:6px;font-size:.75rem}
-.skd-previewContent{padding:28px 32px 36px;scrollbar-gutter:stable}
-.skd-prose{max-inline-size:min(100%,92ch);margin-inline:auto;font-size:.9375rem;line-height:1.8}
-.skd-prose p,.skd-prose li{text-wrap:pretty}
-.skd-prose h3{font-size:1.375rem;margin-top:1.4em}
-.skd-prose h4{font-size:1.0625rem}
-.skd-prose pre{padding:16px 18px;border-radius:9px}
-.skd-previewFooter{padding:9px 22px;padding-inline-end:28px}
-/* The mobile stack lives in the existing @media(max-width:700px) rules; repeat only what this
-   round changes so the later two-column base rule cannot win on a narrow dialog. */
-@media(max-width:700px){
-  .skd-previewLayout{grid-template-columns:minmax(0,1fr)}
-  .skd-previewHeader{padding:14px}
-  .skd-previewContent{padding:20px 18px 28px}
-  .skd-previewLayout .skd-previewFiles{max-block-size:min(38dvh,18rem)}
-  .skd-fileButton{min-height:44px}
-  .skd-folderLabel{min-height:44px}
-  .skd-windowTools{padding:2px}
-  .skd-windowTools .skd-iconButton{width:32px;height:34px}
+@media (pointer:coarse){
+  .skd-switchControl{min-block-size:44px}
 }
-/* Extend the name button's hit area without nesting controls inside it. */
-.skd-rowMain{position:relative;cursor:pointer}
-.skd-rowName::after{content:"";position:absolute;inset:0;border-radius:6px}
-.skd-row:hover .skd-rowName{text-decoration:underline;text-underline-offset:3px}
-.skd-row:has(.skd-rowName:focus-visible) .skd-rowMain{outline:2px solid var(--ring);outline-offset:2px;border-radius:6px}
-.skd-card{position:relative}
-.skd-cardName .skd-nameButton::after{content:"";position:absolute;inset:0;border-radius:inherit}
-.skd-cardFoot,.skd-card .skd-noteLine{position:relative;z-index:1}
-.skd-card:has(.skd-nameButton:focus-visible){outline:2px solid var(--ring);outline-offset:2px}
-.skd-switchControl{min-block-size:1.75rem;column-gap:12px}
-.skd-switchLabel{font-size:.6875rem;line-height:1.4}
-.skd-switch{inline-size:2.25rem;block-size:1.25rem;border-radius:999px}
-.skd-switchThumb{inset-block-start:2px;inset-inline-start:2px;inline-size:1rem;block-size:1rem}
-.skd-switchInput:checked~.skd-switch .skd-switchThumb{transform:translateX(1rem)}
-/* The larger desktop geometry must not erase the existing touch targets. */
-@container dashboard (max-width:600px){.skd-switchControl{min-block-size:3rem}}
-@media(pointer:coarse){.skd-switchControl{min-block-size:3rem}}
-@media(forced-colors:active){.skd-previewDialog{box-shadow:none;border-color:CanvasText}.skd-tab[aria-selected=true]::after{display:none}}
+@media (max-width:700px){
+  .skd-previewDialog{inline-size:calc(100vw - 16px);block-size:calc(100dvh - 16px);max-inline-size:calc(100vw - 16px);max-block-size:calc(100dvh - 16px);min-inline-size:0;resize:none;border-radius:var(--skd-radius)}
+  .skd-windowTools .skd-sizeStep{display:none}
+  .skd-previewHeader{padding:12px 14px;gap:10px}
+  .skd-previewLayout{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .skd-previewLayout[data-files-expanded]{grid-template-rows:auto auto minmax(0,1fr)}
+  .skd-previewLayout:not([data-files-expanded]) .skd-previewFiles{display:none}
+  .skd-previewFiles{border-inline-end:0;border-bottom:1px solid var(--skd-line);max-block-size:min(38dvh,18rem);overflow:auto}
+  .skd-previewFilesHead{display:none}
+  .skd-previewFilesToggle{display:flex;align-items:center;justify-content:flex-start;border-width:0 0 1px;border-color:var(--skd-line);border-radius:0;padding-inline:14px;min-block-size:42px}
+  .skd-previewFilesToggle .skd-fileCount{margin-inline-start:auto}
+  .skd-previewContent{padding:18px 16px 24px}
+  .skd-fileButton,.skd-folderLabel{min-height:42px}
+}
+@media (prefers-reduced-motion:reduce){
+  .skd-skelBlock,.skd-previewProgress::after,.skd-iconButton[data-spinning] svg,.skd-statusDot[data-busy]{animation:none}
+  .skd-page *,.skd-previewDialog *{transition:none!important}
+}
+@media (forced-colors:active){
+  .skd-previewDialog,.skd-diagnosisRail,.skd-menu{border-color:CanvasText;box-shadow:none}
+  .skd-button[data-variant=primary]{background:ButtonFace;color:ButtonText;border-color:ButtonText}
+  .skd-tab[aria-selected=true]{border-bottom:2px solid Highlight}
+  .skd-fileButton[aria-pressed=true]{outline:1px solid Highlight}
+}
 `;
     // ---------------------------------------------------------------- util
     /** A string field, or the empty string; missing fields are tolerated. */
@@ -1369,6 +1276,7 @@ window.__ModuleLoader__.load({
       const store = createStore({
         data: null,
         status: 'idle',
+        syncError: false,
         fetchedAt: 0,
         refreshing: false,
         pending: null,
@@ -1382,75 +1290,56 @@ window.__ModuleLoader__.load({
         discover: { ...current.discover, ...fields },
       }));
 
-      /** Bumped by every mutation, so a read that started earlier cannot overwrite its result. */
       let revision = 0;
-      let refreshes = Promise.resolve();
+      let inFlightRefresh = null;
+      let inFlightRevision = -1;
       let discoverToken = 0;
-      /** Pending settle read; at most one, owned so unloading the plugin clears it. */
-      let settleTimer = null;
 
       const loadState = async (silent) => {
         const started = revision;
         const before = store.getSnapshot();
-        if (silent !== true) patch({ status: before.data === null ? 'loading' : before.status, refreshing: true });
+        if (silent !== true) patch({ status: before.data === null ? 'loading' : 'ready', refreshing: true });
         const result = await requestJson(ROUTE_STATE, { headers: { accept: 'application/json' } });
         if (started !== revision) {
           patch({ refreshing: false });
           return false;
         }
+        const current = store.getSnapshot();
         if (result.ok !== true) {
-          patch({ status: 'offline', refreshing: false });
+          if (current.data !== null) {
+            patch({ status: 'ready', syncError: true, refreshing: false });
+          } else {
+            patch({ status: 'offline', syncError: true, refreshing: false });
+          }
           return false;
         }
-        patch({ data: result.value, status: 'ready', refreshing: false, fetchedAt: Date.now() });
+        patch({ data: result.value, status: 'ready', syncError: false, refreshing: false, fetchedAt: Date.now() });
         return true;
       };
 
-      /**
-       * Read the Host snapshot. Reads are serialized, and a call that names a freshness
-       * window returns the current snapshot instead of asking again.
-       * @param staleAfterMs - skip the read when the snapshot is younger than this.
-       * @param silent - settle read: leave the refresh control out of it.
-       * @returns whether the read produced a fresh snapshot.
-       */
       const refresh = ({ staleAfterMs = 0, silent = false } = {}) => {
         const snapshot = store.getSnapshot();
         if (staleAfterMs > 0 && snapshot.fetchedAt !== 0 && Date.now() - snapshot.fetchedAt < staleAfterMs) {
           return Promise.resolve(false);
         }
-        const run = refreshes.then(() => loadState(silent)).catch(() => false);
-        refreshes = run.then(() => undefined, () => undefined);
+        if (inFlightRefresh !== null && inFlightRevision === revision) return inFlightRefresh;
+        const currentRev = revision;
+        inFlightRevision = currentRev;
+        const run = loadState(silent).catch(() => false).finally(() => {
+          if (inFlightRefresh === run) inFlightRefresh = null;
+        });
+        inFlightRefresh = run;
         return run;
       };
 
-      /**
-       * One delayed re-read after a mutation, for a provider watcher that republishes late.
-       * At most one is outstanding; unloading the plugin clears it.
-       */
-      const refetchSoon = () => {
-        if (settleTimer !== null) clearTimeout(settleTimer);
-        settleTimer = setTimeout(() => {
-          settleTimer = null;
-          void refresh({ silent: true });
-        }, SETTLE_RETRY_MS);
-      };
-
-      /** Drop the inline error banner without touching the data behind it. */
       const dismissNote = () => {
         if (store.getSnapshot().note !== null) patch({ note: null });
       };
 
-      /** Release the settle timer when the plugin unloads. */
       const dispose = () => {
-        if (settleTimer !== null) clearTimeout(settleTimer);
-        settleTimer = null;
+        inFlightRefresh = null;
       };
 
-      /**
-       * Post one action, then re-read the Host. A refusal lands in the inline banner with
-       * the Host's own message, an unreachable Host also flips the connection status, and a
-       * success schedules the single settle read that follows the immediate one.
-       */
       const runAction = async (body, step) => {
         if (store.getSnapshot().pending !== null) return false;
         revision += 1;
@@ -1462,7 +1351,10 @@ window.__ModuleLoader__.load({
         });
         patch({ pending: null });
         if (result.ok !== true) {
+          const hasData = store.getSnapshot().data !== null;
           patch({
+            status: result.offline === true && !hasData ? 'offline' : store.getSnapshot().status,
+            syncError: result.offline === true ? true : store.getSnapshot().syncError,
             note: {
               tone: 'error',
               failKey: step.failKey,
@@ -1471,13 +1363,22 @@ window.__ModuleLoader__.load({
               offline: result.offline === true,
             },
           });
-          if (result.offline === true) patch({ status: 'offline' });
           return false;
         }
         PREVIEW_MEMORY.clear();
+        const value = objectOf(result.value);
+        if (value !== null && objectOf(value.state) !== null) {
+          patch({
+            data: value.state,
+            status: 'ready',
+            syncError: false,
+            fetchedAt: Date.now(),
+            note: step.success(result.value),
+          });
+          return true;
+        }
         patch({ note: step.success(result.value) });
         await refresh();
-        refetchSoon();
         return true;
       };
 
@@ -1620,8 +1521,10 @@ window.__ModuleLoader__.load({
         for (const outcome of failed) notes[outcome.name] = { code: outcome.code, message: outcome.message };
         patch({ pending: null, rowNotes: notes });
         if (requestFailure !== null && succeeded === 0) {
+          const hasData = store.getSnapshot().data !== null;
           patch({
-            status: offline === true ? 'offline' : store.getSnapshot().status,
+            status: offline === true && !hasData ? 'offline' : store.getSnapshot().status,
+            syncError: offline === true ? true : store.getSnapshot().syncError,
             note: { tone: 'error', failKey: step.failKey, code: requestFailure.code, message: requestFailure.message, offline },
           });
           return false;
@@ -1629,7 +1532,6 @@ window.__ModuleLoader__.load({
         if (succeeded > 0) PREVIEW_MEMORY.clear();
         patch({ note: { tone: failed.length === 0 ? 'ok' : 'idle', key: step.note, params: { ok: succeeded, failed: failed.length } } });
         await refresh();
-        refetchSoon();
         return failed.length === 0;
       };
 
@@ -2016,6 +1918,11 @@ window.__ModuleLoader__.load({
         },
           el('span', { className: 'skd-tabIcon', 'aria-hidden': true }, el(Glyph, { name: tab.id === 'installed' ? 'library' : tab.id === 'discover' ? 'compass' : tab.id === 'usage' ? 'chart' : 'pulse', size: 15 })),
           tab.label,
+          typeof tab.count === 'number' && tab.count > 0 && el('span', {
+            className: 'skd-tabCount',
+            'data-tone': tab.countTone,
+            'aria-hidden': true,
+          }, formatNumber(tab.count)),
         )),
       );
     }
@@ -2417,11 +2324,17 @@ window.__ModuleLoader__.load({
           }, el(Glyph, { name: 'folder', size: 16 }), t('preview.files'), el('span', { className: 'skd-fileCount' }, t('preview.fileCount', { count: formatNumber(files.length) }))),
           el('aside', { className: 'skd-previewFiles', id: titleId + '-files', 'aria-label': t('preview.files') },
             el('div', { className: 'skd-previewFilesHead' }, el('h3', null, t('preview.files')),
-              el('span', {
-                className: 'skd-fileCount',
-                title: data?.truncatedFiles === true ? t('preview.filesLimited') : undefined,
-              }, t('preview.fileCount', { count: formatNumber(files.length) }))),
+              snapshot.status === 'loading' && files.length === 0
+                ? el('span', { className: 'skd-skelBlock', style: { width: '54px', height: '18px', borderRadius: '999px' }, 'aria-hidden': true })
+                : el('span', {
+                  className: 'skd-fileCount',
+                  title: data?.truncatedFiles === true ? t('preview.filesLimited') : undefined,
+                }, t('preview.fileCount', { count: formatNumber(files.length) }))),
             files.length > 0 && el(PreviewFiles, { files, selected: file || selected?.path, onSelect: selectFile, t }),
+            snapshot.status === 'loading' && files.length === 0 && el('div', { className: 'skd-previewSkelTree', 'aria-hidden': true },
+              [78, 62, 86, 54, 70].map((width, index) => el('span', {
+                key: index, className: 'skd-skelBlock', style: { height: '14px', width: width + '%' },
+              }))),
             !target.path && el('p', { className: 'skd-noteLine skd-previewNotice' }, t('preview.remoteNotice')),
             data?.truncatedFiles === true && el('p', { className: 'skd-noteLine skd-previewNotice' }, t('preview.filesLimited')),
             snapshot.status !== 'loading' && files.length === 0 && el('p', { className: 'skd-noteLine skd-previewNotice' }, t('preview.noFiles')),
@@ -2433,7 +2346,15 @@ window.__ModuleLoader__.load({
                 value: mode, label: t('preview.view'), onChange: setMode,
                 items: [{ id: 'read', label: t('preview.read') }, { id: 'source', label: t('preview.source') }],
               })),
-            snapshot.status === 'loading' ? el('div', { className: 'skd-previewMessage', role: 'status' }, t('preview.loading'))
+            snapshot.status === 'loading' && el('div', { className: 'skd-previewProgress', role: 'progressbar', 'aria-label': t('preview.loading') }),
+            snapshot.status === 'loading' ? el('div', { className: 'skd-previewSkelDoc', role: 'status', 'aria-label': t('preview.loading') },
+              el('span', { className: 'skd-skelBlock', style: { height: '24px', width: '42%', marginBottom: '6px' } }),
+              el('span', { className: 'skd-skelBlock', style: { height: '14px', width: '92%' } }),
+              el('span', { className: 'skd-skelBlock', style: { height: '14px', width: '84%' } }),
+              el('span', { className: 'skd-skelBlock', style: { height: '14px', width: '68%', marginBottom: '8px' } }),
+              el('span', { className: 'skd-skelBlock', style: { height: '76px', width: '100%' } }),
+              el('span', { className: 'skd-skelBlock', style: { height: '14px', width: '78%' } }),
+              el('span', { className: 'skd-skelBlock', style: { height: '14px', width: '58%' } }))
               : snapshot.status === 'error' ? el('div', { className: 'skd-previewMessage', role: 'alert' },
                 el('p', null, error), el(Button, { onClick: () => setRetry((value) => value + 1) }, t('action.retry')))
                 : selected?.kind === 'text' ? el('div', { className: 'skd-previewContent' },
@@ -2699,13 +2620,19 @@ window.__ModuleLoader__.load({
 
       let body;
       if (discover.status === 'loading') {
-        body = el('div', { className: 'skd-state', 'aria-busy': true },
-          el('h3', { className: 'skd-stateTitle' }, t('discover.loading')),
-          el('div', { className: 'skd-skeleton' },
-            el('div', { className: 'skd-skeletonRow' }),
-            el('div', { className: 'skd-skeletonRow' }),
-            el('div', { className: 'skd-skeletonRow' }),
-          ),
+        body = el('div', { className: 'skd-cardList', role: 'status', 'aria-busy': true, 'aria-label': t('discover.loading') },
+          [0, 1, 2, 3, 4, 5].map((index) => el('div', { key: index, className: 'skd-skelCard', 'aria-hidden': true },
+            el('div', { className: 'skd-skelCardHead' },
+              el('span', { className: 'skd-skelBlock', style: { width: '34px', height: '34px', borderRadius: '8px', flex: 'none' } }),
+              el('span', { className: 'skd-skelBlock', style: { height: '16px', width: index % 2 === 0 ? '58%' : '46%' } }),
+            ),
+            el('span', { className: 'skd-skelBlock', style: { height: '13px', width: '94%' } }),
+            el('span', { className: 'skd-skelBlock', style: { height: '13px', width: index % 2 === 0 ? '72%' : '80%' } }),
+            el('div', { className: 'skd-skelCardFoot' },
+              el('span', { className: 'skd-skelBlock', style: { height: '12px', width: '44%' } }),
+              el('span', { className: 'skd-skelBlock', style: { height: '28px', width: '64px' } }),
+            ),
+          )),
         );
       } else if (discover.status === 'error') {
         body = el('div', { className: 'skd-state', role: 'alert' },
@@ -3477,11 +3404,12 @@ window.__ModuleLoader__.load({
         if (discover.status !== 'idle') void runDiscover(id, textOf(discover.query));
       };
 
+      const cleanupCount = countOf(objectOf(objectOf(data?.diagnosis)?.counts)?.cleanup);
       const tabs = [
-        { id: 'installed', label: t('tab.installed') },
+        { id: 'installed', label: t('tab.installed'), count: data !== null ? skills.length : undefined },
         { id: 'discover', label: t('tab.discover') },
         { id: 'usage', label: t('tab.usage') },
-        { id: 'diagnosis', label: t('tab.diagnosis') },
+        { id: 'diagnosis', label: t('tab.diagnosis'), count: cleanupCount > 0 ? cleanupCount : undefined, countTone: cleanupCount > 0 ? 'warn' : undefined },
       ];
 
       const filters = [
@@ -3496,26 +3424,44 @@ window.__ModuleLoader__.load({
         })),
       ].filter((filter) => filter.id !== '');
 
-      // A failed action is a banner over the body; a saved one is a quiet footer note.
+      const syncError = snapshot.syncError === true;
       const errorText = pending === null && note !== null && note.tone === 'error' ? noteTextOf(note, t) : '';
-      const footerNote = pending !== null ? t('status.busy') : note !== null && note.tone !== 'error' ? noteTextOf(note, t) : '';
-      const footerTone = pending !== null ? 'idle' : note !== null && note.tone !== 'error' && textOf(note.tone) !== '' ? note.tone : 'idle';
+      const statusNote = pending !== null ? t('status.busy')
+        : note !== null && note.tone !== 'error' ? noteTextOf(note, t) : '';
+      const statusTone = syncError ? 'error'
+        : pending !== null ? 'idle'
+          : note !== null && note.tone !== 'error' && textOf(note.tone) !== '' ? note.tone : 'idle';
       const fetchedAt = Number.isFinite(snapshot.fetchedAt) ? snapshot.fetchedAt : 0;
+      const statusLabel = statusNote !== '' ? statusNote
+        : syncError ? t('offline.title')
+          : fetchedAt > 0 ? t('status.updatedAt', { time: formatClock(fetchedAt) })
+            : t('status.ready');
 
-      // A blank page is never the answer: no snapshot plus an unreachable Host is a state.
       if (data === null && status === 'offline') {
         return el('section', { className: 'skd-page', 'aria-label': t('panel.label') },
-          el('div', { className: 'skd-wrap skd-offline' },
-            el('h2', { className: 'skd-offlineTitle' }, t('offline.title')),
-            el('p', { className: 'skd-offlineBody' }, t('offline.body')),
-            el('div', { className: 'skd-stateActions' },
-              el(Button, {
-                type: 'button',
-                className: 'skd-button',
-                'data-variant': 'primary',
-                disabled: refreshing,
-                onClick: () => { void refresh(); },
-              }, t('action.retry')),
+          el('header', { className: 'skd-top' },
+            el('div', { className: 'skd-wrap' },
+              el('div', { className: 'skd-header' },
+                el('div', { className: 'skd-headText' },
+                  el('h1', { className: 'skd-title' }, t('panel.title')),
+                  el('p', { className: 'skd-subtitle' }, t('panel.intro')),
+                ),
+              ),
+            ),
+          ),
+          el('div', { className: 'skd-scroll' },
+            el('div', { className: 'skd-wrap skd-offline' },
+              el('h2', { className: 'skd-offlineTitle' }, t('offline.title')),
+              el('p', { className: 'skd-offlineBody' }, t('offline.body')),
+              el('div', { className: 'skd-stateActions' },
+                el(Button, {
+                  type: 'button',
+                  className: 'skd-button',
+                  'data-variant': 'primary',
+                  disabled: refreshing,
+                  onClick: () => { void refresh(); },
+                }, t('action.retry')),
+              ),
             ),
           ),
         );
@@ -3523,11 +3469,55 @@ window.__ModuleLoader__.load({
 
       if (data === null) {
         return el('section', { className: 'skd-page', 'aria-label': t('panel.label'), 'aria-busy': true },
-          el('div', { className: 'skd-wrap skd-offline' },
-            el('h2', { className: 'skd-offlineTitle' }, t('skill.loading')),
-            el('div', { className: 'skd-skeleton' },
-              el('div', { className: 'skd-skeletonRow' }),
-              el('div', { className: 'skd-skeletonRow' }),
+          el('header', { className: 'skd-top' },
+            el('div', { className: 'skd-wrap' },
+              el('div', { className: 'skd-header' },
+                el('div', { className: 'skd-headText' },
+                  el('h1', { className: 'skd-title' }, t('panel.title')),
+                  el('p', { className: 'skd-subtitle' }, t('panel.intro')),
+                ),
+                el('div', { className: 'skd-headerTools' },
+                  el('span', { className: 'skd-statusPill', role: 'status' },
+                    el('span', { className: 'skd-statusDot', 'data-busy': '', 'aria-hidden': true }),
+                    t('skill.loading'),
+                  ),
+                  el(Button, {
+                    type: 'button', className: 'skd-iconButton', 'aria-label': t('action.refresh'),
+                    disabled: true, 'data-spinning': '',
+                  }, el(RefreshGlyph, { size: 15 })),
+                ),
+              ),
+              el(TabBar, { tabs, value: tab, onChange: changeTab, label: t('tab.list'), idPrefix: pageId }),
+            ),
+          ),
+          el('div', { className: 'skd-scroll', 'aria-hidden': true },
+            el('div', { className: 'skd-wrap skd-content' },
+              el('div', { className: 'skd-overview' },
+                [0, 1, 2, 3].map((index) => el('div', { key: index, className: 'skd-overviewItem' },
+                  el('span', { className: 'skd-skelBlock', style: { height: '12px', width: '56px', marginBottom: '6px' } }),
+                  el('span', { className: 'skd-skelBlock', style: { height: '24px', width: '44px' } }),
+                ))),
+              el('div', { className: 'skd-panel' },
+                el('div', { className: 'skd-skelFilterBar' },
+                  el('span', { className: 'skd-skelBlock skd-skelInput' }),
+                  el('span', { className: 'skd-skelBlock skd-skelInput' }),
+                  el('span', { className: 'skd-skelBlock skd-skelInput' }),
+                  el('span', { className: 'skd-skelBlock skd-skelInput' }),
+                ),
+                el('div', { className: 'skd-list' },
+                  [0, 1, 2, 3, 4, 5].map((index) => el('div', { key: index, className: 'skd-skelRow' },
+                    el('div', { className: 'skd-skelRowMain' },
+                      el('span', { className: 'skd-skelBlock', style: { height: '15px', width: (28 + (index % 3) * 10) + '%' } }),
+                      el('span', { className: 'skd-skelBlock', style: { height: '12px', width: (58 + (index % 2) * 16) + '%' } }),
+                    ),
+                    el('span', { className: 'skd-skelBlock', style: { height: '16px', width: '28px', justifySelf: 'end' } }),
+                    el('div', { className: 'skd-skelSwitches' },
+                      el('span', { className: 'skd-skelBlock', style: { height: '16px', width: '96px', borderRadius: '999px' } }),
+                      el('span', { className: 'skd-skelBlock', style: { height: '16px', width: '96px', borderRadius: '999px' } }),
+                    ),
+                    el('span', { className: 'skd-skelBlock', style: { height: '24px', width: '24px', justifySelf: 'end' } }),
+                  ))),
+              ),
             ),
           ),
         );
@@ -3542,11 +3532,23 @@ window.__ModuleLoader__.load({
           el('div', { className: 'skd-wrap' },
             el('div', { className: 'skd-header' },
               el('div', { className: 'skd-headText' },
-                el('span', { className: 'skd-pageMark', 'aria-hidden': true }, el(Glyph, { name: 'library', size: 22 })),
                 el('h1', { className: 'skd-title' }, t('panel.title')),
                 el('p', { className: 'skd-subtitle' }, t('panel.intro')),
               ),
               el('div', { className: 'skd-headerTools' },
+                el('span', { className: 'skd-statusPill', 'data-tone': statusTone, role: 'status', title: statusLabel },
+                  el('span', {
+                    className: 'skd-statusDot',
+                    'data-tone': statusTone,
+                    'data-busy': refreshing || pending !== null ? '' : undefined,
+                    'aria-hidden': true,
+                  }),
+                  statusLabel,
+                ),
+                tab === 'installed' && el(Button, {
+                  type: 'button', className: 'skd-button', 'data-variant': 'outline',
+                  onClick: () => changeTab('discover', true),
+                }, el(Glyph, { name: 'plus', size: 14 }), t('action.discover')),
                 el(Button, {
                   type: 'button',
                   className: 'skd-iconButton',
@@ -3561,7 +3563,7 @@ window.__ModuleLoader__.load({
             el(TabBar, { tabs, value: tab, onChange: changeTab, label: t('tab.list'), idPrefix: pageId }),
           ),
         ),
-        status === 'offline' && el('div', { className: 'skd-wrap' },
+        syncError && el('div', { className: 'skd-wrap' },
           el('div', { className: 'skd-banner', role: 'alert' },
             el('span', null, t('status.offlineInline')),
             el(Button, {
@@ -3572,7 +3574,6 @@ window.__ModuleLoader__.load({
             }, t('action.retry')),
           ),
         ),
-        // A refused action says exactly what the Host said; it stays until the next action or a dismissal.
         errorText !== '' && el('div', { className: 'skd-wrap' },
           el('div', { className: 'skd-banner', role: 'alert' },
             el('span', null, errorText),
@@ -3593,7 +3594,7 @@ window.__ModuleLoader__.load({
                 { label: 'overview.calls', value: countOf(objectOf(data.usage)?.totalCount) },
               ].map((entry) => el('div', { key: entry.label, className: 'skd-overviewItem' },
                 el('span', { className: 'skd-overviewLabel' }, t(entry.label)),
-                el('span', { className: 'skd-overviewValue' }, String(entry.value))))),
+                el('span', { className: 'skd-overviewValue' }, formatNumber(entry.value))))),
             el('div', {
               className: 'skd-panel',
               role: 'tabpanel',
@@ -3602,9 +3603,6 @@ window.__ModuleLoader__.load({
               'aria-labelledby': pageId + '-tab-' + tab,
               tabIndex: 0,
             },
-              tab === 'installed' && el(SectionHeading, { title: t('installed.title'), body: t('installed.body') },
-                skills.length > 0 && el(Button, { className: 'skd-button', onClick: () => changeTab('discover', true) },
-                  el(Glyph, { name: 'plus', size: 16 }), t('action.discover'))),
               tab === 'installed' && el('search', { className: 'skd-toolbar skd-filterBar', 'aria-label': t('installed.search') },
                 el('div', { className: 'skd-searchField' },
                   el('label', { className: 'skd-fieldLabel', htmlFor: libraryInputId }, t('installed.search')),
@@ -3678,16 +3676,6 @@ window.__ModuleLoader__.load({
               key: entry.id, hidden: true, role: 'tabpanel',
               id: pageId + '-panel-' + entry.id, 'aria-labelledby': pageId + '-tab-' + entry.id,
             })),
-          ),
-        ),
-        el('footer', { className: 'skd-footer' },
-          el('div', { className: 'skd-wrap skd-footerInner' },
-            el('div', { className: 'skd-footerStats' },
-              fetchedAt > 0 && el('span', null, t('status.updatedAt', { time: formatClock(fetchedAt) }))),
-            el('span', { className: 'skd-footerNote', 'data-tone': footerTone, role: 'status' },
-              el('span', { className: 'skd-statusDot', 'data-tone': footerTone, 'aria-hidden': 'true' }),
-              footerNote !== '' ? footerNote : t(status === 'offline' ? 'status.offlineInline' : 'status.ready'),
-            ),
           ),
         ),
         previewTarget !== null && el(SkillPreview, { target: previewTarget, t, runtimes, onClose: () => setPreviewTarget(null) }),
