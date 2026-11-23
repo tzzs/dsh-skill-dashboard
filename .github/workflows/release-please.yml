@@ -34,7 +34,7 @@ jobs:
       - name: Create or update release PR and GitHub release
         if: steps.head.outputs.current == 'true'
         id: release
-        uses: googleapis/release-please-action@8b8fd2cc23b2e18957157a9d923d75aa0c6f6ad5 # v4
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
         with:
           token: ${{ github.token }}
           config-file: release-please-config.json
@@ -52,13 +52,13 @@ jobs:
           done
       - name: Check out the exact released commit
         if: steps.release.outputs['skill-dashboard--release_created'] == 'true'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.release.outputs['skill-dashboard--sha'] }}
           persist-credentials: false
       - name: Set up Node for release packaging
         if: steps.release.outputs['skill-dashboard--release_created'] == 'true'
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
       - name: Verify and package the released plugin
