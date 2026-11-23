@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.2.0...v1.3.0) (2026-11-23)
+
+
+### Features
+
+* **skill-dashboard:** diagnose skill usage and clean up idle skills ([#7](https://github.com/tzzs/dsh-skill-dashboard/issues/7)) ([d401d18](https://github.com/tzzs/dsh-skill-dashboard/commit/d401d18efa26dd9ebc4b2fd63e6891bbfea65090))
+* **skill-dashboard:** refine navigation and preview reading ([#9](https://github.com/tzzs/dsh-skill-dashboard/issues/9)) ([69afa6a](https://github.com/tzzs/dsh-skill-dashboard/commit/69afa6aad8fcf8791f3b1214b786f2353a110892))
+
 ## [1.2.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.1.0...v1.2.0) (2026-11-22)
 
 
