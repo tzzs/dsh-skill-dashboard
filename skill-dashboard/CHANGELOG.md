@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.4.0...v1.5.0) (2026-11-24)
+
+
+### Features
+
+* **skill-dashboard:** check skills.sh installs for updates and surface them ([#17](https://github.com/tzzs/dsh-skill-dashboard/issues/17)) ([2ab47c1](https://github.com/tzzs/dsh-skill-dashboard/commit/2ab47c1d672db6544243cf2d2cca2b37b5beab69))
+* **skill-dashboard:** make segmented switches show their selection clearly ([#15](https://github.com/tzzs/dsh-skill-dashboard/issues/15)) ([8d40a8c](https://github.com/tzzs/dsh-skill-dashboard/commit/8d40a8c16ecfcdd0d8d5f25c1f9c4cf16775ca92))
+
 ## [1.4.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.3.0...v1.4.0) (2026-11-24)
 
 
