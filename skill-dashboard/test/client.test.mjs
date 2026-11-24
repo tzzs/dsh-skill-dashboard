@@ -14,7 +14,7 @@ function loadClient(fetch = async () => ({ ok: true, json: async () => ({ ok: tr
     fetch, AbortController, setTimeout, clearTimeout, console,
   };
   vm.runInNewContext(source.replace('    // ---------------------------------------------------------------- mount',
-    '    return { filterSkills, runtimeBadge, createRuntime, Segmented, TabBar, usagePeriodProjection, diagnosisRows, diagnosisTally, previewFileTree, cachedPreview, rememberPreview, PREVIEW_MEMORY, zh, en };\n    // ---------------------------------------------------------------- mount'), context);
+    '    return { filterSkills, runtimeBadge, createRuntime, shouldAutoCheck, Segmented, TabBar, usagePeriodProjection, diagnosisRows, diagnosisTally, previewFileTree, cachedPreview, rememberPreview, PREVIEW_MEMORY, zh, en };\n    // ---------------------------------------------------------------- mount'), context);
   return api;
 }
 const { filterSkills, runtimeBadge, zh, en } = loadClient();
@@ -308,6 +308,102 @@ test('mutations apply inline state or perform one authoritative refresh without 
   assert.deepEqual(urls, ['skill-dashboard/action', 'skill-dashboard/state']);
   assert.equal(runtime.store.getSnapshot().data.skills[0].modelInvocable, false);
   runtime.dispose();
+});
+
+test('the automatic update check runs once per window and only when a skill is tracked', () => {
+  const { shouldAutoCheck } = loadClient();
+  const now = 1796000000000;
+  const sixHours = 6 * 60 * 60 * 1000;
+  const tracked = [{ name: 'a', installed: { source: 'github', ref: 'o/r#skills/a' }, dir: '/skills/a' }];
+  assert.equal(shouldAutoCheck(undefined, tracked, now), true, 'no block at all is due');
+  assert.equal(shouldAutoCheck({ checkedAt: 0, available: [] }, tracked, now), true);
+  assert.equal(shouldAutoCheck({ checkedAt: now - 60_000 }, tracked, now), false, 'a fresh record is left alone');
+  assert.equal(shouldAutoCheck({ checkedAt: now - sixHours + 1 }, tracked, now), false);
+  assert.equal(shouldAutoCheck({ checkedAt: now - sixHours }, tracked, now), true);
+  assert.equal(shouldAutoCheck(undefined, [{ name: 'b', installed: null, dir: '/skills/b' }], now), false,
+    'a skill with no provenance is not checked');
+  assert.equal(shouldAutoCheck(undefined, [{ name: 'c', installed: { source: 'github', ref: 'o/r' }, dir: null }], now), false,
+    'a flat skill has no directory to compare');
+  assert.equal(shouldAutoCheck(undefined, [], now), false);
+});
+
+test('an update check walks the Host in bounded chunks and refreshes once at the end', async () => {
+  const posts = [];
+  const urls = [];
+  const { createRuntime } = loadClient(async (url, init) => {
+    urls.push(url);
+    if (url.endsWith('/action')) {
+      const body = JSON.parse(init.body);
+      posts.push(body);
+      const nextCursor = Math.min(body.cursor + 4, 10);
+      return { ok: true, json: async () => ({ ok: true, total: 10, cursor: body.cursor, nextCursor, done: nextCursor >= 10, checked: [] }) };
+    }
+    return { ok: true, json: async () => ({ ok: true, skills: [], updates: { checkedAt: 2, available: [] } }) };
+  });
+  const runtime = createRuntime();
+  try {
+    const run = runtime.checkUpdates({ refresh: true });
+    assert.equal(runtime.store.getSnapshot().updatesChecking, true);
+    assert.equal(runtime.checkUpdates(), run, 'a second gesture joins the running check');
+    assert.equal(await run, true);
+    assert.deepEqual(posts.map((body) => [body.action, body.cursor, body.limit, body.refresh]), [
+      ['check-updates', 0, 4, true],
+      ['check-updates', 4, 4, true],
+      ['check-updates', 8, 4, true],
+    ]);
+    assert.equal(urls.at(-1), 'skill-dashboard/state', 'one state read lands the new block');
+    const snapshot = runtime.store.getSnapshot();
+    assert.equal(snapshot.updatesChecking, false);
+    assert.equal(snapshot.updatesProgress.done, 10);
+    assert.equal(snapshot.updatesProgress.total, 10);
+    assert.equal(snapshot.data.updates.checkedAt, 2);
+  } finally {
+    runtime.dispose();
+  }
+});
+
+test('an older Host without the check action fails quietly and clears its flag', async () => {
+  const { createRuntime } = loadClient(async (url) => {
+    if (url.endsWith('/action')) {
+      return { ok: false, status: 400, json: async () => ({ ok: false, code: 'unknown-action', message: 'unknown action' }) };
+    }
+    return { ok: true, json: async () => ({ ok: true, skills: [] }) };
+  });
+  const runtime = createRuntime();
+  try {
+    assert.equal(await runtime.checkUpdates({ refresh: true }), false);
+    const snapshot = runtime.store.getSnapshot();
+    assert.equal(snapshot.updatesChecking, false);
+    assert.equal(snapshot.note, null, 'a failed check adds no error note');
+  } finally {
+    runtime.dispose();
+  }
+});
+
+test('a transiently empty chunk is retried instead of ending the walk early', async () => {
+  const cursors = [];
+  let calls = 0;
+  const { createRuntime } = loadClient(async (url, init) => {
+    if (url.endsWith('/action')) {
+      const body = JSON.parse(init.body);
+      cursors.push(body.cursor);
+      calls += 1;
+      if (calls === 2) {
+        return { ok: true, json: async () => ({ ok: true, total: 0, cursor: body.cursor, nextCursor: 0, done: true, checked: [] }) };
+      }
+      const nextCursor = Math.min(body.cursor + 4, 8);
+      return { ok: true, json: async () => ({ ok: true, total: 8, cursor: body.cursor, nextCursor, done: nextCursor >= 8, checked: [] }) };
+    }
+    return { ok: true, json: async () => ({ ok: true, skills: [] }) };
+  });
+  const runtime = createRuntime();
+  try {
+    assert.equal(await runtime.checkUpdates(), true);
+    assert.deepEqual(cursors, [0, 4, 4], 'the collapsed cursor is retried before the walk ends');
+    assert.equal(runtime.store.getSnapshot().updatesProgress.done, 8);
+  } finally {
+    runtime.dispose();
+  }
 });
 
 const diagnosis = {
