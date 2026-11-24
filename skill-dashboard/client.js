@@ -72,6 +72,7 @@ window.__ModuleLoader__.load({
       'status.removed': '已删除 {name}',
       'status.installed': '已安装 {name}',
       'status.updatedSkill': '已更新 {name}',
+      'status.boundSource': '已记录 {name} 的来源',
       'status.upToDate': '{name} 已是最新版本',
       'status.busy': '正在处理…',
       'status.failed': '{action}失败：{message}',
@@ -118,6 +119,7 @@ window.__ModuleLoader__.load({
       'skill.userHint': '允许在对话中输入 /技能名 手动调用。',
       'skill.menuAria': '更多操作：{name}',
       'skill.menu.update': '更新',
+      'skill.menu.bind': '关联来源',
       'skill.menu.remove': '删除',
       'skill.menu.showPath': '查看路径',
       'skill.menu.hidePath': '隐藏路径',
@@ -129,11 +131,20 @@ window.__ModuleLoader__.load({
       'skill.removeConfirm': '删除「{name}」？对应技能目录会一并移除且无法撤销。',
       'skill.removeConfirmAction': '确认删除',
       'skill.busy': '正在保存…',
+      'skill.bind.inputAria': '来源引用',
+      'skill.bind.placeholder': '技能名、owner/repo 或 GitHub 链接',
+      'skill.bind.hint': '关联后可从该来源更新；更新会用来源内容替换本地技能目录。',
+      'skill.bind.submit': '关联并更新',
+      'skill.origin': '来源 {ref}',
+      'skill.originVersion': '来源 {ref} · v{version}',
       'source.tencent': '腾讯 SkillHub',
       'discover.title': '发现技能',
       'discover.body': '从社区技能源搜索并一键安装到本地目录。',
       'discover.source': '技能来源',
       'discover.placeholder': '输入技能名或仓库，按回车搜索',
+      'discover.githubLabel': '从 GitHub 安装',
+      'discover.githubPlaceholder': 'owner/repo、owner/repo@分支，或粘贴 GitHub 链接',
+      'discover.githubSubmit': '安装',
       'discover.searchLabel': '搜索技能',
       'discover.popular': '浏览热门技能',
       'discover.results': '{count} 个搜索结果',
@@ -293,6 +304,8 @@ window.__ModuleLoader__.load({
       'crash.body': '重新加载页面可重新挂载插件；若持续失败，请查看浏览器控制台。',
       'error.read-only': '只读技能，无法修改',
       'error.source-unavailable': '技能来源暂时不可用',
+      'error.subpath-required': '这个仓库有多个技能，请用 owner/repo#路径 指定',
+      'error.flat-skill': '扁平技能文件无法就地更新，请删除后重新安装',
       'error.source-rate-limited': '请求过于频繁，请稍后重试',
       'error.invalid-response': '技能服务返回了无法解析的数据',
       'error.preview-unavailable': '此技能暂不支持预览；如刚更新插件，请重新加载后再试',
@@ -307,7 +320,7 @@ window.__ModuleLoader__.load({
       'error.missing-frontmatter': 'SKILL.md 缺少元数据头，无法修改',
       'error.write-failed': '写入技能文件失败，请检查目录权限',
       'error.delete-failed': '删除技能目录失败，请检查文件占用或权限',
-      'error.name-mismatch': '目标技能名称与目录不匹配，已中止操作',
+      'error.name-mismatch': '技能名与目录或来源不一致，已中止操作',
       'error.payload-too-large': '请求体过大，请减少批量选择数量后重试',
       'error.state-unavailable': '技能状态暂时无法读取，请稍后重试',
       'error.internal-error': '技能服务内部错误，请稍后重试',
@@ -344,6 +357,7 @@ window.__ModuleLoader__.load({
       'status.removed': 'Deleted {name}',
       'status.installed': 'Installed {name}',
       'status.updatedSkill': 'Updated {name}',
+      'status.boundSource': 'Recorded the source of {name}',
       'status.upToDate': '{name} is up to date',
       'status.busy': 'Working…',
       'status.failed': '{action} failed: {message}',
@@ -390,6 +404,7 @@ window.__ModuleLoader__.load({
       'skill.userHint': 'Allow invoking this skill explicitly in chat with /skill-name.',
       'skill.menuAria': 'More actions: {name}',
       'skill.menu.update': 'Update',
+      'skill.menu.bind': 'Link source',
       'skill.menu.remove': 'Delete',
       'skill.menu.showPath': 'Show path',
       'skill.menu.hidePath': 'Hide path',
@@ -401,11 +416,20 @@ window.__ModuleLoader__.load({
       'skill.removeConfirm': 'Delete “{name}”? Its skill folder will be removed permanently.',
       'skill.removeConfirmAction': 'Delete',
       'skill.busy': 'Saving…',
+      'skill.bind.inputAria': 'Source reference',
+      'skill.bind.placeholder': 'Skill name, owner/repo, or a GitHub link',
+      'skill.bind.hint': 'Updating replaces the local skill directory with the source content.',
+      'skill.bind.submit': 'Link and update',
+      'skill.origin': 'From {ref}',
+      'skill.originVersion': 'From {ref} · v{version}',
       'source.tencent': 'Tencent SkillHub',
       'discover.title': 'Discover skills',
       'discover.body': 'Search community catalogs and install directly into your local skills directory.',
       'discover.source': 'Skill source',
       'discover.placeholder': 'Skill name or repo, then Enter',
+      'discover.githubLabel': 'Install from GitHub',
+      'discover.githubPlaceholder': 'owner/repo, owner/repo@branch, or a GitHub link',
+      'discover.githubSubmit': 'Install',
       'discover.searchLabel': 'Search skills',
       'discover.popular': 'Browse popular skills',
       'discover.results': '{count} search results',
@@ -565,6 +589,8 @@ window.__ModuleLoader__.load({
       'crash.body': 'Reloading the page re-mounts the plugin; check the browser console if it keeps failing.',
       'error.read-only': 'Read-only skill; it cannot be changed',
       'error.source-unavailable': 'This skill source is temporarily unavailable',
+      'error.subpath-required': 'This repository holds several skills; name one with owner/repo#path',
+      'error.flat-skill': 'A flat skill file cannot be updated in place; remove and reinstall',
       'error.source-rate-limited': 'Too many requests; please try again shortly',
       'error.invalid-response': 'The skill service returned unreadable data',
       'error.preview-unavailable': 'Preview is unavailable. Reload the plugin if it was just updated.',
@@ -579,7 +605,7 @@ window.__ModuleLoader__.load({
       'error.missing-frontmatter': 'SKILL.md is missing frontmatter; cannot update',
       'error.write-failed': 'Failed to write skill file; check folder permissions',
       'error.delete-failed': 'Failed to delete skill folder; check permissions or open files',
-      'error.name-mismatch': 'Skill name does not match its directory; action aborted',
+      'error.name-mismatch': 'Skill name does not match its directory or source; action aborted',
       'error.payload-too-large': 'Request payload is too large; select fewer items and try again',
       'error.state-unavailable': 'Skill catalog state is temporarily unavailable',
       'error.internal-error': 'Internal skill service error; please retry',
@@ -1411,48 +1437,62 @@ window.__ModuleLoader__.load({
         );
       };
 
-      const updateSkill = (skill) => {
+      /** `ref` links a row with no stored origin and updates it in the same Host call. */
+      const updateSkill = (skill, ref) => {
         const name = textOf(skill?.name);
+        const path = textOf(skill?.path);
+        const bound = textOf(ref);
         if (name === '') return Promise.resolve(false);
         // The Host resolves source and ref from its provenance store when they are absent.
         return runAction(
-          { action: 'update', name },
+          { action: 'update', name, ...(path === '' ? {} : { path }), ...(bound === '' ? {} : { ref: bound }) },
           {
             kind: 'update',
             target: name,
-            failKey: 'skill.menu.update',
-            success: (value) => ({
-              tone: 'ok',
-              key: objectOf(value) !== null && value.changed === true ? 'status.updatedSkill' : 'status.upToDate',
-              params: { name },
-            }),
+            failKey: bound === '' ? 'skill.menu.update' : 'skill.menu.bind',
+            success: (value) => {
+              const changed = objectOf(value)?.changed === true;
+              const key = changed ? 'status.updatedSkill' : bound !== '' ? 'status.boundSource' : 'status.upToDate';
+              return { tone: 'ok', key, params: { name } };
+            },
           },
         );
       };
 
+      /** A discover card carries its name and source; the GitHub form sends a bare reference. */
       const installSkill = (item, source) => {
         const name = textOf(item?.name);
         const ref = textOf(item?.ref);
         const sourceId = textOf(source);
-        if (name === '' || ref === '' || sourceId === '') return Promise.resolve(false);
+        if (ref === '' || (sourceId !== '' && name === '')) return Promise.resolve(false);
         return runAction(
-          { action: 'install', source: sourceId, ref, name },
+          {
+            action: 'install',
+            ...(sourceId === '' ? {} : { source: sourceId }),
+            ref,
+            ...(name === '' ? {} : { name }),
+          },
           {
             kind: 'install',
-            target: name,
+            target: name !== '' ? name : ref,
             failKey: 'discover.install',
-            success: () => {
-              // The installed card must not offer a second install while the catalog reloads.
-              store.set((current) => ({
-                ...current,
-                discover: {
-                  ...current.discover,
-                  items: current.discover.items.map((entry) => (
-                    textOf(objectOf(entry)?.name) === name ? { ...entry, installed: true } : entry
-                  )),
-                },
-              }));
-              return { tone: 'ok', key: 'status.installed', params: { name } };
+            success: (value) => {
+              // The Host replies with the resolved skill name, which a bare GitHub ref cannot know.
+              const installed = textOf(objectOf(value)?.name);
+              if (installed !== '') {
+                // The installed card must not offer a second install while the catalog reloads.
+                store.set((current) => ({
+                  ...current,
+                  discover: {
+                    ...current.discover,
+                    items: current.discover.items.map((entry) => (
+                      textOf(objectOf(entry)?.name) === installed ? { ...entry, installed: true } : entry
+                    )),
+                  },
+                }));
+              }
+              const label = installed !== '' ? installed : name !== '' ? name : ref;
+              return { tone: 'ok', key: 'status.installed', params: { name: label } };
             },
           },
         );
@@ -1928,7 +1968,7 @@ window.__ModuleLoader__.load({
     }
 
     /** Native top-layer menu with feature-detected focus, invoker and positioning fallbacks. */
-    function RowMenu({ skill, t, name, disabled, canUpdate, pathShown, onUpdate, onAskRemove, onTogglePath, returnFocusRef }) {
+    function RowMenu({ skill, t, name, disabled, canUpdate, pathShown, onUpdate, onBind, onAskRemove, onTogglePath, returnFocusRef }) {
       const [open, setOpen] = useState(false);
       const internalTrigger = useRef(null);
       const triggerRef = returnFocusRef ?? internalTrigger;
@@ -2067,7 +2107,11 @@ window.__ModuleLoader__.load({
           ref: groupRef, className: 'skd-menuGroup', focusgroup: 'menu nomemory',
           role: nativeFocusGroup ? undefined : 'menu', 'aria-labelledby': id + '-trigger',
         },
-          canUpdate && el(Button, { ...itemProps, disabled, onClick: choose(onUpdate) }, t('skill.menu.update')),
+          canUpdate && el(Button, {
+            ...itemProps,
+            disabled,
+            onClick: choose(objectOf(skill?.installed) === null ? onBind : onUpdate),
+          }, t(objectOf(skill?.installed) === null ? 'skill.menu.bind' : 'skill.menu.update')),
           el(Button, { ...itemProps, 'data-danger': '', disabled, onClick: choose(onAskRemove) }, t('skill.menu.remove')),
           path !== '' && el(Button, { ...itemProps, onClick: choose(onTogglePath) }, t(pathShown ? 'skill.menu.hidePath' : 'skill.menu.showPath')),
         )),
@@ -2391,13 +2435,30 @@ window.__ModuleLoader__.load({
       const modelInvocable = skill?.modelInvocable === true;
       const userInvocable = skill?.userInvocable === true;
       const closed = modelInvocable === false && userInvocable === false;
-      // Update is offered only with both a writable file and Host-known provenance.
-      const canUpdate = writable === true && objectOf(skill?.installed) !== null;
+      const installed = objectOf(skill?.installed);
+      const origin = installed === null ? '' : textOf(installed.ref);
+      const originVersion = installed === null ? '' : textOf(installed.version);
+      // A writable row always offers the action; a row without a stored origin links one first.
+      const canUpdate = writable === true;
       const menuTriggerRef = useRef(null);
       const cancelRef = useRef(null);
+      const bindInputRef = useRef(null);
       const confirmId = 'skd-confirm-' + useId();
+      const bindId = 'skd-bind-' + useId();
+      const [binding, setBinding] = useState(false);
+      const [bindDraft, setBindDraft] = useState('');
       useEffect(() => { if (confirming) cancelRef.current?.focus({ preventScroll: true }); }, [confirming]);
+      useEffect(() => { if (binding) bindInputRef.current?.focus({ preventScroll: true }); }, [binding]);
       const cancel = () => { onCancelRemove(); menuTriggerRef.current?.focus({ preventScroll: true }); };
+      const openBind = () => { setBindDraft(''); setBinding(true); };
+      const cancelBind = () => { setBinding(false); menuTriggerRef.current?.focus({ preventScroll: true }); };
+      const submitBind = () => {
+        const draft = bindDraft.trim();
+        if (draft === '' || writesLocked) return;
+        setBinding(false);
+        menuTriggerRef.current?.focus({ preventScroll: true });
+        onUpdate(skill, draft);
+      };
 
       return el('article', {
         className: 'skd-row',
@@ -2421,6 +2482,8 @@ window.__ModuleLoader__.load({
             ),
           ),
           description !== '' && el('p', { className: 'skd-rowDesc', title: description }, description),
+          origin !== '' && el('p', { className: 'skd-noteLine' },
+            t(originVersion !== '' ? 'skill.originVersion' : 'skill.origin', { ref: origin, version: originVersion })),
         ),
         el('div', { className: 'skd-rowRail' },
           el('div', { className: 'skd-metric' },
@@ -2463,6 +2526,7 @@ window.__ModuleLoader__.load({
             canUpdate,
             pathShown,
             onUpdate: () => onUpdate(skill),
+            onBind: openBind,
             onAskRemove: () => onAskRemove(skill),
             onTogglePath: () => onTogglePath(path),
           }),
@@ -2470,6 +2534,38 @@ window.__ModuleLoader__.load({
         pathShown && el('div', { className: 'skd-path' },
           el('span', { className: 'skd-micro' }, t('skill.path')),
           el('code', { className: 'skd-pathValue' }, path),
+        ),
+        binding && el('div', {
+          className: 'skd-confirm', role: 'group', 'aria-label': t('skill.menu.bind'),
+          onKeyDown: (event) => { if (event.key === 'Escape') { event.preventDefault(); cancelBind(); } },
+        },
+          el('div', { className: 'skd-searchField' },
+            el('span', { id: bindId, className: 'skd-noteLine' }, t('skill.bind.hint')),
+            el(Input, {
+              ref: bindInputRef, className: 'skd-input', type: 'text', name: 'ref',
+              value: bindDraft, placeholder: t('skill.bind.placeholder'),
+              'aria-label': t('skill.bind.inputAria'), 'aria-describedby': bindId,
+              autoCorrect: 'off', autoCapitalize: 'none', spellCheck: false,
+              onChange: (event) => setBindDraft(event.target.value),
+              onKeyDown: (event) => {
+                // Enter during an IME composition confirms the candidate rather than submitting.
+                if (event.key !== 'Enter' || event.nativeEvent?.isComposing) return;
+                event.preventDefault();
+                submitBind();
+              },
+            })),
+          el(Button, {
+            type: 'button',
+            className: 'skd-button',
+            'data-variant': 'primary',
+            disabled: writesLocked || bindDraft.trim() === '',
+            onClick: submitBind,
+          }, t('skill.bind.submit')),
+          el(Button, {
+            type: 'button',
+            className: 'skd-button',
+            onClick: cancelBind,
+          }, t('action.cancel')),
         ),
         confirming && el('div', {
           className: 'skd-confirm', role: 'group', 'aria-label': t('skill.menu.remove'), 'aria-describedby': confirmId,
@@ -2617,6 +2713,13 @@ window.__ModuleLoader__.load({
         : sourceLabel;
       const installingName = pending !== null && pending.kind === 'install' ? textOf(pending.target) : '';
       const searchId = 'skd-discover-query-' + useId();
+      const githubId = 'skd-discover-github-' + useId();
+      const [githubDraft, setGithubDraft] = useState('');
+      const submitGithub = () => {
+        const ref = githubDraft.trim();
+        if (ref === '' || pending !== null) return;
+        void Promise.resolve(onInstall({ ref }, '')).then((ok) => { if (ok === true) setGithubDraft(''); });
+      };
 
       let body;
       if (discover.status === 'loading') {
@@ -2732,6 +2835,27 @@ window.__ModuleLoader__.load({
             disabled: discover.source === null || discover.status === 'loading',
           }, t('action.search')),
         )),
+        // A repository is not searchable, so GitHub installs use one reference field of their own.
+        el('form', {
+          className: 'skd-searchRow', action: ROUTE_ACTION, method: 'post', 'aria-label': t('discover.githubLabel'),
+          onSubmit: (event) => { event.preventDefault(); submitGithub(); },
+        },
+          el('div', { className: 'skd-searchField' },
+            el('label', { className: 'skd-fieldLabel', htmlFor: githubId }, t('discover.githubLabel')),
+            el(Input, {
+              id: githubId, name: 'ref', className: 'skd-input', type: 'text', value: githubDraft,
+              placeholder: t('discover.githubPlaceholder'), autoCorrect: 'off', autoCapitalize: 'none', spellCheck: false,
+              onChange: (event) => setGithubDraft(event.target.value),
+              onKeyDown: (event) => {
+                // Let normal Enter use native form submission; suppress only IME confirmation.
+                if (event.key === 'Enter' && (event.nativeEvent?.isComposing || event.nativeEvent?.keyCode === 229)) event.preventDefault();
+              },
+            })),
+          el(Button, {
+            type: 'submit', className: 'skd-button', 'data-variant': 'primary',
+            disabled: githubDraft.trim() === '' || pending !== null,
+          }, t('discover.githubSubmit')),
+        ),
         discover.status === 'ready' && el('div', { className: 'skd-resultLine skd-discoverResults', role: 'status' },
           el('span', null, resultScope),
           el('span', null, t('discover.results', { count: items.length }))),
@@ -3639,7 +3763,7 @@ window.__ModuleLoader__.load({
                 expandedPath,
                 confirmingPath,
                 onToggle: toggleInvocation,
-                onUpdate: (skill) => { void updateSkill(skill); },
+                onUpdate: (skill, ref) => { void updateSkill(skill, ref); },
                 onAskRemove: askRemove,
                 onConfirmRemove: confirmRemove,
                 onCancelRemove: cancelRemove,
@@ -3655,7 +3779,7 @@ window.__ModuleLoader__.load({
                 onSearch: search,
                 onRetry: () => { void runDiscover(discover.source, textOf(discover.query)); },
                 onSelectSource: changeDiscoverSource,
-                onInstall: (item, source) => { void installSkill(item, source); },
+                onInstall: (item, source) => installSkill(item, source),
                 onPreview: setPreviewTarget,
               }),
               tab === 'usage' && el(UsageTab, { data, t, view: usageView, setView: setUsageView }),

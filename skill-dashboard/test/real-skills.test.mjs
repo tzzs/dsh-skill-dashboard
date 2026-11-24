@@ -421,6 +421,59 @@ await check('install from skills.sh into a temp root', async () => {
   assert.equal(parsed.ok, true)
 })
 
+await check('a live GitHub install pins the head commit and updates as a no-op', async () => {
+  const ref = 'anthropics/skills#skills/pdf'
+  const directory = join(process.env.DSH_AGENTS_HOME, 'skills', 'pdf')
+  const installed = await live.call('/skill-dashboard/action', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'install', ref }),
+  })
+  console.log(`  install ${ref} → HTTP ${installed.status} ${JSON.stringify(installed.body)}`)
+  if (installed.status === 409 && installed.body.code === 'already-installed') {
+    // The skills.sh probe above may have installed the same skill first; the
+    // round trip this case proves is the same either way.
+    const updated = await live.call('/skill-dashboard/action', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'update', name: 'pdf', ref }),
+    })
+    assert.equal(updated.status, 200, JSON.stringify(updated.body))
+  } else if (installed.status !== 200) {
+    // A rate limit or an unreachable raw host is a documented structured answer.
+    assert.equal(installed.body.ok, false)
+    assert.equal(['source-unavailable', 'source-rate-limited', 'invalid-skill'].includes(installed.body.code), true)
+    console.log(`  upstream refused the install: ${installed.body.code}`)
+    return
+  }
+  assert.equal(existsSync(join(directory, 'SKILL.md')), true)
+  const provenance = JSON.parse(await readFile(join(directory, '.skill-source.json'), 'utf8'))
+  console.log(`  recorded ${provenance.ref} @ ${provenance.commit}`)
+  assert.equal(provenance.source, 'skills-sh')
+  assert.equal(provenance.ref, ref)
+  assert.match(String(provenance.commit), /^[0-9a-f]{40}$/, 'the record pins a full commit')
+
+  const head = await fetch('https://api.github.com/repos/anthropics/skills/commits?per_page=1', {
+    headers: { accept: 'application/vnd.github+json', 'user-agent': 'dsh-skill-dashboard-live' },
+  })
+  if (head.ok !== true) {
+    console.log(`  live commits API refused (HTTP ${head.status}); only the recorded shape was checked`)
+    return
+  }
+  const rows = await head.json()
+  assert.equal(provenance.commit, rows[0].sha, 'the pin is the live head commit of the tracked ref')
+
+  const again = await live.call('/skill-dashboard/action', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'update', name: 'pdf', ref }),
+  })
+  console.log(`  update → HTTP ${again.status} ${JSON.stringify(again.body)}`)
+  assert.equal(again.status, 200, JSON.stringify(again.body))
+  assert.equal(again.body.changed, false, 'the fetched bytes still match the local tree')
+  assert.equal(parseSkillFrontmatter(await readFile(join(directory, 'SKILL.md'), 'utf8')).ok, true)
+})
+
 await check('a failing upstream degrades to source-unavailable', async () => {
   const originalFetch = globalThis.fetch
   globalThis.fetch = async () => {

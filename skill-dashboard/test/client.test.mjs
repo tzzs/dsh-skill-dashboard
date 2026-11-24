@@ -93,6 +93,53 @@ test('the latest discovery search wins even when older requests finish last', as
   runtime.dispose();
 });
 
+test('a row update sends its path, and a bind reference only when the form supplies one', async () => {
+  const posts = [];
+  let reply = { ok: true, name: 'pdf', path: 'C:\\skills\\pdf', changed: false };
+  const { createRuntime } = loadClient(async (route, init) => {
+    if (route === 'skill-dashboard/action') posts.push(JSON.parse(init.body));
+    return { ok: true, json: async () => reply };
+  });
+  const runtime = createRuntime();
+  const skill = { name: 'pdf', path: 'C:\\skills\\pdf' };
+  try {
+    await runtime.updateSkill(skill);
+    assert.deepEqual(posts.at(-1), { action: 'update', name: 'pdf', path: 'C:\\skills\\pdf' });
+    assert.equal(runtime.store.getSnapshot().note.key, 'status.upToDate');
+
+    reply = { ...reply, changed: true };
+    await runtime.updateSkill(skill);
+    assert.equal(runtime.store.getSnapshot().note.key, 'status.updatedSkill');
+
+    reply = { ...reply, changed: false };
+    await runtime.updateSkill(skill, 'anthropics/skills#skills/pdf');
+    assert.deepEqual(posts.at(-1),
+      { action: 'update', name: 'pdf', path: 'C:\\skills\\pdf', ref: 'anthropics/skills#skills/pdf' });
+    assert.equal(runtime.store.getSnapshot().note.key, 'status.boundSource', 'a bind with no byte change is a link receipt');
+  } finally {
+    runtime.dispose();
+  }
+});
+
+test('the GitHub install form posts a bare reference and takes the name from the Host reply', async () => {
+  const posts = [];
+  const { createRuntime } = loadClient(async (route, init) => {
+    if (route === 'skill-dashboard/action') posts.push(JSON.parse(init.body));
+    return { ok: true, json: async () => ({ ok: true, name: 'pdf', path: 'C:\\skills\\pdf' }) };
+  });
+  const runtime = createRuntime();
+  try {
+    assert.equal(await runtime.installSkill({ ref: 'anthropics/skills#skills/pdf' }, ''), true);
+    assert.deepEqual(posts.at(-1), { action: 'install', ref: 'anthropics/skills#skills/pdf' });
+    assert.equal(runtime.store.getSnapshot().note.params.name, 'pdf');
+
+    assert.equal(await runtime.installSkill({ name: 'pdf', ref: 'skills/pdf' }, 'skills-sh'), true);
+    assert.deepEqual(posts.at(-1), { action: 'install', source: 'skills-sh', ref: 'skills/pdf', name: 'pdf' });
+  } finally {
+    runtime.dispose();
+  }
+});
+
 test('period projection counts retained daily calls instead of cumulative or recent records', () => {
   const { usagePeriodProjection: project } = loadClient();
   const dates = Array.from({ length: 60 }, (_, i) => new Date(Date.UTC(2026, 10, 18 - 59 + i)).toISOString().slice(0, 10));

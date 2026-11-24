@@ -171,6 +171,8 @@ const MAX_FILE_FETCH_CONCURRENCY = 4
 const SEARCH_CACHE_MS = 60_000
 const PAYLOAD_CACHE_MS = 10 * 60_000
 const TREE_CACHE_MS = 10 * 60_000
+/** Unauthenticated GitHub allows 60 API requests an hour; commit lookups share that budget. */
+const COMMIT_CACHE_MS = 60_000
 /** The detected coding agents are re-read at most once per this window. */
 const RUNTIME_CACHE_MS = 30_000
 
@@ -248,9 +250,16 @@ const ENDPOINTS = {
   'skills-sh': {
     /** `q` is required by the upstream API; an empty query searches "skill". */
     search: (query) => `https://skills.sh/api/search?q=${encodeURIComponent(query.length > 0 ? query : 'skill')}&limit=50`,
-    tree: (owner, repo, branch) => `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
-    raw: (owner, repo, branch, path) => `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`,
+    tree: (owner, repo, rev) => `https://api.github.com/repos/${owner}/${repo}/git/trees/${rev}?recursive=1`,
+    raw: (owner, repo, rev, path) => `https://raw.githubusercontent.com/${owner}/${repo}/${rev}/${path}`,
     page: (id) => `https://skills.sh/${id}`,
+    commits: (owner, repo, rev) =>
+      `https://api.github.com/repos/${owner}/${repo}/commits?per_page=1${rev ? `&sha=${encodeURIComponent(rev)}` : ''}`,
+    /** The public atom feed answers when the REST API refuses an anonymous client. */
+    commitsAtom: (owner, repo, rev) => `https://github.com/${owner}/${repo}/commits/${encodeURIComponent(rev)}.atom`,
+    flat: (owner, repo, rev) => `https://data.jsdelivr.com/v1/packages/gh/${owner}/${repo}@${encodeURIComponent(rev)}?structure=flat`,
+    cdn: (owner, repo, rev, path) =>
+      `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${encodeURIComponent(rev)}/${path.split('/').map(encodeURIComponent).join('/')}`,
   },
 }
 
@@ -330,6 +339,143 @@ function compareNames(left, right) {
   if (left < right) return -1
   if (left > right) return 1
   return 0
+}
+
+// ---------------------------------------------------------------------------
+// Reference grammar: one parser for a registry slug and a GitHub reference
+// ---------------------------------------------------------------------------
+
+const REF_MAX_LENGTH = 512
+const REF_PATH_MAX_LENGTH = 200
+const OWNER_OR_REPO = /^[A-Za-z0-9_.-]{1,100}$/
+const REF_REV = /^[A-Za-z0-9._-]{1,200}$/
+const COMMIT_REV = /^[0-9a-f]{40}$/
+
+/** The one in-place update a skill directory layout cannot express. */
+const FLAT_SKILL_MESSAGE = 'a flat skill file cannot be updated in place; remove it and install the skill again'
+
+/**
+ * @typedef {object} Locator
+ * @property {'tencent'|'skills-sh'} source
+ * @property {string} ref - canonical stored form.
+ * @property {string} name - default skill-name hint implied by the reference.
+ * @property {string} slug - tencent slug; '' for git.
+ * @property {string} owner - '' for tencent.
+ * @property {string} repo - '' for tencent.
+ * @property {string} [rev] - branch, tag, or 40-hex commit; absent means the repository default.
+ * @property {string} path - skill directory inside the repository; '' when the repository root is the skill.
+ */
+
+/** Whether one revision names a commit rather than a moving branch or tag. */
+function isCommitRev(value) {
+  return typeof value === 'string' && COMMIT_REV.test(value)
+}
+
+const badRef = (message) => ({ ok: false, code: 'bad-request', message })
+
+/**
+ * Parse one reference into the locator every adapter takes.
+ *
+ * Tencent references are a single kebab-case slug. Everything else is a
+ * GitHub reference: `owner/repo[@rev][#path]`, `owner/repo/a/b`, or a URL with
+ * an optional scheme, `www.`, or bare `github.com/` prefix. The canonical `ref`
+ * is what provenance stores, so `parseRef(parseRef(x).value.ref)` must be a
+ * fixed point: a URL and its bare form have to land on the same string.
+ *
+ * @param {unknown} input - reference from a request body or a stored record.
+ * @returns {{ ok: true, value: Locator } | { ok: false, code: 'bad-request', message: string }} outcome.
+ */
+export function parseRef(input) {
+  if (typeof input !== 'string') return badRef('a reference must be a string')
+  const text = input.trim()
+  if (text.length === 0) return badRef('a reference is required')
+  if (text.length > REF_MAX_LENGTH) return badRef(`a reference must be at most ${REF_MAX_LENGTH} characters`)
+  if (/[\u0000-\u001f\u007f]/.test(text)) return badRef('a reference must not contain control characters')
+  if (text.includes('\\')) return badRef('a reference must use forward slashes')
+
+  let body = text
+  let fromUrl = false
+  if (/^(?:https?:\/\/|www\.|github\.com\/)/i.test(text)) {
+    fromUrl = true
+    body = text.replace(/^https?:\/\//i, '').replace(/^www\./i, '')
+    if (!/^github\.com\//i.test(body)) return badRef('a URL reference must point at github.com')
+    body = body.slice('github.com/'.length)
+  }
+
+  let path = ''
+  const hash = body.indexOf('#')
+  if (hash >= 0) {
+    path = body.slice(hash + 1)
+    body = body.slice(0, hash)
+  }
+  // GitHub directory URLs and pasted paths often carry one trailing slash.
+  if (path.endsWith('/')) path = path.slice(0, -1)
+  if (body.endsWith('/')) body = body.slice(0, -1)
+
+  let rev
+  if (!fromUrl) {
+    const at = body.indexOf('@')
+    if (at >= 0) {
+      rev = body.slice(at + 1)
+      body = body.slice(0, at)
+      if (!REF_REV.test(rev)) return badRef('a revision may only use letters, digits, ".", "_" and "-"')
+    }
+  }
+
+  const segments = body.split('/')
+  if (segments.length === 1) {
+    const slug = segments[0]
+    if (rev !== undefined || path.length > 0) return badRef(`"${slug}" is a skill slug and takes no revision or path`)
+    if (!SKILL_NAME.test(slug)) return badRef(`"${slug}" is neither a skill name nor an owner/repo reference`)
+    return { ok: true, value: { source: 'tencent', ref: slug, name: slug, slug, owner: '', repo: '', path: '' } }
+  }
+
+  const owner = segments[0]
+  let repo = segments[1]
+  if (repo.toLowerCase().endsWith('.git')) repo = repo.slice(0, -4)
+  if (!OWNER_OR_REPO.test(owner) || owner === '.' || owner === '..') {
+    return badRef(`"${owner}" is not a valid repository owner`)
+  }
+  if (!OWNER_OR_REPO.test(repo) || repo === '.' || repo === '..') return badRef(`"${repo}" is not a valid repository name`)
+
+  let rest = segments.slice(2)
+  if (fromUrl && (rest[0] === 'tree' || rest[0] === 'blob')) {
+    const kind = rest[0]
+    if (rest.length < 2 || rest[1].length === 0) return badRef(`a /${kind}/ URL must name a revision`)
+    rev = rest[1]
+    if (!REF_REV.test(rev)) return badRef('a revision may only use letters, digits, ".", "_" and "-"')
+    rest = rest.slice(2)
+    if (kind === 'blob') {
+      if (rest.length === 0 || rest[rest.length - 1].toLowerCase() !== 'skill.md') {
+        return badRef('a /blob/ URL must point at a SKILL.md file')
+      }
+    }
+  }
+  if (rest.length > 0) {
+    const named = rest.join('/')
+    if (path.length > 0 && path !== named) return badRef('the reference names two different paths')
+    path = named
+  }
+
+  const pathSegments = path.length > 0 ? path.split('/') : []
+  if (pathSegments.length > 0 && pathSegments[pathSegments.length - 1].toLowerCase() === 'skill.md') pathSegments.pop()
+  path = pathSegments.join('/')
+  if (path.length > REF_PATH_MAX_LENGTH) return badRef(`a reference path must be at most ${REF_PATH_MAX_LENGTH} characters`)
+  if (path.startsWith('/')) return badRef('a reference path must be relative')
+  if (pathSegments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')) {
+    return badRef('a reference path must not contain ".", "..", or an empty segment')
+  }
+  // "#" and "?" would split the canonical form in two places.
+  if (pathSegments.some((segment) => /[#?]/.test(segment))) {
+    return badRef('a reference path must not contain "#" or "?"')
+  }
+
+  const name = pathSegments.length > 0 ? pathSegments[pathSegments.length - 1] : repo
+  const canonical = `${owner}/${repo}${rev === undefined ? '' : `@${rev}`}${path.length > 0 ? `#${path}` : ''}`
+  return {
+    ok: true,
+    value: { source: 'skills-sh', ref: canonical, name, slug: '', owner, repo, ...(rev === undefined ? {} : { rev }), path },
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1904,6 +2050,33 @@ function boundFileSet(files) {
 // Registry adapters
 // ---------------------------------------------------------------------------
 
+/**
+ * Headers for one GitHub API request, authorized when the environment carries a
+ * token: an authenticated client is not bound by the anonymous 60/hour fence.
+ * @returns {Record<string, string>} request headers.
+ */
+function githubHeaders() {
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN
+  const headers = { accept: 'application/vnd.github+json' }
+  if (typeof token === 'string' && token.length > 0) headers.authorization = `Bearer ${token}`
+  return headers
+}
+
+/**
+ * The newest commit id in one GitHub atom feed.
+ * @param {string} text - feed body.
+ * @returns {string | null} 40-hex commit, or null when the feed carries none.
+ */
+function commitFromAtom(text) {
+  const match = /tag:github\.com,2008:Grit::Commit\/([0-9a-f]{40})/i.exec(String(text))
+  return match === null ? null : match[1].toLowerCase()
+}
+
+/** Encode a repository-relative path for one file URL, segment by segment. */
+function encodeRepoPath(path) {
+  return String(path).split('/').map(encodeURIComponent).join('/')
+}
+
 /** One tiny TTL cache used for search results, repo trees, and skill payloads. */
 function createCache(ttlMs, maxEntries = 64) {
   const entries = new Map()
@@ -1986,6 +2159,7 @@ function createSources() {
   const searchCache = createCache(SEARCH_CACHE_MS)
   const treeCache = createCache(TREE_CACHE_MS, 32)
   const payloadCache = createCache(PAYLOAD_CACHE_MS, 32)
+  const commitCache = createCache(COMMIT_CACHE_MS)
   const previewListingCache = createCache(PREVIEW_CACHE_MS, PREVIEW_CACHE_CAP)
   const previewFileCache = createCache(PREVIEW_CACHE_MS, PREVIEW_CACHE_CAP)
 
@@ -2014,10 +2188,9 @@ function createSources() {
       return { ok: true, items }
     },
 
-    async fetch(ref, signal) {
-      const slug = typeof ref === 'string' ? ref.trim() : ''
-      if (slug.length === 0) return failure('bad-request', 'a tencent ref (skill slug) is required')
-      const cached = payloadCache.get(`tencent:${slug}`)
+    async fetch(locator, signal, hints = {}) {
+      const slug = locator.slug
+      const cached = hints.refresh === true ? undefined : payloadCache.get(`tencent:${slug}`)
       if (cached !== undefined) return cached
       const listing = await httpJson(ENDPOINTS.tencent.files(slug), { signal })
       if (listing.ok !== true) return listing
@@ -2061,16 +2234,19 @@ function createSources() {
     },
   }
 
-  /** Load (and cache) the blob paths of one GitHub repository. */
-  const loadRepoTrees = async (owner, repo, signal, refresh = false) => {
-    const key = `${owner}/${repo}`
+  /**
+   * Load (and cache) the blob paths of one GitHub repository at one revision.
+   * Without a revision the two conventional default branches are probed.
+   */
+  const loadRepoTrees = async (owner, repo, rev, signal, refresh = false) => {
+    const key = `${owner}/${repo}@${rev ?? ''}`
     const cached = refresh ? undefined : treeCache.get(key)
     if (cached !== undefined) return { ok: true, ...cached }
     let lastFailure
-    for (const branch of ['main', 'master']) {
-      const outcome = await httpJson(ENDPOINTS['skills-sh'].tree(owner, repo, branch), {
+    for (const candidate of rev === undefined ? ['main', 'master'] : [rev]) {
+      const outcome = await httpJson(ENDPOINTS['skills-sh'].tree(owner, repo, candidate), {
         signal,
-        headers: { accept: 'application/vnd.github+json' },
+        headers: githubHeaders(),
       })
       if (outcome.ok === true) {
         const tree = pickArray(outcome.value, [['tree'], ['data', 'tree']])
@@ -2079,7 +2255,7 @@ function createSources() {
           .filter((entry) => isRecord(entry) && entry.type === 'blob' && typeof entry.path === 'string')
           .map((entry) => entry.path)
         const sizes = Object.fromEntries(tree.filter((entry) => isRecord(entry) && typeof entry.path === 'string' && Number.isFinite(entry.size)).map((entry) => [entry.path, entry.size]))
-        const value = { branch, paths, sizes, truncated: outcome.value?.truncated === true }
+        const value = { rev: candidate, paths, sizes, truncated: outcome.value?.truncated === true }
         treeCache.set(key, value)
         return { ok: true, ...value }
       }
@@ -2087,6 +2263,39 @@ function createSources() {
       if (outcome.status !== 404) break
     }
     return lastFailure ?? failure('source-unavailable', 'the GitHub tree could not be read')
+  }
+
+  /**
+   * Load one repository listing from jsDelivr's data API, which needs no token.
+   *
+   * It resolves branches and tags only, so a commit sha can never be served
+   * this way, and it caches a branch for hours: the caller must not record a
+   * pin for bytes that came from a listing it cannot date.
+   */
+  const loadFallbackTree = async (owner, repo, rev, signal) => {
+    let lastFailure
+    for (const candidate of rev === undefined ? ['main', 'master'] : [rev]) {
+      const outcome = await httpJson(ENDPOINTS['skills-sh'].flat(owner, repo, candidate), { signal })
+      if (outcome.ok === true) {
+        const rows = pickArray(outcome.value, [['files'], ['data', 'files']])
+        if (rows === undefined) return failure('source-unavailable', 'jsDelivr returned an unexpected file listing')
+        const paths = []
+        const sizes = {}
+        for (const row of rows) {
+          const listed = isRecord(row) ? stringField(row, ['name', 'path']) : undefined
+          if (listed === undefined || listed.endsWith('/')) continue
+          const path = listed.replace(/^\//, '')
+          if (path.length === 0) continue
+          paths.push(path)
+          const size = numberField(row, ['size'])
+          if (size !== undefined && size >= 0) sizes[path] = size
+        }
+        return { ok: true, rev: candidate, paths, sizes, truncated: false, degraded: true }
+      }
+      lastFailure = outcome
+      if (outcome.status !== 404) break
+    }
+    return lastFailure ?? failure('source-unavailable', 'the repository file list could not be read')
   }
 
   /** Pick the shallowest `<name>/SKILL.md` directory inside one repository tree. */
@@ -2109,13 +2318,91 @@ function createSources() {
     return { directory: segments.join('/'), file: chosen }
   }
 
-  /** Fetch one skill directory straight from raw.githubusercontent.com. */
-  const fetchSkillFromRaw = async (owner, repo, branch, directory, signal) => {
-    const prefix = directory.length > 0 ? `${directory}/` : ''
-    const skillPath = `${prefix}SKILL.md`
-    const raw = await httpText(ENDPOINTS['skills-sh'].raw(owner, repo, branch, skillPath), { signal })
-    if (raw.ok !== true) return raw
-    return { ok: true, files: [{ path: 'SKILL.md', text: raw.text }], version: null }
+  /** Up to five `#path` candidates for a "which skill?" refusal. */
+  const candidateList = (directories) => {
+    const sorted = [...directories].sort(
+      (left, right) => left.split('/').length - right.split('/').length || compareNames(left, right),
+    )
+    return sorted.slice(0, 5).map((directory) => `#${directory}`).join(', ')
+  }
+
+  /**
+   * Choose one skill directory inside a repository tree: an explicit subpath, a
+   * discovery card's name hint, a repository holding exactly one skill, or a
+   * directory named after the reference. A repository holding several skills
+   * with nothing to choose by is a question for the caller, not a guess.
+   */
+  const selectSkillDirectory = (paths, locator, nameHint) => {
+    const directories = []
+    for (const path of paths) {
+      const segments = path.split('/')
+      if (segments[segments.length - 1].toLowerCase() !== 'skill.md') continue
+      segments.pop()
+      directories.push(segments.join('/'))
+    }
+    const choose = (directory) => ({
+      ok: true,
+      directory,
+      file: directory.length > 0 ? `${directory}/SKILL.md` : 'SKILL.md',
+    })
+    const where = `${locator.owner}/${locator.repo}`
+    if (locator.path.length > 0) {
+      const found = directories.find((directory) => directory.toLowerCase() === locator.path.toLowerCase())
+      if (found !== undefined) return choose(found)
+      return failure('subpath-required', `${where} has no SKILL.md at "${locator.path}"; candidates: ${candidateList(directories)}`)
+    }
+    if (nameHint !== undefined) {
+      const picked = pickSkillDirectory(paths, nameHint)
+      if (picked !== undefined) return { ok: true, ...picked }
+    }
+    if (directories.length === 1) return choose(directories[0])
+    const named = directories.find((directory) => {
+      const segments = directory.split('/')
+      return segments[segments.length - 1].toLowerCase() === locator.name.toLowerCase()
+    })
+    if (named !== undefined) return choose(named)
+    return failure(
+      'subpath-required',
+      `${where} holds several skills; name one as owner/repo#path (candidates: ${candidateList(directories)})`,
+    )
+  }
+
+  /**
+   * Read one repository file, preferring raw.githubusercontent and falling back
+   * to jsDelivr's CDN. `cdn` marks a read the CDN served, which caches a branch
+   * for hours: the caller must not claim a pin for those bytes.
+   */
+  const fetchRepoFile = async (owner, repo, rev, path, signal) => {
+    const raw = await httpText(ENDPOINTS['skills-sh'].raw(owner, repo, rev, encodeRepoPath(path)), { signal })
+    if (raw.ok === true) return raw
+    const cdn = await httpText(ENDPOINTS['skills-sh'].cdn(owner, repo, rev, path), { signal })
+    return cdn.ok === true ? { ...cdn, cdn: true } : cdn
+  }
+
+  /**
+   * Resolve the commit one reference points at, or null when no channel names
+   * one. A commit sha is its own answer, so a sha-pinned update never spends a
+   * request here.
+   */
+  const loadCommit = async (owner, repo, rev, signal, refresh = false) => {
+    if (isCommitRev(rev)) return rev
+    const key = `${owner}/${repo}@${rev ?? ''}`
+    const cached = refresh ? undefined : commitCache.get(key)
+    if (cached !== undefined) return cached
+    let commit = null
+    const api = await httpJson(ENDPOINTS['skills-sh'].commits(owner, repo, rev), { signal, headers: githubHeaders() })
+    const sha = api.ok === true && Array.isArray(api.value) ? api.value[0]?.sha : undefined
+    if (isCommitRev(sha)) commit = sha
+    else if (rev !== undefined) {
+      // The atom feed needs a named revision and answers without the API host.
+      const atom = await httpText(ENDPOINTS['skills-sh'].commitsAtom(owner, repo, rev), {
+        signal,
+        accept: 'application/atom+xml, */*',
+      })
+      if (atom.ok === true) commit = commitFromAtom(atom.text)
+    }
+    commitCache.set(key, commit)
+    return commit
   }
 
   /** skills.sh: search the directory index, resolve a repo path, fetch raw files. */
@@ -2140,39 +2427,28 @@ function createSources() {
       return { ok: true, items }
     },
 
-    async fetch(ref, signal, hints = {}) {
-      const trimmed = typeof ref === 'string' ? ref.trim() : ''
-      const segments = trimmed.split('/').filter((segment) => segment.length > 0)
-      if (segments.length !== 2) return failure('bad-request', 'a skills.sh ref must be "owner/repo"')
-      const [owner, repo] = segments
-      const name = typeof hints.name === 'string' && hints.name.length > 0 ? hints.name : repo
-      const cacheKey = `skills-sh:${owner}/${repo}#${name}`
-      const cached = payloadCache.get(cacheKey)
+    async fetch(locator, signal, hints = {}) {
+      const { owner, repo, rev, path: subpath } = locator
+      const nameHint = typeof hints.name === 'string' && hints.name.length > 0 ? hints.name : undefined
+      // An update must read the upstream now; only an install may reuse a payload.
+      const refresh = hints.refresh === true
+      const cacheKey = `skills-sh:${owner}/${repo}@${rev ?? ''}#${subpath}#${nameHint ?? ''}`
+      const cached = refresh ? undefined : payloadCache.get(cacheKey)
       if (cached !== undefined) return cached
 
-      const tree = await loadRepoTrees(owner, repo, signal)
+      let tree = await loadRepoTrees(owner, repo, rev, signal, refresh)
       if (tree.ok !== true) {
-        // GitHub's tree API is rate limited at 60 requests/hour; a direct raw
-        // read of the conventional layout still works when the tree is refused.
-        if (tree.status === 403 || tree.status === 429) {
-          for (const branch of ['main', 'master']) {
-            for (const directory of [name, '']) {
-              const direct = await fetchSkillFromRaw(owner, repo, branch, directory, signal)
-              if (direct.ok === true) {
-                payloadCache.set(cacheKey, direct)
-                return direct
-              }
-            }
-          }
-          return failure(
-            'source-rate-limited',
-            'GitHub refused the repository tree (rate limit); try again later or pick another result',
-          )
-        }
-        return tree
+        // A sha has no jsDelivr listing; guessing one would record a pin the
+        // bytes never came from, so only a named branch degrades. A refused,
+        // throttled, failed, or unreachable API host all degrade the same way:
+        // a mainland network usually times out without an HTTP status at all.
+        const retryable = tree.status === undefined || tree.status === 403 || tree.status === 429 || tree.status >= 500
+        if (isCommitRev(rev) || !retryable) return tree
+        tree = await loadFallbackTree(owner, repo, rev, signal)
+        if (tree.ok !== true) return tree
       }
-      const picked = pickSkillDirectory(tree.paths, name)
-      if (picked === undefined) return failure('source-unavailable', `"${name}" has no SKILL.md in ${owner}/${repo}`)
+      const picked = selectSkillDirectory(tree.paths, locator, nameHint)
+      if (picked.ok !== true) return picked
       const prefix = picked.directory.length > 0 ? `${picked.directory}/` : ''
       // A repository-root skill ships only its own SKILL.md; a nested one ships
       // its whole directory subtree, textual files first and SKILL.md first.
@@ -2186,35 +2462,40 @@ function createSources() {
               .sort((left, right) => skillFileOrder(left) - skillFileOrder(right) || compareNames(left, right))
       )
       if (wanted.length === 0) return failure('source-unavailable', 'this skill has no installable text files')
+      let servedByCdn = false
       const fetched = await mapWithLimit(wanted.slice(0, MAX_INSTALL_FILES), MAX_FILE_FETCH_CONCURRENCY, async (path) => {
-        const raw = await httpText(ENDPOINTS['skills-sh'].raw(owner, repo, tree.branch, `${prefix}${path}`), { signal })
-        if (raw.ok !== true) return raw
-        return { ok: true, value: { path, text: raw.text } }
+        const file = await fetchRepoFile(owner, repo, tree.rev, `${prefix}${path}`, signal)
+        if (file.ok !== true) return file
+        if (file.cdn === true) servedByCdn = true
+        return { ok: true, value: { path, text: file.text } }
       })
       if (fetched.ok !== true) return fetched
       const files = boundFileSet(fetched.results)
       if (!files.some((file) => file.path.toLowerCase() === 'skill.md')) {
         return failure('source-unavailable', 'this skill did not provide a SKILL.md')
       }
-      const result = { ok: true, files, version: null, truncatedFiles: tree.truncated || wanted.length > files.length }
+      // A CDN-served branch caches for hours, so those bytes cannot be pinned to
+      // the head commit the API named; the record says so instead of guessing.
+      const commit = tree.degraded === true || servedByCdn ? null : await loadCommit(owner, repo, tree.rev, signal, refresh)
+      const result = { ok: true, files, version: null, commit, truncatedFiles: tree.truncated === true || wanted.length > files.length }
       payloadCache.set(cacheKey, result)
       return result
     },
   }
 
   /** Preview metadata and content have separate short caches; unopened files are never fetched. */
-  const previewSource = async (source, ref, signal, hints = {}) => {
-    const key = `${source}:${ref}#${hints.name}`
+  const previewSource = async (sourceId, locator, signal, hints = {}) => {
+    const key = `${sourceId}:${locator.ref}#${hints.name ?? ''}`
     let listing = hints.refresh ? undefined : previewListingCache.get(key)
     let fallbackFile
     if (listing === undefined) {
       let rows
       let version = null
-      let branch
+      let rev
       let prefix = ''
       let upstreamTruncated = false
-      if (source === 'tencent') {
-        const response = await httpJson(ENDPOINTS.tencent.files(ref), { signal })
+      if (sourceId === 'tencent') {
+        const response = await httpJson(ENDPOINTS.tencent.files(locator.slug), { signal })
         if (!response.ok) return response
         rows = pickArray(response.value, [['data', 'files'], ['files'], ['data']])
         if (rows === undefined) return failure('source-unavailable', '腾讯 SkillHub returned no file list for this skill')
@@ -2222,18 +2503,19 @@ function createSources() {
         version = stringField(envelope, ['version', 'latestVersion']) ?? null
         rows = rows.map((row) => ({ path: stringField(row, ['path', 'name', 'filename']), size: numberField(row, ['size', 'bytes']) }))
       } else {
-        const [owner, repo] = ref.split('/')
-        const tree = await loadRepoTrees(owner, repo, signal, hints.refresh)
+        const { owner, repo } = locator
+        const tree = await loadRepoTrees(owner, repo, locator.rev, signal, hints.refresh)
         if (!tree.ok) {
           // Keep the conventional-layout fallback lazy, too: probe only SKILL.md.
           if (tree.status !== 403 && tree.status !== 429) return tree
-          for (const fallbackBranch of ['main', 'master']) {
-            for (const directory of [hints.name, '']) {
-              const url = ENDPOINTS['skills-sh'].raw(owner, repo, fallbackBranch, `${directory ? `${directory}/` : ''}SKILL.md`)
+          const directories = locator.path.length > 0 ? [locator.path] : [hints.name ?? locator.name, '']
+          for (const fallbackRev of locator.rev === undefined ? ['main', 'master'] : [locator.rev]) {
+            for (const directory of directories) {
+              const url = ENDPOINTS['skills-sh'].raw(owner, repo, fallbackRev, `${directory ? `${directory}/` : ''}SKILL.md`)
               const file = await httpPreviewFile(url, 'SKILL.md', 0, signal)
               if (!file.ok) continue
               listing = { files: [previewMetadata('SKILL.md', file.file.size)], version: null,
-                branch: fallbackBranch, prefix: directory ? `${directory}/` : '', truncatedFiles: true }
+                rev: fallbackRev, prefix: directory ? `${directory}/` : '', truncatedFiles: true }
               fallbackFile = file.file
               break
             }
@@ -2241,9 +2523,9 @@ function createSources() {
           }
           if (!listing) return failure('source-rate-limited', 'GitHub refused the repository tree; try again later')
         } else {
-          const picked = pickSkillDirectory(tree.paths, hints.name)
-          if (!picked) return failure('source-unavailable', `"${hints.name}" has no SKILL.md in ${ref}`)
-          branch = tree.branch
+          const picked = selectSkillDirectory(tree.paths, locator, hints.name)
+          if (!picked.ok) return picked
+          rev = tree.rev
           prefix = picked.directory ? `${picked.directory}/` : ''
           rows = tree.paths.filter((path) => path.startsWith(prefix)).map((path) => ({ path: path.slice(prefix.length), size: tree.sizes?.[path] }))
           upstreamTruncated = tree.truncated
@@ -2264,7 +2546,7 @@ function createSources() {
         }
         files.sort((a, b) => skillFileOrder(a.path) - skillFileOrder(b.path))
         if (!files.some((file) => file.path.toLowerCase() === 'skill.md')) return failure('source-unavailable', 'this skill did not provide a SKILL.md')
-        listing = { files: files.slice(0, MAX_INSTALL_FILES), version, branch, prefix,
+        listing = { files: files.slice(0, MAX_INSTALL_FILES), version, rev, prefix,
           truncatedFiles: upstreamTruncated === true || files.length > MAX_INSTALL_FILES }
       }
       listing.generation = randomToken()
@@ -2279,10 +2561,9 @@ function createSources() {
     if (!file) {
       if (metadata.kind === 'binary') file = { ...metadata, content: null, truncated: false }
       else {
-        const [owner, repo] = ref.split('/')
-        const rawPath = `${listing.prefix}${selected}`.split('/').map(encodeURIComponent).join('/')
-        const url = source === 'tencent' ? ENDPOINTS.tencent.file(ref, selected)
-          : ENDPOINTS['skills-sh'].raw(owner, repo, listing.branch, rawPath)
+        const url = sourceId === 'tencent'
+          ? ENDPOINTS.tencent.file(locator.slug, selected)
+          : ENDPOINTS['skills-sh'].raw(locator.owner, locator.repo, listing.rev, encodeRepoPath(`${listing.prefix}${selected}`))
         const response = await httpPreviewFile(url, selected, metadata.size, signal)
         if (!response.ok) return response
         file = response.file
@@ -2297,8 +2578,8 @@ function createSources() {
     return { ok: true, files: listing.files, file, version: listing.version,
       skill: listing.skill, truncatedFiles: listing.truncatedFiles }
   }
-  tencent.preview = (ref, signal, hints) => previewSource('tencent', ref, signal, hints)
-  skillsSh.preview = (ref, signal, hints) => previewSource('skills-sh', ref, signal, hints)
+  tencent.preview = (locator, signal, hints) => previewSource('tencent', locator, signal, hints)
+  skillsSh.preview = (locator, signal, hints) => previewSource('skills-sh', locator, signal, hints)
   return { 'skills-sh': skillsSh, tencent }
 }
 
@@ -3406,23 +3687,54 @@ export function apply(ctx) {
     }
   }
 
+  /**
+   * Resolve one request body's reference into a locator plus its adapter.
+   * `body.source` is optional, and a value that disagrees with the reference is
+   * a client mistake rather than a second opinion.
+   */
+  const resolveReference = (body) => {
+    const parsed = parseRef(body.ref)
+    if (parsed.ok !== true) return { ok: false, status: 400, body: failure(parsed.code, parsed.message) }
+    const locator = parsed.value
+    if (body.source !== undefined && body.source !== locator.source) {
+      return {
+        ok: false,
+        status: 400,
+        body: failure('bad-request', `source "${String(body.source)}" does not serve "${locator.ref}"`),
+      }
+    }
+    const source = SOURCES_LOOKUP(locator.source)
+    if (source === undefined) {
+      return { ok: false, status: 400, body: failure('unknown-source', `unknown source "${locator.source}"`) }
+    }
+    return { ok: true, locator, source }
+  }
+
+  /** Status for one adapter failure: a reference the caller must sharpen is 409, an outage is 502. */
+  const adapterStatus = (code) => (code === 'subpath-required' ? 409 : code === 'bad-request' ? 400 : 502)
+
   /** `install`: pull one skill into the user agents skill root. */
   const installSkill = async (body, signal) => {
-    const source = SOURCES_LOOKUP(body.source)
-    if (source === undefined) {
-      return { status: 400, body: failure('unknown-source', `unknown source "${String(body.source)}"`) }
-    }
-    const ref = typeof body.ref === 'string' ? body.ref.trim() : ''
-    if (ref.length === 0) return { status: 400, body: failure('bad-request', 'ref is required') }
+    const resolved = resolveReference(body)
+    if (resolved.ok !== true) return resolved
+    const { locator, source } = resolved
     const hintedName = typeof body.name === 'string' && body.name.length > 0 ? body.name : undefined
-    const fetched = await source.fetch(ref, signal, { name: hintedName })
-    if (fetched.ok !== true) return { status: 502, body: failure(fetched.code, fetched.message) }
+    const fetched = await source.fetch(locator, signal, { name: hintedName })
+    if (fetched.ok !== true) return { status: adapterStatus(fetched.code), body: failure(fetched.code, fetched.message) }
     const files = fetched.files
     if (!files.some((file) => file.path.toLowerCase() === 'skill.md')) {
       return { status: 422, body: failure('invalid-skill', 'this source did not provide a SKILL.md') }
     }
-    const fallbackName = ref.split('/').pop()
-    const name = hintedName ?? nameFromFiles(files, fallbackName)
+    const declaredName = nameFromFiles(files, undefined)
+    // A hinted name that contradicts the SKILL.md would create a folder the
+    // catalog cannot name, and every later update by path would refuse it.
+    if (hintedName !== undefined && declaredName !== undefined && declaredName !== hintedName) {
+      return {
+        status: 422,
+        body: failure('invalid-skill', `the source declares the skill "${declaredName}", not "${hintedName}"`),
+      }
+    }
+    const name = hintedName ?? declaredName ?? locator.name
     if (typeof name !== 'string' || !SKILL_NAME.test(name)) {
       return { status: 422, body: failure('invalid-skill', `"${String(name)}" is not a valid skill name`) }
     }
@@ -3432,7 +3744,14 @@ export function apply(ctx) {
       return { status: 409, body: failure('already-installed', `"${name}" is already installed; use update`) }
     }
     const installedAt = Date.now()
-    const provenance = { source: source.id, ref, name, version: fetched.version ?? null, installedAt }
+    const provenance = {
+      source: locator.source,
+      ref: locator.ref,
+      commit: fetched.commit ?? null,
+      name,
+      version: fetched.version ?? null,
+      installedAt,
+    }
     let staging
     try {
       staging = await stageSkillTree(files, provenance)
@@ -3449,7 +3768,7 @@ export function apply(ctx) {
     }
     await recordProvenance({ ...provenance, path: destination })
     invalidateState()
-    log.info(`skill-dashboard: installed "${name}" from ${source.id}`)
+    log.info(`skill-dashboard: installed "${name}" from ${locator.source}`)
     return { status: 200, body: { ok: true, name, path: destination } }
   }
 
@@ -3460,22 +3779,73 @@ export function apply(ctx) {
     if (!SKILL_NAME.test(name)) return { status: 400, body: failure('bad-request', `"${name}" is not a valid skill name`) }
     const installed = await installedStore.load()
     const record = isRecord(installed.skills) && isRecord(installed.skills[name]) ? installed.skills[name] : undefined
-    const onDisk = record === undefined ? await readProvenanceFile(name) : undefined
-    const sourceId = typeof body.source === 'string' && body.source.length > 0 ? body.source : record?.source ?? onDisk?.source
-    const ref = typeof body.ref === 'string' && body.ref.length > 0 ? body.ref : record?.ref ?? onDisk?.ref
-    if (typeof sourceId !== 'string' || typeof ref !== 'string') {
-      return { status: 400, body: failure('unknown-ref', 'no source record exists for this skill; pass source and ref') }
+
+    let directory
+    let localName
+    if (body.path !== undefined) {
+      const guard = await assertManageableTarget(body.path)
+      if (guard.ok !== true) return { status: guard.status, body: failure(guard.code, guard.message) }
+      if (guard.kind !== 'directory') return { status: 409, body: failure('flat-skill', FLAT_SKILL_MESSAGE) }
+      directory = guard.target
+      // The clicked row must be the skill the caller names, or an update would
+      // write one skill's source over a different folder. A file whose
+      // frontmatter no longer parses is still updatable when its own directory
+      // records an origin; without one there is nothing that proves identity.
+      const local = parseSkillFrontmatter(await readFile(join(directory, 'SKILL.md'), 'utf8').catch(() => ''))
+      localName = local.ok === true ? local.name : undefined
+      if (localName !== undefined && localName !== name) {
+        return { status: 409, body: failure('name-mismatch', `this file declares the skill "${localName}"`) }
+      }
+    } else {
+      directory = typeof record?.path === 'string' && record.path.length > 0 ? record.path : join(installRoot(), name)
+      const guard = await assertManageableTarget(join(directory, 'SKILL.md'))
+      if (guard.ok !== true) return { status: guard.status, body: failure(guard.code, guard.message) }
+      if (guard.kind !== 'directory') return { status: 409, body: failure('flat-skill', FLAT_SKILL_MESSAGE) }
     }
-    const source = SOURCES_LOOKUP(sourceId)
-    if (source === undefined) return { status: 400, body: failure('unknown-source', `unknown source "${sourceId}"`) }
-    const directory = typeof record?.path === 'string' && record.path.length > 0 ? record.path : join(installRoot(), name)
-    const guard = await assertManageableTarget(join(directory, 'SKILL.md'))
-    if (guard.ok !== true) return { status: guard.status, body: failure(guard.code, guard.message) }
-    const fetched = await source.fetch(ref, signal, { name })
-    if (fetched.ok !== true) return { status: 502, body: failure(fetched.code, fetched.message) }
+
+    // A stored record only describes the directory it was written for; a
+    // same-named skill in another root must use its own sidecar or be linked.
+    const recordMatches = record !== undefined && (typeof record.path !== 'string' || record.path.length === 0
+      || normalizePathKey(record.path) === normalizePathKey(directory))
+    const stored = recordMatches ? record : await readProvenanceInDirectory(directory)
+    if (body.path !== undefined && localName === undefined && describeProvenance(stored) === null) {
+      return {
+        status: 409,
+        body: failure('name-mismatch', 'the skill file at this path declares no name and has no recorded origin'),
+      }
+    }
+    const inputRef = typeof body.ref === 'string' && body.ref.length > 0 ? body.ref
+      : stored?.ref ?? (body.path === undefined ? (await readProvenanceFile(name))?.ref : undefined)
+    if (typeof inputRef !== 'string' || inputRef.length === 0) {
+      return { status: 400, body: failure('unknown-ref', 'no source record exists for this skill; pass a reference') }
+    }
+    const parsed = parseRef(inputRef)
+    if (parsed.ok !== true) return { status: 400, body: failure(parsed.code, parsed.message) }
+    const locator = parsed.value
+    if (body.source !== undefined && body.source !== locator.source) {
+      return { status: 400, body: failure('bad-request', `source "${String(body.source)}" does not serve "${locator.ref}"`) }
+    }
+    const source = SOURCES_LOOKUP(locator.source)
+    if (source === undefined) return { status: 400, body: failure('unknown-source', `unknown source "${locator.source}"`) }
+
+    // An update must read the source now, not a payload cached ten minutes ago.
+    const fetched = await source.fetch(locator, signal, { name, refresh: true })
+    if (fetched.ok !== true) return { status: adapterStatus(fetched.code), body: failure(fetched.code, fetched.message) }
     const files = fetched.files
     if (!files.some((file) => file.path.toLowerCase() === 'skill.md')) {
       return { status: 422, body: failure('invalid-skill', 'this source did not provide a SKILL.md') }
+    }
+    // Only a body-supplied reference can point at another skill: a plain update
+    // re-reads the recorded origin, whose name may legitimately differ from the
+    // name a discover card installed it under. A link or a re-point must match.
+    const originEstablished = typeof stored?.ref === 'string' && stored.ref.length > 0
+    const repointing = typeof body.ref === 'string' && body.ref.length > 0 && body.ref !== stored?.ref
+    const remoteName = nameFromFiles(files, undefined)
+    if ((!originEstablished || repointing) && remoteName !== undefined && remoteName !== name) {
+      return {
+        status: 409,
+        body: failure('name-mismatch', `this skill is "${name}" but the source declares "${remoteName}"`),
+      }
     }
     let changed = false
     for (const file of files) {
@@ -3486,10 +3856,11 @@ export function apply(ctx) {
     }
     const installedAt = Date.now()
     const provenance = {
-      source: source.id,
-      ref,
+      source: locator.source,
+      ref: locator.ref,
+      commit: fetched.commit ?? null,
       name,
-      version: fetched.version ?? record?.version ?? null,
+      version: fetched.version ?? stored?.version ?? null,
       installedAt,
     }
     if (!changed) {
@@ -3500,6 +3871,7 @@ export function apply(ctx) {
         return { status: 500, body: failure('write-failed', `the skill could not be updated: ${errorMessage(error)}`) }
       }
       await recordProvenance({ ...provenance, path: directory })
+      invalidateState()
       return { status: 200, body: { ok: true, name, path: directory, changed: false } }
     }
     // A changed skill is replaced wholesale: staging holds the new tree, the old
@@ -3526,7 +3898,7 @@ export function apply(ctx) {
     }
     await recordProvenance({ ...provenance, path: directory })
     invalidateState()
-    log.info(`skill-dashboard: updated "${name}" from ${source.id}`)
+    log.info(`skill-dashboard: updated "${name}" from ${locator.source}`)
     return { status: 200, body: { ok: true, name, path: directory, changed } }
   }
 
@@ -3653,18 +4025,24 @@ export function apply(ctx) {
       }, ...(body.fileOnly === true ? {} : listing), file } }
     }
     if (typeof body.source !== 'string' || !Object.hasOwn(sources, body.source)) return fail(400, 'bad-request', 'source must be tencent or skills-sh')
-    if (typeof body.ref !== 'string' || body.ref.length > 256 || /[\x00-\x20\\?#%:]/.test(body.ref) ||
-      (body.source === 'tencent' ? !SKILL_NAME.test(body.ref) : !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(body.ref)) ||
-      body.ref.split('/').some((part) => part === '.' || part === '..') ||
-      typeof body.name !== 'string' || !SKILL_NAME.test(body.name) || body.name.length > 128) {
-      return fail(400, 'bad-request', 'a valid source ref and skill name are required')
+    const parsed = parseRef(body.ref)
+    if (parsed.ok !== true) return fail(400, parsed.code, parsed.message)
+    const locator = parsed.value
+    if (locator.source !== body.source) return fail(400, 'bad-request', `"${locator.ref}" is not a ${body.source} reference`)
+    const name = typeof body.name === 'string' && body.name.length > 0 ? body.name : undefined
+    if (name !== undefined && (!SKILL_NAME.test(name) || name.length > 128)) {
+      return fail(400, 'bad-request', 'name must be a valid skill name')
     }
-    const payload = await sources[body.source].preview(body.ref, signal, {
-      name: body.name, file: requested, refresh: body.refresh === true,
+    // A reference carrying `#path` already names the directory to preview.
+    if (name === undefined && locator.path.length === 0) {
+      return fail(400, 'bad-request', 'a source ref that names no path needs a skill name')
+    }
+    const payload = await sources[body.source].preview(locator, signal, {
+      name, file: requested, refresh: body.refresh === true,
     })
     if (!payload.ok) return { status: payload.code === 'file-not-found' ? 404 : payload.code === 'bad-request' ? 400 : 502, body: payload }
     return { status: 200, body: { ok: true, skill: {
-      name: payload.skill?.name ?? body.name,
+      name: payload.skill?.name ?? name ?? locator.name,
       description: payload.skill?.description ?? '', source: body.source,
       version: payload.version ?? null, readonly: true,
     }, ...(body.fileOnly === true ? {} : { files: payload.files, truncatedFiles: payload.truncatedFiles }), file: payload.file } }

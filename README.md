@@ -16,11 +16,13 @@ A DeepSeek Harness (DSH) plugin that puts every agent skill in one place. It app
 - Detects coding agents that read skill directories (including Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, and OpenCode) from their skill roots, recognizing both directory skills and flat `.md` skills in non-universal runtime roots.
 - Shows source, call count, and a `Read-only` badge for skills inside the DSH installation.
 - Provides two switches per row (**Auto-invoke** and **`/name` manual**) that edit the skill's YAML frontmatter, a `Disabled` state when both are off, and row actions for update, delete, and path.
+- Update pulls from the recorded origin (Tencent SkillHub, skills.sh, or GitHub) and swaps the skill directory atomically. A skill another tool installed can be pointed at its source once (**Link source**), then updates from it; a GitHub install records the exact commit that was written.
 - Supports search, agent and invocation-status filters, and usage, name, or recency sorting.
 
-**Discover.** Install skills from two public registries proxied through the Host process.
+**Discover.** Install skills from two public registries or straight from GitHub, proxied through the Host process.
 
 - Searches `skills.sh` (Git repositories) and Tencent SkillHub (`api.skillhub.cn`) on the server side because neither API sends CORS headers.
+- Installs directly from GitHub with `owner/repo`, a GitHub URL, a branch/tag/commit (`owner/repo@rev`), or a subpath (`owner/repo#skills/pdf`). Files come from `raw.githubusercontent.com`; when that or the API is refused, listing and bytes fall back to jsDelivr and the record says it is unpinned.
 - Checks installed status against the live skill catalog union and renders a 6-card skeleton grid while loading.
 - Stages installs outside watched skill roots and moves them in atomically so file watchers never see a half-written skill.
 
@@ -123,10 +125,11 @@ release notes and version bumps are generated from them.
 
 ## Privacy
 
-The plugin reads the skill roots that DSH already exposes and writes only the two
-frontmatter keys you toggle in the panel (or the files you explicitly delete). Its own state
-lives in `$DSH_HOME/skill-dashboard/`, and registry calls are made by the Host, never by the
-browser.
+The plugin reads the skill roots that DSH already exposes and writes the two frontmatter keys
+you toggle in the panel, the skills you install or update, and the files you explicitly delete.
+Its own state lives in `$DSH_HOME/skill-dashboard/`, and every registry and GitHub call is made
+by the Host, never by the browser. `GITHUB_TOKEN` or `GH_TOKEN` is used only when the Host
+environment already carries one, to lift GitHub's anonymous rate limit.
 
 ## License
 

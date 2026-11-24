@@ -170,8 +170,8 @@ Body: `{ "action": "<name>", ... }`, `content-type: application/json`.
 |:--|:--|:--|
 | `set-invocation` | `{ path, modelInvocable?: boolean, userInvocable?: boolean }` | `{ ok: true, skill: <state.skills entry> }` |
 | `remove` | `{ name, path }` | `{ ok: true, removed: ["<abs path or dir>"] }` |
-| `install` | `{ source, ref, name? }` | `{ ok: true, name, path }` |
-| `update` | `{ source, ref, name }` | `{ ok: true, name, path, changed: boolean }` |
+| `install` | `{ ref, source?, name? }` | `{ ok: true, name, path }` |
+| `update` | `{ name, path?, ref? }` | `{ ok: true, name, path, changed: boolean }` |
 | `refresh` | `{}` | `{ ok: true, generatedAt }` |
 | `keep` | `{ name, keep: boolean }` | `{ ok: true, name, keptAt }` |
 | `cleanup` | `{ mode: "disable" \| "remove", targets: [{ name, path }] }` | `{ ok: true, mode, succeeded, failed, results: [{ name, ok, code?, message? }] }` |
@@ -181,6 +181,22 @@ Body: `{ "action": "<name>", ... }`, `content-type: application/json`.
 most 100 targets, always HTTP 200 for a well-formed request with one result per target, so a
 read-only row degrades instead of failing the batch. A malformed request returns 400. Neither
 action adds a route.
+
+`ref` is one canonical reference, parsed once by `parseRef` (exported, pure): `<slug>` for Tencent
+SkillHub and `<owner>/<repo>[@<rev>][#<path>]` for a GitHub source. `owner/repo/path/segments` is a
+subpath; `.git`, a trailing `/`, and a trailing `/SKILL.md` are dropped; and
+`https://github.com/<owner>/<repo>[/tree/<rev>[/<path>]]` or `/blob/<rev>/…/SKILL.md` (with optional
+`http(s)://`, `www.`, or a bare `github.com/` prefix) parse to the same canonical form. A canonical
+`ref` is a fixed point of `parseRef`. `install` derives the source from `ref`; an explicit `source`
+that disagrees is 400 `bad-request`, and a `name` hint that contradicts the fetched `SKILL.md` name
+is 422 `invalid-skill` (the skill identity is the declared name; a contradicting hint would create a
+folder the catalog cannot name). `update` without a stored origin needs `ref` (the one-time link
+gesture) and may carry `path`, the catalog skill file the row holds, so a skill outside the default
+install root is reachable. Every update reads the source now: it bypasses the payload, tree and
+commit caches an install may populate. `changed` is a byte comparison only.
+New 409 codes: `name-mismatch` (a link or re-point whose source declares another skill, or a clicked
+row whose file declares another name or no name), `subpath-required` (the repository holds several
+skills and the reference names none), `flat-skill` (a flat `<name>.md` cannot be updated in place).
 
 `set-invocation` rewrites only the two frontmatter keys in the existing `SKILL.md`
 (or flat `<name>.md`), preserving every other line byte-for-byte; when a key must be
@@ -207,7 +223,9 @@ external request hang the route: bound it (~10 s) and honour the request abort s
 ### `POST /skill-dashboard/preview`
 
 Installed body: `{ "path": "<exact catalog skill path>", "file"?: "references/guide.md" }`.
-Online body: `{ "source": "skills-sh" | "tencent", "ref": string, "name": string, "file"?: string }`.
+Online body: `{ "source": "skills-sh" | "tencent", "ref": string, "name"?: string, "file"?: string }`.
+`ref` uses the same canonical grammar as `install`, so a GitHub subpath previews as
+`skills-sh` with `owner/repo@rev#path`; `name` is required only when the reference names no path.
 The omitted file defaults to `SKILL.md`, or the flat skill filename. Both body forms also
 accept `fileOnly?: boolean` and `refresh?: boolean`. `fileOnly:true` returns `ok`, `skill`,
 and `file` while omitting `files`/`truncatedFiles`; the Client merges its prior listing.
@@ -251,8 +269,14 @@ Errors include `bad-request` (400), `skill-not-found` / `file-not-found` (404),
   Keep 60 day-buckets; derive the 14-day windows in the response. Write with a debounced
   flush (≤1 s) and `mkdir -p`. A corrupt file must not crash the plugin: start empty.
 - **Provenance store** — same directory, `installed.json`:
-  `{ version: 1, skills: { "<name>": { source, ref, version, installedAt, path } } }`.
+  `{ version: 1, skills: { "<name>": { source, ref, commit, name, version, installedAt, path } } }`.
+  `commit` is the 40-hex commit the written files were read from, or `null` when the channel that
+  served them could not pin one; `version` is Tencent's version string and `null` for git. The same
+  record minus `path` is mirrored into `<skill>/.skill-source.json`. A record only describes the
+  directory it was written for: `update` ignores a same-named record whose `path` is another
+  directory.
   `discover` marks `installed` from it; `update` uses it when the caller passes no `ref`.
+  `state.skills[].installed` stays exactly `{ source, ref, version, installedAt }`.
 - **Usage listener** — `ctx.on('tools/result', (exec, result) => …)`; ignore cases where
   `exec.name !== 'skill'`, the skill name is missing, or `result.isError === true`.
 - **Invalidation** — after a pull/write/delete, the filesystem provider's watcher refreshes
@@ -288,7 +312,10 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
   (source label, the detected coding agent, `已调用 N 次`, `只读` when not writable), a switch for
   “模型可调用” (`modelInvocable`), a secondary “/name 可调用” switch (`userInvocable`,
   disabled when `!userInvocable && !modelInvocable` is not relevant — keep both operable),
-  and a row menu with 更新 / 删除 / 查看路径. High usage must be visually flaggable:
+  and a row menu with 更新 / 删除 / 查看路径; a row that is writable but has no recorded origin
+  offers 关联来源 instead of 更新 and opens one inline form that links the source and updates in the
+  same Host call. A row with a recorded origin shows a quiet `来源 <ref>` line under its
+  description (`skill.origin` / `skill.originVersion`). High usage must be visually flaggable:
   rows whose `usage.count` ≥ the panel's own 75th percentile get a subtle “高频” badge.
 - The agent filter offers the detected coding agents (`runtimes`), each with its skill
   count, and hides itself when none was detected. A row badge names the agent when only
@@ -296,6 +323,9 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
   Agent`), and stays away when they all do.
 - Discover tab: source selector (skills.sh / 腾讯), search input with Enter-to-search,
   result cards with install button and installed state, plus loading / empty / error states.
+  Below the search form, one direct-install field (从 GitHub 安装) accepts the same reference
+  grammar and posts `install` with no `source`; a repository is not searchable, so it is not a
+  third source in the selector.
 - Usage tab: summary cards (总调用, 活跃技能, 今日调用), a 14-day bar chart, and the recent
   activity list. The chart is plain divs sized from the data — no chart library.
 - Every visible string comes from the locale dictionaries. Use only `--dsw-alias-*` theme
