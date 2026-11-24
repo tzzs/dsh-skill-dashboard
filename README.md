@@ -21,12 +21,19 @@ keeping, and a read-only preview of the files behind it.
 - Shows source, call count and a `read-only` badge for skills inside the DSH installation.
 - Two switches per row (model invocation and `/name` invocation) that edit the skill's
   YAML frontmatter, plus row actions for update, delete and path.
+- Update pulls from the recorded origin — Tencent SkillHub, skills.sh or GitHub — and replaces
+  the skill directory atomically. A skill another tool installed can be pointed at its source
+  once (关联来源) and updated from then on; a GitHub install records the exact commit it wrote.
 - Search, agent and status filters, usage/name/recency sorting.
 
-**Discover** — install skills from two public registries through the Host.
+**Discover** — install skills from two public registries or straight from GitHub.
 
 - `skills.sh` (Git repositories) and Tencent SkillHub (`api.skillhub.cn`), both proxied by
   the Host because neither API sends CORS headers.
+- The GitHub field takes `owner/repo`, a GitHub URL, a branch/tag/commit (`owner/repo@rev`) and
+  a subpath (`owner/repo#skills/pdf`), and installs the skill from `raw.githubusercontent.com`.
+  When that host or the API is refused, listing and bytes fall back to jsDelivr and the record
+  says it is unpinned.
 - Installs are staged outside every watched skill root and then moved in, so the provider
   never observes a half-written skill.
 
@@ -130,10 +137,11 @@ release notes and version bumps are generated from them.
 
 ## Privacy
 
-The plugin reads the skill roots that DSH already exposes and writes only the two
-frontmatter keys you toggle in the panel (or the files you explicitly delete). Its own state
-lives in `$DSH_HOME/skill-dashboard/`, and registry calls are made by the Host, never by the
-browser.
+The plugin reads the skill roots that DSH already exposes and writes the two frontmatter keys
+you toggle in the panel, the skills you install or update, and the files you explicitly delete.
+Its own state lives in `$DSH_HOME/skill-dashboard/`, and every registry and GitHub call is made
+by the Host, never by the browser. `GITHUB_TOKEN` or `GH_TOKEN` is used only when it is already in
+the Host environment, to lift GitHub's anonymous rate limit.
 
 ## License
 

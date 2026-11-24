@@ -23,17 +23,25 @@ It adds a **技能看板 / Skill dashboard** entry to the Web UI's left rail, di
   `只读` badge for skills inside the DSH installation (bundled skills and `app.asar` entries),
   which the dashboard refuses to modify.
 - Two switches per row: **模型自动调用** and **`/name` 手动调用**, each with a hover hint.
-- Row menu: **更新** (only when the dashboard installed the skill), **删除**, **查看路径**.
+- Row menu: **更新**, **删除**, **查看路径**. A writable row with no recorded origin offers
+  **关联来源** instead of 更新: one reference (`multi-search-engine`, `owner/repo`,
+  `owner/repo@branch#path`, or a GitHub URL) links the skill to its source and updates it in the
+  same call. A row with a recorded origin shows a quiet `来源 <ref>` line under its description.
 - A `高频` badge marks the skills above the panel's own 75th percentile with at least three
   calls, so an over-eager skill is visible without opening the statistics tab.
 
-**发现 (Discover)** — install from two public sources, proxied through the Host.
+**发现 (Discover)** — install from two public sources, or directly from GitHub, proxied through
+the Host.
 
 - **skills.sh** — the community skills directory; it indexes Git repositories, so an entry is
   installed from `owner/repo` via `raw.githubusercontent.com`, path discovered through the
   GitHub tree API (cached 10 min).
 - **腾讯 SkillHub** (`api.skillhub.cn`) — the domestic source; Chinese titles, versions,
   download counts, and per-file raw downloads.
+- **从 GitHub 安装** — a direct reference field under the search form. It accepts `owner/repo`,
+  `owner/repo@rev`, `owner/repo#skills/pdf`, a `/tree/<rev>/<path>` URL and a `/blob/…/SKILL.md`
+  URL; a repository with several skills and no named path answers `subpath-required` with the
+  candidates instead of guessing. The installed record pins the exact commit the files came from.
 - Installs are staged outside every watched skill root, then moved into
   `$DSH_AGENTS_HOME` (usually `~/.agents/skills`) with retries, so the provider's file watcher
   never sees a half-written skill.
@@ -142,13 +150,18 @@ coding agents read it before you flip the switch.
 
 | Source | Listing | Payload |
 |:--|:--|:--|
-| `skills-sh` | `GET https://skills.sh/api/search?q=…&limit=50` | `api.github.com/.../git/trees/{ref}?recursive=1` + `raw.githubusercontent.com` |
+| `skills-sh` | `GET https://skills.sh/api/search?q=…&limit=50`, or a GitHub reference typed into 从 GitHub 安装 | `api.github.com/.../git/trees/{rev}?recursive=1` + `raw.githubusercontent.com`, with `data.jsdelivr.com` listing and `cdn.jsdelivr.net` bytes as the fallback |
 | `tencent` | `GET https://api.skillhub.cn/api/skills?page=1&pageSize=30&sortBy=score&keyword=…` | `GET /api/v1/skills/{slug}/files` + `/api/v1/skills/{slug}/file?path=…` |
 
-Neither API sends CORS headers, which is why every registry call runs in the Host process and
-the browser only talks to `/skill-dashboard/*`. Outbound requests are bounded (10 s, 4 MiB,
-concurrency 4) and results are cached (search 60 s, trees and payloads 10 min). A failure is
-reported as `source-unavailable` / `source-rate-limited` and the page offers the other source.
+Neither registry API sends CORS headers, which is why every registry call runs in the Host
+process and the browser only talks to `/skill-dashboard/*`. Outbound requests are bounded (10 s,
+4 MiB, concurrency 4) and results are cached (search 60 s, commits 60 s, trees and payloads
+10 min). A failure is reported as `source-unavailable` / `source-rate-limited` and the page
+offers the other source.
+
+GitHub commits come from `api.github.com/repos/{o}/{r}/commits`, with the repository's
+`/commits/<rev>.atom` feed as a quota-free fallback; a 40-hex `rev` is its own pin and costs no
+request. `GITHUB_TOKEN` / `GH_TOKEN` is sent when the Host environment already has one.
 
 ## Layout
 
@@ -171,8 +184,10 @@ no handler can throw into the carrier.
   60 day-buckets, recent activity, plus three diagnosis facts: `since` (when observation
   began, written once), `catalog` (the first time each skill name was seen) and `keptAt`
   (the one decision the call history cannot derive). Corrupt or missing reads as empty.
-- `$DSH_HOME/skill-dashboard/installed.json` — provenance of skills this dashboard installed,
-  mirrored into `<skill>/.skill-source.json` so a hand-copied skill keeps its origin.
+- `$DSH_HOME/skill-dashboard/installed.json` — provenance of every skill the dashboard installed
+  or linked: `{ source, ref, commit, name, version, installedAt, path }`, mirrored into
+  `<skill>/.skill-source.json` (without `path`) so a hand-copied skill keeps its origin. A record
+  only describes the directory it was written for; a same-named skill elsewhere is not affected.
 - Nothing else. The dashboard never edits a skill outside the writable roots
   (`$DSH_HOME/skills`, `$DSH_AGENTS_HOME/skills`, project `.dsh/skills` / `.agents/skills`) and
   refuses bundled/`app.asar` skills with `read-only`.
@@ -190,12 +205,22 @@ does not run it.
 
 ## Notes and limits
 
-- `skills.sh` has no version field and no detail API, so 更新 compares file contents and
-  reports `changed` rather than a version bump; provenance is pinned by `ref`, not a commit SHA.
-- Entries whose ref is not `owner/repo` are marked non-installable instead of failing on click.
+- A GitHub install records the 40-hex commit its files came from in `installed.json` and
+  `.skill-source.json`. An update re-fetches the tracked reference and compares bytes, so
+  `changed` is always a real comparison; when only the jsDelivr fallback served the bytes, the
+  record says `commit: null` rather than guessing a pin.
+- `skills.sh` has no version field and no detail API, so an update from a discovered card
+  compares file contents and reports `changed` rather than a version bump.
+- An update never renames a skill: if the source's `SKILL.md` declares another name, the call
+  answers `name-mismatch` and writes nothing. Remove and install again for an upstream rename.
+- A flat `<name>.md` skill cannot be updated in place (it would become a directory); the call
+  answers `flat-skill`.
+- A repository that holds several skills with nothing to choose between answers
+  `subpath-required` and lists up to five `#path` candidates instead of guessing.
 - A **changed** update replaces the skill directory wholesale (stage, move the old tree aside,
   swap), so files the upstream no longer ships disappear and a hand-added file inside that skill
-  folder would too. Put local additions outside the skill directory.
+  folder would too. Put local additions outside the skill directory. The same means a hand-edited
+  `SKILL.md` is replaced; an unchanged upstream transfer rewrites only the provenance.
 - Editing the Host half of an already installed plugin takes effect on the next app start; the
   Client half reloads with the page.
 - Diagnosis judges only what the dashboard observed. On a fresh install every skill reads

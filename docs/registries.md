@@ -224,3 +224,36 @@ SKILLHUB_RAW     = https://api.skillhub.cn/api/v1/skills/{slug}/file?path={path}
 SKILLHUB_ZIP     = https://api.skillhub.cn/api/v1/download?slug={slug}&version={v}   (302)
 SKILLHUB_FEATURED= https://api.skillhub.cn/api/v1/enterprises/hot-skills
 ```
+
+---
+
+## 7. Update channels — verified 2026-11-25 (same machine, probes rerun for the update feature)
+
+| Probe | Observed |
+|---|---|
+| `GET https://api.github.com/repos/anthropics/skills/commits?per_page=1` | 200, head `e4bb5d960d87126ff3b3a8af1a104b7db67560ba` (2026-11-16); `rate_limit.core` immediately after: **58/60 remaining**, reset ~1 h |
+| `GET https://github.com/anthropics/skills/commits/main.atom` | 200, 33,918 B, first `<id>tag:github.com,2008:Grit::Commit/<sha></id>` equals the API head ⇒ a commit pin is readable **without the API quota** |
+| `GET https://github.com/anthropics/skills/commits/<sha>.atom` | 200, 34,062 B, same first-commit id |
+| `GET https://raw.githubusercontent.com/anthropics/skills/main/skills/pdf/SKILL.md` | 200, 8,058 B |
+| `GET https://cdn.jsdelivr.net/gh/anthropics/skills@main/skills/pdf/SKILL.md` | 200, 8,058 B, `ACAO: *` |
+| `GET https://cdn.jsdelivr.net/gh/anthropics/skills@<sha>/skills/pdf/SKILL.md` | 200, 8,058 B ⇒ jsDelivr serves any **commit**, not just branches/tags |
+| `GET https://data.jsdelivr.com/v1/packages/gh/anthropics/skills@main?structure=flat` | 200, `{type,name,version,default,files:[{name:"/…",hash,size}],links}`; 282 files; names carry one leading `/` |
+| same call with `@<sha>` | **404** ⇒ the jsDelivr data API resolves branches/tags only |
+| `GET https://api.skillhub.cn/api/skills?page=1&pageSize=3&sortBy=downloads` | 200, records carry `slug`, `version` (`multi-search-engine` 3.0.4), `downloads` |
+| `GET https://api.skillhub.cn/api/v1/skills/multi-search-engine` | 200, `latestVersion.version` 3.0.4 — a cheap version check if one is ever wanted |
+
+Consequences the plugin implements:
+
+1. **Pin = commit sha.** An install resolves the tracked ref to a commit (`commits` API, then the
+   atom feed), fetches the tree at that branch, and records the sha in `installed.json` and
+   `.skill-source.json`. A 40-hex `rev` is its own pin and costs no request.
+2. **A mainland-safe read path.** When `api.github.com` times out, is throttled or answers 5xx,
+   the file listing comes from `data.jsdelivr.com` and the bytes from `cdn.jsdelivr.net`, both at
+   the **branch** (a sha has no jsDelivr listing). That read is recorded with `commit: null`: the
+   record never claims a pin it could not prove.
+3. **No version-only "up to date".** SkillHub republishes under a stable version string, and
+   GitHub's revision says nothing about the local disk, so update compares file bytes on every
+   source. `changed` is therefore a content fact, not a revision guess.
+4. **Rate budget.** One update = one commits call (cached 60 s) + a tree (cached 10 min) + one raw
+   read per file (not API-quota). The 60/h anonymous budget is only spent on real head checks;
+   `GITHUB_TOKEN` / `GH_TOKEN` lifts it to 5,000/h when the Host environment already has one.
