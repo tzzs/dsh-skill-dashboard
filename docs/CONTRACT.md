@@ -132,7 +132,13 @@ All responses are `application/json`. Failures use a nonzero HTTP status and
   "sources": [
     { "id": "skills-sh", "title": "skills.sh", "status": "ready", "note": null },
     { "id": "tencent",  "title": "腾讯 Skill 源", "status": "ready", "note": null }
-  ]
+  ],
+  "updates": {
+    "checkedAt": 1796000000000,
+    "available": [
+      { "name": "code-review", "changedPaths": ["SKILL.md"], "checkedAt": 1796000000000 }
+    ]
+  }
 }
 ```
 
@@ -161,6 +167,11 @@ Rules:
   Cumulative `count`/`byModel`/`byUser` survive pruning; historical per-day channel splits
   were not recorded and must not be inferred. A current catalog name with no stored record
   is shown as zero-use; historical names outside the catalog retain their recorded usage.
+- `updates` is the last update-check result: `checkedAt` is the oldest record among tracked
+  skills, 0 while any tracked skill has no record, so an interrupted walk resumes on the next
+  mount. `available` lists only names still in `skills`, sorted by name; `changedPaths` are the
+  fetched relative paths whose bytes differ from the local skill directory. The block is absent
+  on an older Host; the Client then renders no update affordance and starts no check.
 
 ### `POST /skill-dashboard/action`
 
@@ -172,6 +183,7 @@ Body: `{ "action": "<name>", ... }`, `content-type: application/json`.
 | `remove` | `{ name, path }` | `{ ok: true, removed: ["<abs path or dir>"] }` |
 | `install` | `{ ref, source?, name? }` | `{ ok: true, name, path }` |
 | `update` | `{ name, path?, ref? }` | `{ ok: true, name, path, changed: boolean }` |
+| `check-updates` | `{ cursor?, limit?, refresh? }` | `{ ok: true, total, cursor, nextCursor, done, checked: [{ name, available, changedPaths, error? }], checkedAt }` |
 | `refresh` | `{}` | `{ ok: true, generatedAt }` |
 | `keep` | `{ name, keep: boolean }` | `{ ok: true, name, keptAt }` |
 | `cleanup` | `{ mode: "disable" \| "remove", targets: [{ name, path }] }` | `{ ok: true, mode, succeeded, failed, results: [{ name, ok, code?, message? }] }` |
@@ -197,6 +209,26 @@ commit caches an install may populate. `changed` is a byte comparison only.
 New 409 codes: `name-mismatch` (a link or re-point whose source declares another skill, or a clicked
 row whose file declares another name or no name), `subpath-required` (the repository holds several
 skills and the reference names none), `flat-skill` (a flat `<name>.md` cannot be updated in place).
+
+`update` falls back, in order, to `installed.json`, the skill's `.skill-source.json`, and the skills
+CLI's `<agentsHome>/.skill-lock.json`. A lock entry supplies a reference only when the catalog
+skill's directory is exactly `<installRoot>/<name>` and the entry is a GitHub source
+(`sourceType` absent or `github`, `source` is `owner/repo`, `skillPath` is `SKILL.md` at
+the repository root or ends with `/<name>/SKILL.md`). The derived folder is the prefix
+before `/SKILL.md`, and the ref is `owner/repo` or `owner/repo#<folder>`. Reading the lock
+writes nothing; its parse is reused for 5 s and revalidated by mtime.
+
+`check-updates` is a read-only comparison over the tracked skills (`state.skills` entries with a
+non-null `installed` and a resolved directory), sorted by name. One call covers
+`[cursor, cursor + limit)` with `limit` defaulting to 4 and capped at 8. A per-skill cached result
+younger than 6 h is reused unless `refresh: true`; otherwise the Host resolves the stored ref,
+fetches the source, and compares the fetched files with the local directory through the same
+helper `update` uses. A per-skill failure records `{ error: code }` in that row and never fails the
+action. `done` becomes true when `nextCursor` reaches `total`. Checking writes no skill file and no
+provenance; it only records the result and drops the merged-state cache so the next `GET` carries
+it. A check run refreshes each repository tree once per chunk and keys the per-skill payloads by
+that tree revision, so a moved branch is never compared against old bytes; `refresh: true` re-reads
+the payloads as well.
 
 `set-invocation` rewrites only the two frontmatter keys in the existing `SKILL.md`
 (or flat `<name>.md`), preserving every other line byte-for-byte; when a key must be
@@ -276,7 +308,15 @@ Errors include `bad-request` (400), `skill-not-found` / `file-not-found` (404),
   directory it was written for: `update` ignores a same-named record whose `path` is another
   directory.
   `discover` marks `installed` from it; `update` uses it when the caller passes no `ref`.
-  `state.skills[].installed` stays exactly `{ source, ref, version, installedAt }`.
+  `state.skills[].installed` stays exactly `{ source, ref, version, installedAt }`. When neither
+  store names an origin, a `skills.sh`-installed skill still reports its lock provenance from
+  `<agentsHome>/.skill-lock.json` as `{ source: "github", ref, version: null, installedAt }`
+  (see §4); reading it writes nothing.
+- **Update-check store** — same directory, `updates.json`:
+  `{ version: 1, skills: { "<name>": { available, changedPaths, checkedAt } | { error, checkedAt } } }`.
+  Written atomically; a result is authoritative for 6 h unless the caller passes `refresh: true`.
+  A successful `update` clears the name's `available` record. Corrupt or missing reads as empty.
+  `state.updates` is derived from it (`checkedAt` is the oldest tracked record, 0 while any tracked skill is unchecked; an error record is retried after ten minutes instead of six hours).
 - **Usage listener** — `ctx.on('tools/result', (exec, result) => …)`; ignore cases where
   `exec.name !== 'skill'`, the skill name is missing, or `result.isError === true`.
 - **Invalidation** — after a pull/write/delete, the filesystem provider's watcher refreshes
@@ -308,6 +348,20 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
 - Data: fetch `skill-dashboard/state` on mount and after every mutation; re-fetch on tab
   switch only when older than 5 s. Show an inline error banner with a retry button when a
   request fails — never a blank panel.
+- Update checks are on by default. After the first successful data load, when `state.updates`
+  is missing or `checkedAt` is 0 or older than 6 h and at least one tracked skill exists, the
+  Client runs one automatic check and never repeats it for that mount. The check walks the
+  Host in chunks of 4 (`check-updates`, single-flight) and patches a `updatesChecking` flag
+  plus `{ done, total }` progress; a manual `检查更新` gesture passes `refresh: true`. A failed
+  check stays quiet; an older Host without the action is tolerated.
+- The Installed tab shows an update bar above the toolbar: while running it reads
+  `正在检查更新 {done}/{total}`, when idle `上次检查 {time}` (or `尚未检查`). When
+  `state.updates.available` is non-empty it turns into an accent banner reading
+  `可更新 {count} 个技能` with `全部更新` (applies at most 10 rows sequentially through the
+  existing `update` path, shows `正在更新 {done}/{total}`, then one state read and a
+  succeeded/failed receipt) and `稍后`, which dismisses the banner for the session. Rows whose
+  name is in `available` carry a quiet `可更新` badge. All strings live in the four
+  dictionaries.
 - Installed tab rows: skill name, description (2 lines, ellipsis), badges
   (source label, the detected coding agent, `已调用 N 次`, `只读` when not writable), a switch for
   “模型可调用” (`modelInvocable`), a secondary “/name 可调用” switch (`userInvocable`,
