@@ -18,6 +18,8 @@ after(async () => {
   for (const dispose of disposers.splice(0)) {
     try { dispose() } catch {}
   }
+  // A disposer flushes its store asynchronously, so let that write land before the directory goes.
+  await new Promise((resolve) => setTimeout(resolve, 50))
   for (const [key, value] of Object.entries(originalEnv)) {
     if (value === undefined) delete process.env[key]
     else process.env[key] = value

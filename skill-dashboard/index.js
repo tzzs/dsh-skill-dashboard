@@ -2788,7 +2788,7 @@ export function apply(ctx) {
   }
 
   /** Build the CONTRACT §4 state document from the live catalog and the stores. */
-  const buildState = async ({ persist = true } = {}) => {
+  const buildState = async () => {
     const now = Date.now()
     pruneRecentEdits(now)
     const [usageState, roster, installedState, protectedRoots] = await Promise.all([
@@ -2834,7 +2834,7 @@ export function apply(ctx) {
       skill.runtimes = detected.bySkill.get(skill.name) ?? ['dsh']
     }
     const runtimes = detected.runtimes.map((entry) => ({ id: entry.id, title: entry.title, skillCount: entry.skills.length }))
-    if (stampUsage(usageState, merged, presence, now) && persist) usageStore.schedule()
+    if (stampUsage(usageState, merged, presence, now)) usageStore.schedule()
     return {
       presence,
       snapshot: {
@@ -2856,13 +2856,13 @@ export function apply(ctx) {
   }
 
   /** Run at most one coalesced state build, ignoring results superseded by invalidation. */
-  const startStateBuild = ({ persist = true } = {}) => {
+  const startStateBuild = () => {
     if (stateCache.inFlight !== null) return stateCache.inFlight
     const buildVersion = stateVersion
     const buildDirtyVersion = dirtyVersion
     const pending = (async () => {
       try {
-        const { snapshot, presence } = await buildState({ persist })
+        const { snapshot, presence } = await buildState()
         if (!runtime.disposed && buildVersion === stateVersion) {
           stateCache.data = snapshot
           stateCache.builtAt = Date.now()
@@ -2887,20 +2887,19 @@ export function apply(ctx) {
    */
   const getState = async (options = {}) => {
     const force = typeof options === 'boolean' ? options : options?.force === true
-    const persist = typeof options === 'object' && options !== null && options.persist === false ? false : true
     const now = Date.now()
     if (!force && !stateCache.dirty && stateCache.data !== null && now - stateCache.builtAt < STATE_TTL_MS) {
       return stateCache.data
     }
     if (!force && stateCache.data !== null) {
-      if (!runtime.disposed && stateCache.inFlight === null) void startStateBuild({ persist }).catch(() => {})
+      if (!runtime.disposed && stateCache.inFlight === null) void startStateBuild().catch(() => {})
       return stateCache.data
     }
     if (force) {
       stateVersion += 1
       stateCache.inFlight = null
     }
-    return startStateBuild({ persist })
+    return startStateBuild()
   }
 
   /** Forget the cached state immediately; the next read awaits a fresh scan. */
@@ -3979,7 +3978,7 @@ export function apply(ctx) {
   stateCache.warmupTimer = setTimeout(() => {
     stateCache.warmupTimer = null
     if (runtime.disposed) return
-    void getState({ force: false, persist: false }).catch(() => {})
+    void getState({ force: false }).catch(() => {})
   }, 0)
   stateCache.warmupTimer.unref?.()
 }

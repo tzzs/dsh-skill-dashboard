@@ -1445,6 +1445,52 @@ await check('concurrent GET state calls coalesce and skills/change debounces cle
   assert.equal(coalescedScanCount, 2)
 })
 
+const warmHome = join(workspace, 'dsh-home-warm')
+const warmSkills = join(workspace, 'warm-skills')
+await mkdir(warmSkills, { recursive: true })
+await writeSkill(warmSkills, 'never-called', 'name: never-called\ndescription: Observed but never used.')
+const savedHome = process.env.DSH_HOME
+const savedAgentsHome = process.env.DSH_AGENTS_HOME
+process.env.DSH_HOME = warmHome
+process.env.DSH_AGENTS_HOME = warmSkills
+const ninth = createFakeContext({
+  cwd: workspace,
+  services: new Map([
+    ['workingDirectory', { defaultDirectory: workspace }],
+    ['skills', { async list() {
+      return [{
+        name: 'never-called',
+        description: 'Observed but never used.',
+        source: 'user-agents',
+        provider: 'filesystem',
+        path: join(warmSkills, 'never-called', 'SKILL.md'),
+        invocation: { modelInvocable: true, userInvocable: true },
+      }]
+    } }],
+  ]),
+})
+apply(ninth.ctx)
+
+await check('the activation warm-up persists the write-once observation stamps', async () => {
+  await sleep(1200)
+  const usagePath = join(warmHome, 'skill-dashboard', 'usage.json')
+  const stored = JSON.parse(await readFile(usagePath, 'utf8'))
+  assert.ok(stored.since > 0, 'the observation start reaches disk without any skill call')
+  assert.equal(typeof stored.catalog?.['never-called'], 'number', 'the first-sight stamp reaches disk')
+
+  const reread = await call(ninth.routes.get('/skill-dashboard/state'))
+  assert.equal(reread.status, 200)
+  const row = reread.body.diagnosis.skills.find((entry) => entry.name === 'never-called')
+  assert.equal(row.watchedDays, reread.body.diagnosis.observedDays, 'the window starts at the persisted stamp')
+})
+
+for (const entry of ninth.registered) {
+  if (typeof entry.disposer === 'function') entry.disposer()
+}
+await sleep(50)
+process.env.DSH_HOME = savedHome
+process.env.DSH_AGENTS_HOME = savedAgentsHome
+
 // ------------------------------------------------------------------- teardown
 
 for (const entry of sixth.registered) {
