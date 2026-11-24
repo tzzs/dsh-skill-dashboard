@@ -4,12 +4,16 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const { createPortal } = require('react-dom');
     const h = React.createElement;
-    const { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } = React;
+    const { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } = React;
 
     /** Drops the falsy branch of a conditional child, so JSX-free trees stay readable. */
     const el = (type, props, ...children) => h(type, props, ...children.filter(
       (child) => child !== null && child !== undefined && child !== false && child !== true,
     ));
+
+    // The client test VM stubs React without memo or deferred values, so keep a plain fallback.
+    const memo = typeof React.memo === 'function' ? React.memo : (component) => component;
+    const deferredValue = typeof React.useDeferredValue === 'function' ? React.useDeferredValue : (value) => value;
 
     // Local React adapters use shadcn/ui's source-owned component/variant model.
     // Styling is scoped CSS because the DSH module loader does not compile Tailwind or JSX.
@@ -44,6 +48,8 @@ window.__ModuleLoader__.load({
     const MIN_FREQUENT_CALLS = 3;
     /** … and at least this many skills with calls, so the percentile means something. */
     const MIN_FREQUENT_PEERS = 3;
+    /** Enough rows to fill the fold, few enough that one batch paints inside a single frame. */
+    const ROW_BATCH = 15;
 
     // ---------------------------------------------------------------- locale
     const zh = {
@@ -1967,6 +1973,12 @@ window.__ModuleLoader__.load({
       );
     }
 
+    // Feature detection answers for one browser, so it runs once instead of per row per render.
+    const nativePopover = typeof HTMLElement !== 'undefined' && 'popover' in HTMLElement.prototype;
+    const nativeInvoker = typeof HTMLButtonElement !== 'undefined' && 'commandForElement' in HTMLButtonElement.prototype;
+    const nativeFocusGroup = typeof HTMLElement !== 'undefined' && 'focusGroup' in HTMLElement.prototype;
+    const nativeAnchor = typeof window.CSS?.supports === 'function' && window.CSS.supports('position-area: block-end');
+
     /** Native top-layer menu with feature-detected focus, invoker and positioning fallbacks. */
     function RowMenu({ skill, t, name, disabled, canUpdate, pathShown, onUpdate, onBind, onAskRemove, onTogglePath, returnFocusRef }) {
       const [open, setOpen] = useState(false);
@@ -1975,10 +1987,6 @@ window.__ModuleLoader__.load({
       const menuRef = useRef(null);
       const groupRef = useRef(null);
       const enterOnOpen = useRef(false);
-      const nativePopover = typeof HTMLElement !== 'undefined' && 'popover' in HTMLElement.prototype;
-      const nativeInvoker = typeof HTMLButtonElement !== 'undefined' && 'commandForElement' in HTMLButtonElement.prototype;
-      const nativeFocusGroup = typeof HTMLElement !== 'undefined' && 'focusGroup' in HTMLElement.prototype;
-      const nativeAnchor = typeof window.CSS?.supports === 'function' && window.CSS.supports('position-area: block-end');
       const id = 'skd-menu-' + useId().replace(/[^a-zA-Z0-9_-]/g, '');
       const path = textOf(skill?.path);
       const menuLabel = t('skill.menuAria', { name });
@@ -2417,7 +2425,7 @@ window.__ModuleLoader__.load({
     }
 
     /** One installed skill: identity, description, calls, both switches, and its menu. */
-    function SkillRow(props) {
+    function SkillRowBase(props) {
       const {
         skill, t, frequent, busy, writesLocked, pathShown, confirming, runtimes,
         onToggle, onUpdate, onAskRemove, onConfirmRemove, onCancelRemove, onTogglePath, onPreview,
@@ -2593,12 +2601,27 @@ window.__ModuleLoader__.load({
       );
     }
 
+    /**
+     * A row's props are stable, so a keystroke or a batch tick reuses the previous render.
+     * `localeMarker` is read by memo's comparison only: the translator's identity survives a
+     * language switch, and the marker is the prop that changes then.
+     */
+    const SkillRow = memo(SkillRowBase);
+
     /** The installed list: a row per skill, muted once the model can no longer call it. */
     function InstalledTab(props) {
       const {
-        skills, t, frequentRule, pending, filtered, runtimes, onReset, onDiscover,
+        skills, t, frequentRule, pending, filtered, runtimes, memoKey, onReset, onDiscover,
         expandedPath, confirmingPath, onToggle, onUpdate, onAskRemove, onConfirmRemove, onCancelRemove, onTogglePath, onPreview,
       } = props;
+      const [limit, setLimit] = useState(ROW_BATCH);
+      // The first batch paints in the mount task; every later batch gets its own frame, so no task
+      // blocks on the whole list.
+      useEffect(() => {
+        if (limit >= skills.length) return undefined;
+        const frame = requestAnimationFrame(() => setLimit((current) => current + ROW_BATCH));
+        return () => cancelAnimationFrame(frame);
+      }, [limit, skills.length]);
 
       if (skills.length === 0) {
         return el('div', { className: 'skd-empty' },
@@ -2612,7 +2635,9 @@ window.__ModuleLoader__.load({
       }
 
       // li contains the article and controls, preserving list count and interactive semantics.
-      return el('ul', { className: 'skd-list', role: 'list' }, skills.map((skill) => {
+      return el('ul', {
+        className: 'skd-list', role: 'list', 'aria-busy': limit < skills.length || undefined,
+      }, skills.slice(0, limit).map((skill) => {
         const path = textOf(skill?.path);
         const name = textOf(skill?.name);
         const calls = countOf(objectOf(skill?.usage)?.count);
@@ -2624,6 +2649,7 @@ window.__ModuleLoader__.load({
           skill,
           t,
           runtimes,
+          memoKey,
           frequent: frequentRule.active === true
             && calls >= MIN_FREQUENT_CALLS
             && calls >= frequentRule.threshold,
@@ -3461,9 +3487,11 @@ window.__ModuleLoader__.load({
         return { active: true, threshold: percentileOf(counts, 0.75) };
       }, [skills]);
 
+      // The input stays urgent while the list catches up, so typing never waits on a filter pass.
+      const deferredLibraryQuery = deferredValue(libraryQuery);
       const visible = useMemo(() => filterSkills(skills, {
-        runtime: agentFilter, query: libraryQuery, status: invocationFilter, sort,
-      }), [skills, agentFilter, libraryQuery, invocationFilter, sort]);
+        runtime: agentFilter, query: deferredLibraryQuery, status: invocationFilter, sort,
+      }), [skills, agentFilter, deferredLibraryQuery, invocationFilter, sort]);
       const hasFilters = agentFilter !== 'all' || libraryQuery !== '' || invocationFilter !== 'all';
       const resetFilters = () => {
         setAgentFilter('all'); setLibraryQuery(''); setInvocationFilter('all');
@@ -3508,15 +3536,17 @@ window.__ModuleLoader__.load({
         selectSource(ready.id);
       }, [discover.source, sources, selectSource]);
 
-      const toggleInvocation = (skill, changes) => { void setInvocation(skill, changes); };
-      const askRemove = (skill) => { setConfirmingPath(textOf(skill?.path)); };
-      const cancelRemove = () => { setConfirmingPath(''); };
-      const confirmRemove = (skill, next) => {
+      // Row memo compares props, so these handlers must keep their identity across renders.
+      const toggleInvocation = useCallback((skill, changes) => { void setInvocation(skill, changes); }, [setInvocation]);
+      const updateRow = useCallback((skill, ref) => { void updateSkill(skill, ref); }, [updateSkill]);
+      const askRemove = useCallback((skill) => { setConfirmingPath(textOf(skill?.path)); }, []);
+      const cancelRemove = useCallback(() => { setConfirmingPath(''); }, []);
+      const confirmRemove = useCallback((skill, next) => {
         (next ?? libraryInputRef.current)?.focus({ preventScroll: true });
         setConfirmingPath('');
         void removeSkill(skill);
-      };
-      const togglePath = (path) => { setExpandedPath((current) => (current === path ? '' : path)); };
+      }, [removeSkill]);
+      const togglePath = useCallback((path) => { setExpandedPath((current) => (current === path ? '' : path)); }, []);
       const search = (query) => {
         if (typeof query === 'string') setQueryDraft(query);
         void runDiscover(discover.source, (typeof query === 'string' ? query : queryDraft).trim());
@@ -3750,10 +3780,13 @@ window.__ModuleLoader__.load({
               tab === 'installed' && visible.length > 0 && el('div', { className: 'skd-tableHeading', 'aria-hidden': true },
                 el('span', null, t('overview.skills')), el('span', null, t('skill.callsLabel')),
                 el('span', null, t('installed.permissions')), el('span')),
+              // A row memo would outlive a language switch, since the translator keeps its identity,
+              // so one localized string rides along as part of the row's props.
               tab === 'installed' && el(InstalledTab, {
                 skills: visible,
                 t,
                 runtimes,
+                memoKey: t('tab.installed'),
                 onPreview: setPreviewTarget,
                 frequentRule,
                 pending,
@@ -3763,7 +3796,7 @@ window.__ModuleLoader__.load({
                 expandedPath,
                 confirmingPath,
                 onToggle: toggleInvocation,
-                onUpdate: (skill, ref) => { void updateSkill(skill, ref); },
+                onUpdate: updateRow,
                 onAskRemove: askRemove,
                 onConfirmRemove: confirmRemove,
                 onCancelRemove: cancelRemove,

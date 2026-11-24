@@ -317,6 +317,10 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
   same Host call. A row with a recorded origin shows a quiet `来源 <ref>` line under its
   description (`skill.origin` / `skill.originVersion`). High usage must be visually flaggable:
   rows whose `usage.count` ≥ the panel's own 75th percentile get a subtle “高频” badge.
+  The list paints in batches of 15 rows on animation frames, marks itself `aria-busy` until the
+  whole filtered set is mounted, and memoizes each row, so a large library never renders in one
+  blocking task. The search input value stays urgent while the filtered list reads a deferred
+  value; both degrade to plain synchronous rendering when the host React lacks the API.
 - The agent filter offers the detected coding agents (`runtimes`), each with its skill
   count, and hides itself when none was detected. A row badge names the agent when only
   one reads the skill (`仅 {agent}`), counts them when only some do (`{count}/{total} 个
