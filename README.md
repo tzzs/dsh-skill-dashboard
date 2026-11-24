@@ -4,63 +4,51 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/tzzs/dsh-skill-dashboard)](https://github.com/tzzs/dsh-skill-dashboard/releases)
 
-A DeepSeek Harness (DSH) plugin that puts every agent skill in one place: what is
-installed, which coding agents can see it, how often it is really used, which skills are worth
-keeping, and a read-only preview of the files behind it.
+A DeepSeek Harness (DSH) plugin that puts every agent skill in one place. It appears as **Skills Manager** (**Skills** in the sidebar) and shows what is installed, which coding agents can see each skill, how often it is used, which skills to clean up, and a read-only preview of its files.
 
 [中文说明](README.zh.md)
 
 ## Features
 
-**Installed** — every skill of every agent preset in one ledger.
+**Installed.** One ledger for every skill across all agent presets.
 
-- Combines the per-preset catalogs, so a skill visible to two presets appears once.
-- Detects the coding agents that really read skill directories — Claude Code, Codex, Cursor,
-  Gemini CLI, GitHub Copilot, OpenCode and more — from their own skill roots, and labels
-  each row with the agents that read it.
-- Shows source, call count and a `read-only` badge for skills inside the DSH installation.
-- Two switches per row (model invocation and `/name` invocation) that edit the skill's
-  YAML frontmatter, plus row actions for update, delete and path.
-- Update pulls from the recorded origin — Tencent SkillHub, skills.sh or GitHub — and replaces
-  the skill directory atomically. A skill another tool installed can be pointed at its source
-  once (关联来源) and updated from then on; a GitHub install records the exact commit it wrote.
-- Search, agent and status filters, usage/name/recency sorting.
+- Combines per-preset catalogs so a skill visible to multiple presets appears once, with an installed count badge on the tab.
+- Detects coding agents that read skill directories (including Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, and OpenCode) from their skill roots, recognizing both directory skills and flat `.md` skills in non-universal runtime roots.
+- Shows source, call count, and a `Read-only` badge for skills inside the DSH installation.
+- Provides two switches per row (**Auto-invoke** and **`/name` manual**) that edit the skill's YAML frontmatter, a `Disabled` state when both are off, and row actions for update, delete, and path.
+- Update pulls from the recorded origin (Tencent SkillHub, skills.sh, or GitHub) and swaps the skill directory atomically. A skill another tool installed can be pointed at its source once (**Link source**), then updates from it; a GitHub install records the exact commit that was written.
+- Supports search, agent and invocation-status filters, and usage, name, or recency sorting.
 
-**Discover** — install skills from two public registries or straight from GitHub.
+**Discover.** Install skills from two public registries or straight from GitHub, proxied through the Host process.
 
-- `skills.sh` (Git repositories) and Tencent SkillHub (`api.skillhub.cn`), both proxied by
-  the Host because neither API sends CORS headers.
-- The GitHub field takes `owner/repo`, a GitHub URL, a branch/tag/commit (`owner/repo@rev`) and
-  a subpath (`owner/repo#skills/pdf`), and installs the skill from `raw.githubusercontent.com`.
-  When that host or the API is refused, listing and bytes fall back to jsDelivr and the record
-  says it is unpinned.
-- Installs are staged outside every watched skill root and then moved in, so the provider
-  never observes a half-written skill.
+- Searches `skills.sh` (Git repositories) and Tencent SkillHub (`api.skillhub.cn`) on the server side because neither API sends CORS headers.
+- Installs directly from GitHub with `owner/repo`, a GitHub URL, a branch/tag/commit (`owner/repo@rev`), or a subpath (`owner/repo#skills/pdf`). Files come from `raw.githubusercontent.com`; when that or the API is refused, listing and bytes fall back to jsDelivr and the record says it is unpinned.
+- Checks installed status against the live skill catalog union and renders a 6-card skeleton grid while loading.
+- Stages installs outside watched skill roots and moves them in atomically so file watchers never see a half-written skill.
 
-**Usage** — today, last 7/14/30/60 days or a custom range.
+**Usage.** Inspect activity for today, the last 7/14/30/60 days, or a custom date range.
 
-- Per-skill calls and share, a trend for all skills or one selected skill, and a 60-day
-  daily history.
-- Cumulative totals and recent activity are labelled separately; search and trend selection
-  never change the period totals.
+- Displays per-skill calls and share, a trend for all skills or one selected skill, and a 60-day daily history.
+- Labels cumulative totals and recent activity separately so search and trend selection never alter period totals.
+- Tracks manual `/name` calls with a `'default'` agent fallback when no preset is resolved.
 
-**Diagnosis** — which skills are really in use, and which have gone quiet.
+**Diagnosis.** Identify active skills and quiet candidates ready for cleanup.
 
-- One verdict per skill from the recorded calls: in use, slowing down, stale, never called,
-  kept, or too new to judge. The observation window is printed on the page.
-- Five buckets with counts: clean up, off, in use, kept, too new. Each row shows the evidence
-  behind its verdict.
-- Disable (reversible), delete (confirmed), or keep (stops the reminder) one row or a whole
-  selection. A batch degrades per row, and read-only skills offer keep only.
+- Assigns one verdict per skill from recorded calls (`In use`, `Idle recently`, `Unused`, `Never used`, `Kept`, or `Observing`) and displays the observation window on the page.
+- Partitions the catalog into five counted buckets (`Clean up`, `Disabled`, `In use`, `Kept`, `Observing`), with a cleanup count badge on the tab and evidence on each row.
+- Lets you disable (reversible), delete (confirmed), or keep (pauses reminders) a single row or a batch selection. Batches degrade per row, read-only skills offer keep only, and invocation toggles or disable cleanup recompute diagnosis state atomically.
 
-**Preview** — select a skill row or card to read it.
+**Preview.** Open any installed skill row or Discover card to inspect its files.
 
-- Collapsible folder tree, Markdown reader or raw source, binary and size-limit notices.
-- On-demand loading with bounded Host and client caches, and a resizable, maximizable window.
-- Contents are never executed; HTML in a skill file is shown as text.
+- Shows a collapsible folder tree, Markdown reader or raw source view, and binary or size-limit notices.
+- Renders a top indeterminate progress bar plus file-tree and document skeletons while loading, with bounded Host and client caches in a resizable, maximizable `<dialog>`.
+- Never executes skill files; HTML renders as plain text.
 
-**DSH integration** — the panel follows the Host's language, colour theme and font without a
-second settings store, and keeps every control keyboard reachable.
+**DSH integration.** Follows DSH language, theme, and typography with zero extra configuration.
+
+- Uses single-pass CSS bound directly to DSH `--dsw-*` and `--ds-*` tokens across both the page and the modal `<dialog>`.
+- Renders the full page shell with DSH-native skeleton cards and rows on initial load, and keeps loaded data visible with an inline retry banner if a background refresh fails.
+- Localizes all UI copy and all 25 service error codes in English and Chinese, with keyboard access across every control.
 
 ## Requirements
 
@@ -94,9 +82,9 @@ npm run ci --prefix skill-dashboard          # syntax checks + offline tests
 npm run test:live --prefix skill-dashboard   # manual sweep: real skill roots + network
 ```
 
-`npm run ci` runs the client, helper, route, preview and usage-period suites against
-temporary directories and mocked registry responses. `test:live` is intentionally excluded
-from CI because it needs a real DSH installation and live registries.
+`npm run ci` runs the client, helper, route, preview, usage-period, and diagnosis suites
+against temporary directories and mocked registry responses. `test:live` is intentionally
+excluded from CI because it needs a real DSH installation and live registries.
 
 ## Documentation
 
@@ -114,9 +102,9 @@ from CI because it needs a real DSH installation and live registries.
 
 | Path | Role |
 |:--|:--|
-| `skill-dashboard/index.js` | Host half: catalog, frontmatter edits, usage store, registries, four HTTP routes |
-| `skill-dashboard/client.js` | Client half: panel, tabs, preview dialog, styles (no build step, no JSX) |
-| `skill-dashboard/locale/*.json` | UI dictionaries and the Plugins page metadata |
+| `skill-dashboard/index.js` | Host half: `StateCache` SWR lifecycle, parallel catalog and runtime scans, frontmatter edits, usage store, registries, four HTTP routes |
+| `skill-dashboard/client.js` | Client half: panel, tabs, skeleton loaders, preview dialog, single-pass DSH-native styles (no build step, no JSX) |
+| `skill-dashboard/locale/*.json` | Bilingual UI dictionaries, localized error codes, and Plugins page metadata |
 | `skill-dashboard/test/*.mjs` | Offline regression suites and the manual live sweep |
 | `.github/workflows/` | CI and release automation |
 | `scripts/check-release.mjs` | Release metadata consistency check |
@@ -140,8 +128,8 @@ release notes and version bumps are generated from them.
 The plugin reads the skill roots that DSH already exposes and writes the two frontmatter keys
 you toggle in the panel, the skills you install or update, and the files you explicitly delete.
 Its own state lives in `$DSH_HOME/skill-dashboard/`, and every registry and GitHub call is made
-by the Host, never by the browser. `GITHUB_TOKEN` or `GH_TOKEN` is used only when it is already in
-the Host environment, to lift GitHub's anonymous rate limit.
+by the Host, never by the browser. `GITHUB_TOKEN` or `GH_TOKEN` is used only when the Host
+environment already carries one, to lift GitHub's anonymous rate limit.
 
 ## License
 

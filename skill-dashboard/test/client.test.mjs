@@ -196,27 +196,46 @@ test('preview hierarchy retains paths and cached file-only responses retain the 
   assert.equal(cachedPreview('demo', ''), null);
 });
 
-test('both shipped dictionaries stay synchronized with runtime strings', async () => {
+test('both shipped dictionaries stay synchronized with runtime strings in both directions', async () => {
   assert.deepEqual(Object.keys(zh).sort(), Object.keys(en).sort());
   for (const [lang, dictionary] of [['zh', zh], ['en', en]]) {
     const disk = JSON.parse(await readFile(new URL(`../locale/${lang}.json`, import.meta.url), 'utf8'));
+    assert.equal(typeof disk.meta?.title, 'string', `${lang}:meta.title`);
+    assert.equal(disk.meta.title.length > 0, true, `${lang}:meta.title empty`);
+    assert.equal(typeof disk.meta?.description, 'string', `${lang}:meta.description`);
+    assert.equal(disk.meta.description.length > 0, true, `${lang}:meta.description empty`);
+    const diskKeys = Object.keys(disk).filter((key) => key !== 'meta').sort();
+    assert.deepEqual(diskKeys, Object.keys(dictionary).sort(), `${lang} key sets match`);
     for (const [key, value] of Object.entries(dictionary)) assert.equal(disk[key], value, `${lang}:${key}`);
   }
 });
 
-test('the preview file count and the renamed invocation switches stay in both dictionaries', () => {
+test('the preview file count, renamed invocation switches, and Host error codes stay localized', () => {
   assert.equal(zh['preview.fileCount'], '共 {count} 个文件');
   assert.equal(en['preview.fileCount'], '{count} files');
-  assert.equal(zh['skill.model'], '模型自动调用');
-  assert.equal(zh['skill.user'], '/name 手动调用');
-  assert.equal(en['skill.model'], 'Model auto');
+  assert.equal(zh['skill.model'], '自动调用');
+  assert.equal(zh['skill.user'], '/name 手动');
+  assert.equal(en['skill.model'], 'Auto-invoke');
   assert.equal(en['skill.user'], '/name manual');
-  assert.equal(zh['skill.modelSwitchAria'], '模型自动调用：{name}');
-  assert.equal(zh['skill.userSwitchAria'], '/name 手动调用：{name}');
-  assert.equal(en['skill.modelSwitchAria'], 'Model auto: {name}');
+  assert.equal(zh['skill.modelSwitchAria'], '自动调用：{name}');
+  assert.equal(zh['skill.userSwitchAria'], '/name 手动：{name}');
+  assert.equal(en['skill.modelSwitchAria'], 'Auto-invoke: {name}');
   assert.equal(en['skill.userSwitchAria'], '/name manual: {name}');
+  const errorCodes = [
+    'read-only', 'source-unavailable', 'source-rate-limited', 'invalid-response',
+    'preview-unavailable', 'preview-failed', 'skill-not-found', 'file-not-found',
+    'bad-request', 'not-found', 'unknown-action', 'unknown-source',
+    'invalid-frontmatter', 'missing-frontmatter', 'write-failed', 'delete-failed',
+    'name-mismatch', 'payload-too-large', 'state-unavailable', 'internal-error',
+    'already-installed', 'not-installed', 'not-installable', 'install-failed', 'update-failed',
+  ];
   for (const [lang, dictionary] of [['zh', zh], ['en', en]]) {
     for (const key of ['skill.modelHint', 'skill.userHint']) {
+      assert.equal(typeof dictionary[key], 'string', `${lang}:${key} is missing`);
+      assert.equal(dictionary[key].length > 0, true, `${lang}:${key} is empty`);
+    }
+    for (const code of errorCodes) {
+      const key = 'error.' + code;
       assert.equal(typeof dictionary[key], 'string', `${lang}:${key} is missing`);
       assert.equal(dictionary[key].length > 0, true, `${lang}:${key} is empty`);
     }
@@ -236,7 +255,59 @@ test('the detected agent strings exist in both dictionaries and the old badge is
   assert.equal(zh['skill.runtimesOne'], '仅 {agent}');
   assert.equal(en['skill.runtimesOne'], '{agent} only');
   assert.equal(zh['overview.agents'], '已检测 Agent');
-  assert.equal(en['overview.agents'], 'Coding agents');
+  assert.equal(en['overview.agents'], 'Detected agents');
+});
+
+test('concurrent refreshes coalesce and background refresh failures preserve loaded state', async () => {
+  let calls = 0;
+  let resolveFirst;
+  const { createRuntime } = loadClient(() => {
+    calls += 1;
+    if (calls === 1) return new Promise((resolve) => { resolveFirst = resolve; });
+    return Promise.reject(new Error('network down'));
+  });
+  const runtime = createRuntime();
+  const a = runtime.refresh();
+  const b = runtime.refresh();
+  assert.equal(calls, 1, 'concurrent refreshes share one in-flight request');
+  resolveFirst({ ok: true, json: async () => ({ ok: true, skills: [{ name: 'alpha' }] }) });
+  assert.deepEqual(await Promise.all([a, b]), [true, true]);
+  assert.equal(runtime.store.getSnapshot().status, 'ready');
+  assert.equal(runtime.store.getSnapshot().syncError, false);
+
+  const ok = await runtime.refresh();
+  assert.equal(ok, false);
+  const after = runtime.store.getSnapshot();
+  assert.equal(after.status, 'ready', 'working UI stays mounted when a background refresh fails');
+  assert.equal(after.syncError, true);
+  assert.equal(after.data.skills[0].name, 'alpha');
+  runtime.dispose();
+});
+
+test('initial load failure transitions to offline when no snapshot exists', async () => {
+  const { createRuntime } = loadClient(async () => { throw new Error('offline'); });
+  const runtime = createRuntime();
+  assert.equal(await runtime.refresh(), false);
+  const snap = runtime.store.getSnapshot();
+  assert.equal(snap.data, null);
+  assert.equal(snap.status, 'offline');
+  assert.equal(snap.syncError, true);
+  runtime.dispose();
+});
+
+test('mutations apply inline state or perform one authoritative refresh without a delayed refetch', async () => {
+  const urls = [];
+  const { createRuntime } = loadClient(async (url) => {
+    urls.push(url);
+    if (url.endsWith('/action')) return { ok: true, json: async () => ({ ok: true }) };
+    return { ok: true, json: async () => ({ ok: true, skills: [{ name: 'alpha', modelInvocable: false }] }) };
+  });
+  const runtime = createRuntime();
+  const ok = await runtime.setInvocation({ path: '/tmp/alpha/SKILL.md' }, { modelInvocable: false });
+  assert.equal(ok, true);
+  assert.deepEqual(urls, ['skill-dashboard/action', 'skill-dashboard/state']);
+  assert.equal(runtime.store.getSnapshot().data.skills[0].modelInvocable, false);
+  runtime.dispose();
 });
 
 const diagnosis = {

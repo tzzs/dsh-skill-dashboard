@@ -1,89 +1,45 @@
-# Skill dashboard
+# Skills Manager
 
-A DeepSeek Harness plugin that puts every Agent skill in one place: what is installed, which
-coding agent can see it, how often the model actually calls it — and one switch that takes an
-over-used skill away from the model again.
+A DeepSeek Harness plugin that puts every agent skill in one place. It shows what is installed, which coding agent can see each skill, how often it is called, and gives you direct switches to turn auto-invoke or manual invocation off.
 
-It adds a **技能看板 / Skill dashboard** entry to the Web UI's left rail, directly below
-`插件` and `自动化任务`, and a full page in the central column (panel id `skill-dashboard`).
+It appears as **Skills Manager / 技能管理** in the Plugins page, adds a **Skills / 技能** entry to the Web UI left rail below `Plugins` and `Automation`, and opens a full page in the central column (panel id `skill-dashboard`).
 
 ## What it does
 
-**已安装 (Installed)** — every skill of every Agent preset, in one ledger.
+**Installed (已安装).** One ledger for every skill across all agent presets.
 
-- Reads the catalog per preset (`agentPresets` + `skills.list({ scope })`), so a skill that only
-  one preset can see is listed once with `N 个 Agent`, not duplicated.
-- Detects the coding agents that really read skill directories — Claude Code, Codex, Cursor,
-  Gemini CLI, GitHub Copilot, OpenCode, Amp, Cline, Droid, Kilo Code, Kimi Code CLI, Pi, Warp,
-  Zed, fx — from their own skill roots, and labels each row with the agents that read it.
-  The table mirrors the `skills` CLI registry (`vercel-labs/skills/src/agents.ts`); the
-  canonical `.agents/skills` roots count for every agent that reads them, and DSH always sees
-  every skill.
-- Shows source (`user-agents`, `user-dsh`, `project-*`, `custom`, `bundled`), call count and a
-  `只读` badge for skills inside the DSH installation (bundled skills and `app.asar` entries),
-  which the dashboard refuses to modify.
-- Two switches per row: **模型自动调用** and **`/name` 手动调用**, each with a hover hint.
-- Row menu: **更新**, **删除**, **查看路径**. A writable row with no recorded origin offers
-  **关联来源** instead of 更新: one reference (`multi-search-engine`, `owner/repo`,
-  `owner/repo@branch#path`, or a GitHub URL) links the skill to its source and updates it in the
-  same call. A row with a recorded origin shows a quiet `来源 <ref>` line under its description.
-- A `高频` badge marks the skills above the panel's own 75th percentile with at least three
-  calls, so an over-eager skill is visible without opening the statistics tab.
+- Scans preset catalogs in parallel (`agentPresets` and `skills.list({ scope })`), so a skill visible to one or many presets appears once, with an installed count badge on the tab.
+- Detects coding agents that read skill directories (Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode, Amp, Cline, Droid, Kilo Code, Kimi Code CLI, Pi, Warp, Zed, and fx) from their own skill roots, and labels each row with the agents that read it. The table mirrors the `skills` CLI registry (`vercel-labs/skills/src/agents.ts`). Canonical `.agents/skills` roots count for every agent that reads them, flat `.md` skills inside non-universal runtimes' own roots are recognized, and DSH sees every catalog skill.
+- Shows source (`user-agents`, `user-dsh`, `project-*`, `custom`, `bundled`), call count, and a `Read-only` (`只读`) badge for skills inside the DSH installation (bundled skills and `app.asar` entries), which the plugin refuses to modify.
+- Provides two switches per row (**Auto-invoke / 自动调用** and **`/name` manual / `/name` 手动**), each with a hover hint, and marks skills as **Disabled / 已停用** when both paths are off.
+- Row menu actions include **Update / 更新**, **Delete / 删除**, and **Show path / 查看路径**. A writable row with no recorded origin offers **Link source / 关联来源** instead: one reference (`multi-search-engine`, `owner/repo`, `owner/repo@branch#path`, or a GitHub URL) links the skill to its source and updates it in the same call. A tracked row shows a quiet `From <ref>` line under its description.
+- A `Frequent` (`高频`) badge marks skills above the 75th percentile with at least three calls, so an over-eager skill stands out without opening the Usage tab.
 
-**发现 (Discover)** — install from two public sources, or directly from GitHub, proxied through
-the Host.
+**Discover (发现).** Install skills from two public sources or directly from GitHub, proxied through the Host.
 
-- **skills.sh** — the community skills directory; it indexes Git repositories, so an entry is
-  installed from `owner/repo` via `raw.githubusercontent.com`, path discovered through the
-  GitHub tree API (cached 10 min).
-- **腾讯 SkillHub** (`api.skillhub.cn`) — the domestic source; Chinese titles, versions,
-  download counts, and per-file raw downloads.
-- **从 GitHub 安装** — a direct reference field under the search form. It accepts `owner/repo`,
-  `owner/repo@rev`, `owner/repo#skills/pdf`, a `/tree/<rev>/<path>` URL and a `/blob/…/SKILL.md`
-  URL; a repository with several skills and no named path answers `subpath-required` with the
-  candidates instead of guessing. The installed record pins the exact commit the files came from.
-- Installs are staged outside every watched skill root, then moved into
-  `$DSH_AGENTS_HOME` (usually `~/.agents/skills`) with retries, so the provider's file watcher
-  never sees a half-written skill.
+- **skills.sh.** Community skills directory indexing Git repositories. Entries install from `owner/repo` via `raw.githubusercontent.com`, with paths discovered through the GitHub tree API (cached 10 min).
+- **Tencent SkillHub** (`api.skillhub.cn`). Domestic source with Chinese titles, versions, download counts, and per-file raw downloads.
+- **Install from GitHub (从 GitHub 安装).** A direct reference field under the search form: `owner/repo`, `owner/repo@rev`, `owner/repo#skills/pdf`, a `/tree/<rev>/<path>` URL, or a `/blob/…/SKILL.md` URL. A repository holding several skills with no named path answers `subpath-required` with the candidates instead of guessing, and the installed record pins the exact commit the files came from.
+- Checks installed state against the live catalog union, and renders a 6-card skeleton grid matching the result card layout while loading.
+- Stages installs outside every watched skill root, then moves them into pre-resolved `$DSH_AGENTS_HOME` (usually `~/.agents/skills`) with retries so file watchers never observe a half-written skill.
 
-**统计 (Statistics)** — what is actually being used.
+**Usage (统计).** Measure real skill usage over time.
 
-- Choose Today, last 7/14/30/60 days, or a custom inclusive date range within retained history.
-- See period calls and active-skill counts, a searchable/sortable per-skill calls/share table,
-  and a trend for all skills or a selected skill. Names absent from the current library remain
-  visible when historical usage exists; installed zero-use skills are included too.
-- Search filters the table; shares always use all calls in the selected period. Selecting a
-  skill changes the trend, not the global period totals. Recent events and cumulative counts
-  are explicitly labelled as independent of the date range.
-- Daily totals are retained for 60 days. Model/user channel counters remain cumulative;
-  historical per-day channel splits were never stored and are not fabricated.
-- The store remains `$DSH_HOME/skill-dashboard/usage.json`; only calls observed while the
-  dashboard is enabled are recorded.
+- Supports Today, last 7/14/30/60 days, or a custom inclusive date range within retained history.
+- Shows period calls and active-skill counts, a searchable and sortable per-skill calls and share table, and a trend for all skills or one selected skill. Skills removed from the current library remain visible when historical usage exists, and zero-use installed skills are included.
+- Search filters the table only; shares always use all calls in the selected period. Selecting a skill changes the trend without altering global period totals. Recent events and cumulative counts are labeled separately from the date range.
+- Daily totals are retained for 60 days. Manual `/name` calls fall back to `'default'` when no agent preset is resolved. Model and user channel counters remain cumulative; per-day channel splits are not fabricated.
+- Usage data lives in `$DSH_HOME/skill-dashboard/usage.json` and records calls observed while the plugin is enabled.
 
-**诊断 (Diagnosis)** — which skills are really in use, and which have gone quiet.
+**Diagnosis (诊断).** Separate active skills from quiet ones that are ready to clean up.
 
-- One verdict per catalog skill, computed on the Host from the recorded call history: **在用**
-  called in the last 14 days, **调用减少** 15–29 days, **久未调用** 30 days or more with a
-  recorded call, **从未调用**, **已保留** (kept by you), or **观察中** (watched too briefly to
-  judge).
-- The observation window is stated, not implied: `观察自 <date> · <N> 天`. A skill is only
-  called never-used after three days of watching it, and a skill created after the dashboard
-  started watching gets its own shorter window. A skill installed yesterday is never described
-  as unused for months.
-- The five buckets partition the library and carry Host counts: **可清理 / 已停用 / 在用 /
-  已保留 / 观察中**. Each row leads with its evidence: idle days and calls, the last call date,
-  or how long it has been watched.
-- Cleanup reuses the mechanisms the plugin already owns. **停用** flips both invocation keys in
-  one write, so the skill stays installed. **删除** removes the skill directory after an inline
-  confirmation. **保留** stops the reminder until the skill is called again. Rows the dashboard
-  cannot change (bundled and `app.asar` skills) show `只读` and offer 保留 only.
-- Select rows, then act once on the whole selection. A batch degrades per row: a read-only or
-  already-missing skill reports its own failure and the rest still apply. Delete always confirms;
-  disable does not, because the row can turn it back on.
-- A skill that is already off both paths moves to **已停用**, where the only remaining action is
-  **删除**, so nothing is ever asked to disable something that is already disabled.
-- **判断依据** in the tab restates the three windows and the keep rule, so the judgement can be
-  audited without reading the source.
+- Computes one verdict per catalog skill on the Host from recorded call history. Verdicts are **In use (使用中)** for calls in the last 14 days, **Idle recently (近期未用)** for 15 to 29 days, **Unused (久未调用)** for 30 days or more with a prior call, **Never used (从未调用)**, **Kept (已保留)**, and **Observing (观察中)** when watched too briefly to judge.
+- Prints the observation window explicitly (`Observed since <date> · <N> days` / `观察自 <date> · 共 <N> 天`). A skill is only marked never used after three days of observation, and a skill added after observation started gets its own shorter window.
+- Partitions the catalog into five mutually exclusive buckets with Host counts: **Clean up (可清理)**, **Disabled (已停用)**, **In use (使用中)**, **Kept (已保留)**, and **Observing (观察中)**. The Diagnosis tab shows the cleanup count as a badge, and each row leads with its recorded evidence.
+- Cleanup reuses the plugin's existing actions. **Disable (停用)** flips both invocation keys in one write while keeping the skill on disk, **Delete (删除)** removes the skill directory after an inline confirmation and awaits provenance persistence, and **Keep (保留)** pauses reminders until the skill is called again. Read-only skills (bundled and `app.asar`) show `Read-only` and offer Keep only.
+- Select multiple rows to act on a batch. Batches degrade per row so a read-only or missing skill reports its own error while the remaining rows succeed. Delete always confirms; disable does not because it is reversible. Both `set-invocation` and `cleanup(mode: 'disable')` recompute diagnosis state atomically.
+- Skills with both invocation paths disabled move into **Disabled (已停用)**, where only **Delete (删除)** remains.
+- **Diagnosis rules (判断规则)** inside the tab restates the thresholds and keep rule so you can audit every verdict without reading source code.
 
 ## Skill details and file preview
 
@@ -110,16 +66,33 @@ A bounded 30-second client cache reuses visited files and repeat opens. Switchin
 `fileOnly:true`, omitting the unchanged listing. **刷新预览 / Refresh preview** bypasses
 both caches; successful dashboard mutations invalidate the client cache.
 
-The native modal supports Escape, close button, focus return and independent file/content
-scrolling. Its desktop default is wider (up to 1440px, 94vw) and taller (92dvh). Drag the
-bottom-right corner to resize, use shrink/enlarge buttons without dragging, or maximize
+The native `<dialog>` supports Escape, close button, focus return, and independent file and
+content scrolling. It mounts directly to `document.body` and inherits all `--skd-*` DSH tokens.
+While loading, it renders a top indeterminate progress bar along with file-tree and document
+skeletons. Its desktop default is up to 1280px (92vw) wide and up to 860px (88dvh) tall. Drag
+the bottom-right corner to resize, use shrink or enlarge buttons without dragging, or maximize
 and restore. Normal desktop size is remembered for subsequent opens during the page lifetime.
-Narrow screens use a nearly full-screen layout. Language and theme follow DSH while open.
-Host changes require restarting DSH after updating the installed plugin, then reloading the page.
+Narrow screens (`max-width: 700px`) switch to a nearly full-screen layout. Language and theme
+follow DSH while open. Host changes require restarting DSH after updating the installed plugin,
+then reloading the page.
+
+## Loading, caching, and resilience
+
+- Initial page load renders the full DSH-native page shell (header, status pill, and 4-tab bar)
+  with skeleton KPI cards, filter toolbar, and six list rows animated with
+  `--dsw-alias-bg-skeleton` (disabled under `prefers-reduced-motion`).
+- On the Host, `StateCache` warms up during activation, coalesces stale-while-revalidate reads
+  (1.5 s TTL), and debounces `skills/change` invalidation (250 ms). Preset scans and
+  `detectAgentRuntimes()` I/O run in parallel against pre-resolved install roots.
+- On the client, concurrent `refresh()` calls coalesce into one request, post-mutation updates
+  use the authoritative response without a blind delayed double-refetch, and background refresh
+  failures keep loaded UI mounted with an inline retry banner instead of blanking the page.
+- All 25 Host error codes are localized in `locale/en.json` and `locale/zh.json`, and
+  user-facing copy avoids internal Host terminology.
 
 ## How "closing" a skill works
 
-There is no separate enabled/disabled flag in DSH, and there does not need to be: the
+There is no separate enabled/disabled flag in DSH, and there does not need to be. The
 filesystem skill provider already understands two frontmatter keys.
 
 ```yaml
@@ -131,12 +104,13 @@ user-invocable: false            # hidden from `/skill` gestures
 ---
 ```
 
-So the switch is a **byte-exact frontmatter edit**, nothing more:
+The switch performs a **byte-exact frontmatter edit**.
 
-- Turning 模型自动调用 off writes `disable-model-invocation: true` (or removes the line when it
-  returns to the default). Everything else in `SKILL.md` — description, nested `metadata`,
-  CRLF endings — is preserved byte for byte, and turning it back on restores the original file
-  (verified against 65 real skills × 3 edits, and live on `code-review` with a matching SHA-256).
+- Turning **Auto-invoke (自动调用)** off writes `disable-model-invocation: true` (or removes the
+  line when it returns to the default). Everything else in `SKILL.md` (description, nested
+  `metadata`, CRLF endings) is preserved byte for byte, and turning it back on restores the
+  original file (verified against 65 real skills × 3 edits, and live on `code-review` with a
+  matching SHA-256).
 - The provider watches its roots, so the skill leaves the model catalog at the agent's next
   `agent/pre-step`; calling `skill` for it afterwards answers
   `skill "<name>" is not available for model invocation`.
@@ -150,14 +124,14 @@ coding agents read it before you flip the switch.
 
 | Source | Listing | Payload |
 |:--|:--|:--|
-| `skills-sh` | `GET https://skills.sh/api/search?q=…&limit=50`, or a GitHub reference typed into 从 GitHub 安装 | `api.github.com/.../git/trees/{rev}?recursive=1` + `raw.githubusercontent.com`, with `data.jsdelivr.com` listing and `cdn.jsdelivr.net` bytes as the fallback |
+| `skills-sh` | `GET https://skills.sh/api/search?q=…&limit=50`, or a reference typed into Install from GitHub | `api.github.com/.../git/trees/{rev}?recursive=1` + `raw.githubusercontent.com`, with `data.jsdelivr.com` listing and `cdn.jsdelivr.net` bytes as the fallback |
 | `tencent` | `GET https://api.skillhub.cn/api/skills?page=1&pageSize=30&sortBy=score&keyword=…` | `GET /api/v1/skills/{slug}/files` + `/api/v1/skills/{slug}/file?path=…` |
 
-Neither registry API sends CORS headers, which is why every registry call runs in the Host
-process and the browser only talks to `/skill-dashboard/*`. Outbound requests are bounded (10 s,
-4 MiB, concurrency 4) and results are cached (search 60 s, commits 60 s, trees and payloads
-10 min). A failure is reported as `source-unavailable` / `source-rate-limited` and the page
-offers the other source.
+Neither registry API sends CORS headers, which is why every registry call runs in the Host process
+and the browser only talks to `/skill-dashboard/*`. Outbound requests are bounded (10 s, 4 MiB,
+concurrency 4) and results are cached (search 60 s, commits 60 s, trees and payloads 10 min). A
+failure is reported as `source-unavailable` / `source-rate-limited` and the page offers the other
+source.
 
 GitHub commits come from `api.github.com/repos/{o}/{r}/commits`, with the repository's
 `/commits/<rev>.atom` feed as a quota-free fallback; a 40-hex `rev` is its own pin and costs no
@@ -167,10 +141,10 @@ request. `GITHUB_TOKEN` / `GH_TOKEN` is sent when the Host environment already h
 
 | File | Role |
 |:--|:--|
-| `index.js` | Host half: catalog reads/writes, usage store, registry adapters, four exact HTTP routes |
-| `client.js` | Client half: rail icon, panel, tabs, styles (no build step, no JSX) |
-| `locale/*.json` | `meta.title` / `meta.description` for the Plugins page, plus the UI dictionaries |
-| `icon.svg` | Original artwork |
+| `index.js` | Host half: `StateCache` SWR lifecycle, parallel catalog/runtime reads, frontmatter edits, usage store, registry adapters, four exact HTTP routes |
+| `client.js` | Client half: rail icon, panel, tabs, skeleton loaders, preview dialog, single-pass DSH-native styles (no build step, no JSX) |
+| `locale/*.json` | `meta.title` / `meta.description` for the Plugins page, UI dictionaries, and all 25 localized error codes |
+| `icon.svg` | Original artwork: transparent 36×36, drawn onto the host's tile so light and dark themes both match |
 | `cordis.patch.yml` | Inserts the `skill-dashboard` Host row |
 | `test/*.mjs` | Offline helper, route and preview assertions; `real-skills` is a manual sweep |
 
@@ -180,15 +154,15 @@ no handler can throw into the carrier.
 
 ## Data the plugin owns
 
-- `$DSH_HOME/skill-dashboard/usage.json` — per-skill call counters, distinct sessions,
-  60 day-buckets, recent activity, plus three diagnosis facts: `since` (when observation
-  began, written once), `catalog` (the first time each skill name was seen) and `keptAt`
-  (the one decision the call history cannot derive). Corrupt or missing reads as empty.
-- `$DSH_HOME/skill-dashboard/installed.json` — provenance of every skill the dashboard installed
-  or linked: `{ source, ref, commit, name, version, installedAt, path }`, mirrored into
+- `$DSH_HOME/skill-dashboard/usage.json` stores per-skill call counters, distinct sessions,
+  60 day-buckets, recent activity, and three diagnosis facts (`since` written once when
+  observation begins, `catalog` for when each skill name was first seen, and `keptAt` for
+  explicit keep decisions). A corrupt or missing file reads as empty.
+- `$DSH_HOME/skill-dashboard/installed.json` stores provenance for every skill this plugin
+  installed or linked: `{ source, ref, commit, name, version, installedAt, path }`, mirrored into
   `<skill>/.skill-source.json` (without `path`) so a hand-copied skill keeps its origin. A record
-  only describes the directory it was written for; a same-named skill elsewhere is not affected.
-- Nothing else. The dashboard never edits a skill outside the writable roots
+  only describes the directory it was written for; a same-named skill elsewhere is unaffected.
+- Nothing else. The plugin never edits a skill outside the writable roots
   (`$DSH_HOME/skills`, `$DSH_AGENTS_HOME/skills`, project `.dsh/skills` / `.agents/skills`) and
   refuses bundled/`app.asar` skills with `read-only`.
 
@@ -196,7 +170,7 @@ no handler can throw into the carrier.
 
 ```sh
 npm ci --ignore-scripts
-npm run ci          # syntax checks plus offline client/helper/route/preview/period tests
+npm run ci          # syntax checks plus offline client/helper/route/preview/period/diagnosis tests
 npm run test:live   # manual integration sweep; needs real skill roots and network
 ```
 
@@ -209,20 +183,18 @@ does not run it.
   `.skill-source.json`. An update re-fetches the tracked reference and compares bytes, so
   `changed` is always a real comparison; when only the jsDelivr fallback served the bytes, the
   record says `commit: null` rather than guessing a pin.
+- An update never renames a skill: if the source's `SKILL.md` declares another name, the call
+  answers `name-mismatch` and writes nothing. Remove and install again for an upstream rename. A
+  flat `<name>.md` skill answers `flat-skill`, and a repository with several skills and no named
+  path answers `subpath-required` with up to five candidates.
 - `skills.sh` has no version field and no detail API, so an update from a discovered card
   compares file contents and reports `changed` rather than a version bump.
-- An update never renames a skill: if the source's `SKILL.md` declares another name, the call
-  answers `name-mismatch` and writes nothing. Remove and install again for an upstream rename.
-- A flat `<name>.md` skill cannot be updated in place (it would become a directory); the call
-  answers `flat-skill`.
-- A repository that holds several skills with nothing to choose between answers
-  `subpath-required` and lists up to five `#path` candidates instead of guessing.
 - A **changed** update replaces the skill directory wholesale (stage, move the old tree aside,
   swap), so files the upstream no longer ships disappear and a hand-added file inside that skill
   folder would too. Put local additions outside the skill directory. The same means a hand-edited
   `SKILL.md` is replaced; an unchanged upstream transfer rewrites only the provenance.
 - Editing the Host half of an already installed plugin takes effect on the next app start; the
   Client half reloads with the page.
-- Diagnosis judges only what the dashboard observed. On a fresh install every skill reads
-  观察中 until three days have passed; the cleanup list fills as the watch window grows.
-  Deleting a cleanup candidate is never automatic, and a keep can be cleared at any time.
+- Diagnosis judges only what the plugin observed. On a fresh install every skill reads
+  **Observing (观察中)** until three days have passed; the cleanup list fills as the watch window
+  grows. Deleting a cleanup candidate is never automatic, and a keep can be cleared at any time.
