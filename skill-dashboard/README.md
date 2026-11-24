@@ -87,6 +87,9 @@ then reloading the page.
 - On the client, concurrent `refresh()` calls coalesce into one request, post-mutation updates
   use the authoritative response without a blind delayed double-refetch, and background refresh
   failures keep loaded UI mounted with an inline retry banner instead of blanking the page.
+- The installed list paints 15 rows per animation frame with `aria-busy` until it is complete, and
+  each row is memoized, so a large skill library never renders in one blocking task. The search
+  input updates urgently while the filtered list reads a deferred value.
 - All 25 Host error codes are localized in `locale/en.json` and `locale/zh.json`, and
   user-facing copy avoids internal Host terminology.
 
