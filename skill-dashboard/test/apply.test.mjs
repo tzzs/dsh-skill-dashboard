@@ -1203,6 +1203,7 @@ await mkdir(projectSkills, { recursive: true })
 
 const SHA_ONE = 'e4bb5d960d87126ff3b3a8af1a104b7db67560ba'
 const SHA_TWO = '1b0e1d3a4c5f60718293a4b5c6d7e8f901234567'
+const SHA_THREE = '23c4e5f60718293a4b5c6d7e8f9012345678abcd'
 const pdfSkill = '---\nname: pdf\ndescription: Fill in a PDF form.\n---\n\n# pdf\n'
 const notesSkill = '---\nname: notes\ndescription: Take notes.\n---\n\n# notes\n'
 const legacySkill = '---\nname: legacy\ndescription: An old install.\n---\n\n# legacy\n'
@@ -1342,21 +1343,17 @@ await check('install from a /tree/ URL pins the commit in both records', async (
   }
 })
 
-await check('a no-op update reports no change, keeps the bytes, and reuses the warm tree', async () => {
+await check('a no-op update reports no change and reads upstream fresh', async () => {
   stubNetwork()
-  const realNow = Date.now
-  // Step past the 60s commit cache so the update has to ask the head again.
-  Date.now = () => realNow() + 61_000
   try {
     const before = await readFile(join(githubSkills, 'pdf', 'SKILL.md'), 'utf8')
     const updated = await act({ action: 'update', name: 'pdf' })
     assert.equal(updated.status, 200, JSON.stringify(updated.body))
     assert.deepEqual(updated.body, { ok: true, name: 'pdf', path: join(githubSkills, 'pdf'), changed: false })
     assert.equal(network.calls.filter((url) => url.includes('/commits')).length, 1, 'the head commit is asked for once')
-    assert.equal(network.calls.filter((url) => url.includes('/git/trees/')).length, 0, 'the install tree is still cached')
+    assert.equal(network.calls.filter((url) => url.includes('/git/trees/')).length, 1, 'an update refuses a cached tree')
     assert.equal(await readFile(join(githubSkills, 'pdf', 'SKILL.md'), 'utf8'), before, 'an up-to-date skill keeps its bytes')
   } finally {
-    Date.now = realNow
     restoreNetwork()
   }
 })
@@ -1380,6 +1377,88 @@ await check('a moved pin rewrites the tree, records the new commit, and leaves n
     assert.deepEqual(await readdir(join(githubHome, 'skill-dashboard', 'staging')).catch(() => []), [])
   } finally {
     Date.now = realNow
+    restoreNetwork()
+  }
+})
+
+await check('a second update reads upstream instead of the payload cache', async () => {
+  const thirdRevision = `${pdfSkill}\nThird revision.\n`
+  putRemote('anthropics/skills', 'skills/pdf/SKILL.md', thirdRevision)
+  network.sha = SHA_THREE
+  stubNetwork()
+  try {
+    const updated = await act({ action: 'update', name: 'pdf' })
+    assert.equal(updated.status, 200, JSON.stringify(updated.body))
+    assert.equal(updated.body.changed, true, 'the previous update cached the old payload for ten minutes')
+    assert.equal(await readFile(join(githubSkills, 'pdf', 'SKILL.md'), 'utf8'), thirdRevision)
+    const sidecar = JSON.parse(await readFile(join(githubSkills, 'pdf', '.skill-source.json'), 'utf8'))
+    assert.equal(sidecar.commit, SHA_THREE)
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('an update reads the source fresh on the second click', async () => {
+  const fourthRevision = `${pdfSkill}\nFourth revision.\n`
+  putRemote('anthropics/skills', 'skills/pdf/SKILL.md', fourthRevision)
+  network.sha = SHA_TWO
+  stubNetwork()
+  try {
+    const updated = await act({ action: 'update', name: 'pdf', path: join(githubSkills, 'pdf', 'SKILL.md') })
+    assert.equal(updated.status, 200, JSON.stringify(updated.body))
+    assert.equal(updated.body.changed, true)
+    assert.equal(await readFile(join(githubSkills, 'pdf', 'SKILL.md'), 'utf8'), fourthRevision)
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('a name hint that contradicts the source is refused at install', async () => {
+  putRemote('acme/hinted', 'skills/remote-name/SKILL.md', '---\nname: remote-name\ndescription: A renamed skill.\n---\n')
+  stubNetwork()
+  try {
+    const installed = await act({ action: 'install', ref: 'acme/hinted#skills/remote-name', name: 'local-alias' })
+    assert.equal(installed.status, 422)
+    assert.equal(installed.body.code, 'invalid-skill')
+    assert.match(installed.body.message, /remote-name/)
+    assert.equal(existsSync(join(githubSkills, 'local-alias')), false, 'no directory is created for a name the source rejects')
+    const direct = await act({ action: 'install', ref: 'acme/hinted#skills/remote-name' })
+    assert.equal(direct.status, 200, JSON.stringify(direct.body))
+    assert.equal(direct.body.name, 'remote-name')
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('CDN-served bytes are recorded without a pin', async () => {
+  putRemote('acme/cdn-only', 'skills/cdn/SKILL.md', '---\nname: cdn\ndescription: Served only through the CDN.\n---\n')
+  stubNetwork()
+  network.raw = 'offline'
+  try {
+    const installed = await act({ action: 'install', ref: 'acme/cdn-only#skills/cdn' })
+    assert.equal(installed.status, 200, JSON.stringify(installed.body))
+    const sidecar = JSON.parse(await readFile(join(githubSkills, 'cdn', '.skill-source.json'), 'utf8'))
+    assert.equal(sidecar.commit, null, 'a branch cached by the CDN cannot be pinned to the API head')
+  } finally {
+    network.raw = 'ok'
+    restoreNetwork()
+  }
+})
+
+await check('a file that declares no skill name cannot be updated by path', async () => {
+  const directory = join(githubSkills, 'no-name')
+  await mkdir(directory, { recursive: true })
+  await writeFile(join(directory, 'SKILL.md'), '# no frontmatter\n', 'utf8')
+  stubNetwork()
+  try {
+    const updated = await act({
+      action: 'update', name: 'no-name', path: join(directory, 'SKILL.md'), ref: 'anthropics/skills#skills/pdf',
+    })
+    assert.equal(updated.status, 409)
+    assert.equal(updated.body.code, 'name-mismatch')
+    assert.deepEqual(network.calls, [], 'the target is refused before any fetch')
+    assert.equal(await readFile(join(directory, 'SKILL.md'), 'utf8'), '# no frontmatter\n')
+  } finally {
     restoreNetwork()
   }
 })

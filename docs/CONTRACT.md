@@ -188,12 +188,15 @@ subpath; `.git`, a trailing `/`, and a trailing `/SKILL.md` are dropped; and
 `https://github.com/<owner>/<repo>[/tree/<rev>[/<path>]]` or `/blob/<rev>/…/SKILL.md` (with optional
 `http(s)://`, `www.`, or a bare `github.com/` prefix) parse to the same canonical form. A canonical
 `ref` is a fixed point of `parseRef`. `install` derives the source from `ref`; an explicit `source`
-that disagrees is 400 `bad-request`. `update` without a stored origin needs `ref` (the one-time
-link gesture) and may carry `path`, the catalog skill file the row holds, so a skill outside the
-default install root is reachable. `changed` is a byte comparison only.
-New 409 codes: `name-mismatch` (the fetched `SKILL.md` declares another skill, or the clicked file
-is not the skill the caller names), `subpath-required` (the repository holds several skills and the
-reference names none), `flat-skill` (a flat `<name>.md` cannot be updated in place).
+that disagrees is 400 `bad-request`, and a `name` hint that contradicts the fetched `SKILL.md` name
+is 422 `invalid-skill` (the skill identity is the declared name; a contradicting hint would create a
+folder the catalog cannot name). `update` without a stored origin needs `ref` (the one-time link
+gesture) and may carry `path`, the catalog skill file the row holds, so a skill outside the default
+install root is reachable. Every update reads the source now: it bypasses the payload, tree and
+commit caches an install may populate. `changed` is a byte comparison only.
+New 409 codes: `name-mismatch` (a link or re-point whose source declares another skill, or a clicked
+row whose file declares another name or no name), `subpath-required` (the repository holds several
+skills and the reference names none), `flat-skill` (a flat `<name>.md` cannot be updated in place).
 
 `set-invocation` rewrites only the two frontmatter keys in the existing `SKILL.md`
 (or flat `<name>.md`), preserving every other line byte-for-byte; when a key must be

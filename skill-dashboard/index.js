@@ -2188,9 +2188,9 @@ function createSources() {
       return { ok: true, items }
     },
 
-    async fetch(locator, signal) {
+    async fetch(locator, signal, hints = {}) {
       const slug = locator.slug
-      const cached = payloadCache.get(`tencent:${slug}`)
+      const cached = hints.refresh === true ? undefined : payloadCache.get(`tencent:${slug}`)
       if (cached !== undefined) return cached
       const listing = await httpJson(ENDPOINTS.tencent.files(slug), { signal })
       if (listing.ok !== true) return listing
@@ -2367,11 +2367,16 @@ function createSources() {
     )
   }
 
-  /** Read one repository file, preferring raw.githubusercontent and falling back to jsDelivr's CDN. */
+  /**
+   * Read one repository file, preferring raw.githubusercontent and falling back
+   * to jsDelivr's CDN. `cdn` marks a read the CDN served, which caches a branch
+   * for hours: the caller must not claim a pin for those bytes.
+   */
   const fetchRepoFile = async (owner, repo, rev, path, signal) => {
     const raw = await httpText(ENDPOINTS['skills-sh'].raw(owner, repo, rev, encodeRepoPath(path)), { signal })
     if (raw.ok === true) return raw
-    return httpText(ENDPOINTS['skills-sh'].cdn(owner, repo, rev, path), { signal })
+    const cdn = await httpText(ENDPOINTS['skills-sh'].cdn(owner, repo, rev, path), { signal })
+    return cdn.ok === true ? { ...cdn, cdn: true } : cdn
   }
 
   /**
@@ -2379,10 +2384,10 @@ function createSources() {
    * one. A commit sha is its own answer, so a sha-pinned update never spends a
    * request here.
    */
-  const loadCommit = async (owner, repo, rev, signal) => {
+  const loadCommit = async (owner, repo, rev, signal, refresh = false) => {
     if (isCommitRev(rev)) return rev
     const key = `${owner}/${repo}@${rev ?? ''}`
-    const cached = commitCache.get(key)
+    const cached = refresh ? undefined : commitCache.get(key)
     if (cached !== undefined) return cached
     let commit = null
     const api = await httpJson(ENDPOINTS['skills-sh'].commits(owner, repo, rev), { signal, headers: githubHeaders() })
@@ -2425,11 +2430,13 @@ function createSources() {
     async fetch(locator, signal, hints = {}) {
       const { owner, repo, rev, path: subpath } = locator
       const nameHint = typeof hints.name === 'string' && hints.name.length > 0 ? hints.name : undefined
+      // An update must read the upstream now; only an install may reuse a payload.
+      const refresh = hints.refresh === true
       const cacheKey = `skills-sh:${owner}/${repo}@${rev ?? ''}#${subpath}#${nameHint ?? ''}`
-      const cached = payloadCache.get(cacheKey)
+      const cached = refresh ? undefined : payloadCache.get(cacheKey)
       if (cached !== undefined) return cached
 
-      let tree = await loadRepoTrees(owner, repo, rev, signal)
+      let tree = await loadRepoTrees(owner, repo, rev, signal, refresh)
       if (tree.ok !== true) {
         // A sha has no jsDelivr listing; guessing one would record a pin the
         // bytes never came from, so only a named branch degrades. A refused,
@@ -2455,9 +2462,11 @@ function createSources() {
               .sort((left, right) => skillFileOrder(left) - skillFileOrder(right) || compareNames(left, right))
       )
       if (wanted.length === 0) return failure('source-unavailable', 'this skill has no installable text files')
+      let servedByCdn = false
       const fetched = await mapWithLimit(wanted.slice(0, MAX_INSTALL_FILES), MAX_FILE_FETCH_CONCURRENCY, async (path) => {
         const file = await fetchRepoFile(owner, repo, tree.rev, `${prefix}${path}`, signal)
         if (file.ok !== true) return file
+        if (file.cdn === true) servedByCdn = true
         return { ok: true, value: { path, text: file.text } }
       })
       if (fetched.ok !== true) return fetched
@@ -2465,7 +2474,9 @@ function createSources() {
       if (!files.some((file) => file.path.toLowerCase() === 'skill.md')) {
         return failure('source-unavailable', 'this skill did not provide a SKILL.md')
       }
-      const commit = tree.degraded === true ? null : await loadCommit(owner, repo, tree.rev, signal)
+      // A CDN-served branch caches for hours, so those bytes cannot be pinned to
+      // the head commit the API named; the record says so instead of guessing.
+      const commit = tree.degraded === true || servedByCdn ? null : await loadCommit(owner, repo, tree.rev, signal, refresh)
       const result = { ok: true, files, version: null, commit, truncatedFiles: tree.truncated === true || wanted.length > files.length }
       payloadCache.set(cacheKey, result)
       return result
@@ -3714,7 +3725,16 @@ export function apply(ctx) {
     if (!files.some((file) => file.path.toLowerCase() === 'skill.md')) {
       return { status: 422, body: failure('invalid-skill', 'this source did not provide a SKILL.md') }
     }
-    const name = hintedName ?? nameFromFiles(files, locator.name)
+    const declaredName = nameFromFiles(files, undefined)
+    // A hinted name that contradicts the SKILL.md would create a folder the
+    // catalog cannot name, and every later update by path would refuse it.
+    if (hintedName !== undefined && declaredName !== undefined && declaredName !== hintedName) {
+      return {
+        status: 422,
+        body: failure('invalid-skill', `the source declares the skill "${declaredName}", not "${hintedName}"`),
+      }
+    }
+    const name = hintedName ?? declaredName ?? locator.name
     if (typeof name !== 'string' || !SKILL_NAME.test(name)) {
       return { status: 422, body: failure('invalid-skill', `"${String(name)}" is not a valid skill name`) }
     }
@@ -3761,16 +3781,20 @@ export function apply(ctx) {
     const record = isRecord(installed.skills) && isRecord(installed.skills[name]) ? installed.skills[name] : undefined
 
     let directory
+    let localName
     if (body.path !== undefined) {
       const guard = await assertManageableTarget(body.path)
       if (guard.ok !== true) return { status: guard.status, body: failure(guard.code, guard.message) }
       if (guard.kind !== 'directory') return { status: 409, body: failure('flat-skill', FLAT_SKILL_MESSAGE) }
       directory = guard.target
       // The clicked row must be the skill the caller names, or an update would
-      // write one skill's source over a different folder.
+      // write one skill's source over a different folder. A file whose
+      // frontmatter no longer parses is still updatable when its own directory
+      // records an origin; without one there is nothing that proves identity.
       const local = parseSkillFrontmatter(await readFile(join(directory, 'SKILL.md'), 'utf8').catch(() => ''))
-      if (local.ok === true && local.name !== name) {
-        return { status: 409, body: failure('name-mismatch', `this file declares the skill "${local.name}"`) }
+      localName = local.ok === true ? local.name : undefined
+      if (localName !== undefined && localName !== name) {
+        return { status: 409, body: failure('name-mismatch', `this file declares the skill "${localName}"`) }
       }
     } else {
       directory = typeof record?.path === 'string' && record.path.length > 0 ? record.path : join(installRoot(), name)
@@ -3784,6 +3808,12 @@ export function apply(ctx) {
     const recordMatches = record !== undefined && (typeof record.path !== 'string' || record.path.length === 0
       || normalizePathKey(record.path) === normalizePathKey(directory))
     const stored = recordMatches ? record : await readProvenanceInDirectory(directory)
+    if (body.path !== undefined && localName === undefined && describeProvenance(stored) === null) {
+      return {
+        status: 409,
+        body: failure('name-mismatch', 'the skill file at this path declares no name and has no recorded origin'),
+      }
+    }
     const inputRef = typeof body.ref === 'string' && body.ref.length > 0 ? body.ref
       : stored?.ref ?? (body.path === undefined ? (await readProvenanceFile(name))?.ref : undefined)
     if (typeof inputRef !== 'string' || inputRef.length === 0) {
@@ -3798,17 +3828,20 @@ export function apply(ctx) {
     const source = SOURCES_LOOKUP(locator.source)
     if (source === undefined) return { status: 400, body: failure('unknown-source', `unknown source "${locator.source}"`) }
 
-    const fetched = await source.fetch(locator, signal, { name })
+    // An update must read the source now, not a payload cached ten minutes ago.
+    const fetched = await source.fetch(locator, signal, { name, refresh: true })
     if (fetched.ok !== true) return { status: adapterStatus(fetched.code), body: failure(fetched.code, fetched.message) }
     const files = fetched.files
     if (!files.some((file) => file.path.toLowerCase() === 'skill.md')) {
       return { status: 422, body: failure('invalid-skill', 'this source did not provide a SKILL.md') }
     }
-    // The origin must be the skill it is being written over, or an update would
-    // silently replace this skill with another one. An upstream rename surfaces
-    // here instead of renaming a directory behind the catalog.
+    // Only a body-supplied reference can point at another skill: a plain update
+    // re-reads the recorded origin, whose name may legitimately differ from the
+    // name a discover card installed it under. A link or a re-point must match.
+    const originEstablished = typeof stored?.ref === 'string' && stored.ref.length > 0
+    const repointing = typeof body.ref === 'string' && body.ref.length > 0 && body.ref !== stored?.ref
     const remoteName = nameFromFiles(files, undefined)
-    if (remoteName !== undefined && remoteName !== name) {
+    if ((!originEstablished || repointing) && remoteName !== undefined && remoteName !== name) {
       return {
         status: 409,
         body: failure('name-mismatch', `this skill is "${name}" but the source declares "${remoteName}"`),
