@@ -1186,8 +1186,316 @@ await check('an unknown action verb still answers 400', async () => {
   assert.equal(response.body.code, 'unknown-action')
 })
 
+// ----------------- scenario 7: cache lifecycle, diagnosis, provenance, tracking
+
+console.log('')
+console.log('scenario 7: diagnosis freshness, provenance race, manual tracking, and cache coalescing')
+
+const regHome = join(workspace, 'dsh-home-reg')
+const regAgents = join(workspace, 'agents-home-reg')
+const regSkills = join(regAgents, 'skills')
+process.env.DSH_HOME = regHome
+process.env.DSH_AGENTS_HOME = regAgents
+await mkdir(regSkills, { recursive: true })
+await mkdir(join(regHome, 'skill-dashboard'), { recursive: true })
+
+const staleTargetAPath = await writeSkill(regSkills, 'stale-a', 'name: stale-a\ndescription: First stale skill.')
+const staleTargetBPath = await writeSkill(regSkills, 'stale-b', 'name: stale-b\ndescription: Second stale skill.')
+await writeSkill(regSkills, 'manual-disk-skill', 'name: manual-disk-skill\ndescription: Placed manually on disk.')
+await writeSkill(regSkills, 'removable-prov', 'name: removable-prov\ndescription: Installed with provenance.')
+const provSkillDir = join(regSkills, 'removable-prov')
+
+const fortyDaysAgo = Date.now() - 40 * 86_400_000
+await writeFile(
+  join(regHome, 'skill-dashboard', 'usage.json'),
+  JSON.stringify({
+    version: 1,
+    since: fortyDaysAgo,
+    catalog: {
+      'stale-a': fortyDaysAgo,
+      'stale-b': fortyDaysAgo,
+      'manual-disk-skill': fortyDaysAgo,
+      'removable-prov': fortyDaysAgo,
+    },
+    skills: {},
+    recent: [],
+  }),
+  'utf8',
+)
+await writeFile(
+  join(regHome, 'skill-dashboard', 'installed.json'),
+  JSON.stringify({
+    version: 1,
+    skills: {
+      'removable-prov': {
+        source: 'tencent',
+        ref: 'removable-prov',
+        version: '1.0.0',
+        installedAt: fortyDaysAgo,
+        path: provSkillDir,
+      },
+    },
+  }),
+  'utf8',
+)
+
+const regPresets = {
+  async remoteExportList() {
+    return []
+  },
+  presetForSession() {
+    return undefined
+  },
+}
+const sixth = createFakeContext({
+  cwd: workspace,
+  services: new Map([
+    ['workingDirectory', { defaultDirectory: workspace }],
+    ['agentPresets', regPresets],
+  ]),
+})
+apply(sixth.ctx)
+
+await check('set-invocation and cleanup(mode: disable) update diagnosis immediately', async () => {
+  const initial = await call(sixth.routes.get('/skill-dashboard/state'))
+  assert.equal(initial.status, 200)
+  const rowA = initial.body.diagnosis.skills.find((row) => row.name === 'stale-a')
+  const rowB = initial.body.diagnosis.skills.find((row) => row.name === 'stale-b')
+  assert.equal(rowA.bucket, 'cleanup')
+  assert.equal(rowA.closed, false)
+  assert.equal(rowA.can.disable, true)
+  assert.equal(rowB.bucket, 'cleanup')
+  assert.equal(rowB.closed, false)
+  assert.equal(rowB.can.disable, true)
+
+  const toggled = await call(sixth.routes.get('/skill-dashboard/action'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'set-invocation', path: staleTargetAPath, modelInvocable: false, userInvocable: false }),
+  })
+  assert.equal(toggled.status, 200)
+  const toggledRowA = toggled.body.diagnosis.skills.find((row) => row.name === 'stale-a')
+  assert.equal(toggledRowA.closed, true)
+  assert.equal(toggledRowA.bucket, 'dormant')
+  assert.equal(toggledRowA.can.disable, false)
+
+  const afterToggle = await call(sixth.routes.get('/skill-dashboard/state'))
+  const cachedRowA = afterToggle.body.diagnosis.skills.find((row) => row.name === 'stale-a')
+  assert.equal(cachedRowA.closed, true)
+  assert.equal(cachedRowA.bucket, 'dormant')
+  assert.equal(cachedRowA.can.disable, false)
+
+  const cleaned = await call(sixth.routes.get('/skill-dashboard/action'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      action: 'cleanup',
+      mode: 'disable',
+      targets: [{ name: 'stale-b', path: staleTargetBPath }],
+    }),
+  })
+  assert.equal(cleaned.status, 200)
+  const cleanedRowB = cleaned.body.diagnosis.skills.find((row) => row.name === 'stale-b')
+  assert.equal(cleanedRowB.closed, true)
+  assert.equal(cleanedRowB.bucket, 'dormant')
+  assert.equal(cleanedRowB.can.disable, false)
+
+  const afterCleanup = await call(sixth.routes.get('/skill-dashboard/state'))
+  const cachedRowB = afterCleanup.body.diagnosis.skills.find((row) => row.name === 'stale-b')
+  assert.equal(cachedRowB.closed, true)
+  assert.equal(cachedRowB.bucket, 'dormant')
+  assert.equal(cachedRowB.can.disable, false)
+})
+
+await check('discover marks manual catalog skills installed and remove clears provenance synchronously', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        code: 0,
+        data: {
+          skills: [
+            { slug: 'removable-prov', name: 'Removable', description: 'Tracked', version: '1.0.0' },
+            { slug: 'manual-disk-skill', name: 'Manual', description: 'Manual on disk', version: '1.0.0' },
+            { slug: 'never-installed', name: 'Remote Only', description: 'Not local', version: '1.0.0' },
+          ],
+        },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )
+  try {
+    const before = await call(sixth.routes.get('/skill-dashboard/discover'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ source: 'tencent', query: 'before-remove', limit: 10 }),
+    })
+    assert.equal(before.status, 200)
+    const beforeByName = new Map(before.body.items.map((item) => [item.name, item]))
+    assert.equal(beforeByName.get('removable-prov').installed, true)
+    assert.equal(beforeByName.get('manual-disk-skill').installed, true)
+    assert.equal(beforeByName.get('never-installed').installed, false)
+
+    const removed = await call(sixth.routes.get('/skill-dashboard/action'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'remove', name: 'removable-prov', path: provSkillDir }),
+    })
+    assert.equal(removed.status, 200)
+
+    const after = await call(sixth.routes.get('/skill-dashboard/discover'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ source: 'tencent', query: 'after-remove', limit: 10 }),
+    })
+    assert.equal(after.status, 200)
+    const afterByName = new Map(after.body.items.map((item) => [item.name, item]))
+    assert.equal(afterByName.get('removable-prov').installed, false)
+    assert.equal(afterByName.get('manual-disk-skill').installed, true)
+    assert.equal(afterByName.get('never-installed').installed, false)
+
+    const stored = JSON.parse(await readFile(join(regHome, 'skill-dashboard', 'installed.json'), 'utf8'))
+    assert.equal(Object.hasOwn(stored.skills, 'removable-prov'), false)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+await check('manual session/event without a resolved preset records default instead of raw sessionId', async () => {
+  for (const listener of sixth.listeners.get('session/event') ?? []) {
+    listener({ id: 'raw-session-xyz' }, { type: 'user/message', data: { source: { kind: 'skill-invocation', name: 'manual-disk-skill' } } })
+  }
+  await sleep(30)
+  const refreshed = await call(sixth.routes.get('/skill-dashboard/action'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'refresh' }),
+  })
+  assert.equal(refreshed.status, 200)
+  const stateAfter = await call(sixth.routes.get('/skill-dashboard/state'))
+  const entry = stateAfter.body.usage.recent.find((item) => item.name === 'manual-disk-skill')
+  const skill = stateAfter.body.skills.find((item) => item.name === 'manual-disk-skill')
+  assert.ok(entry !== undefined)
+  assert.equal(entry.agentId, 'default')
+  assert.equal(skill.usage.byUser, 1)
+  assert.equal(skill.usage.sessions, 1)
+})
+
+let coalescedScanCount = 0
+const coalescedPresets = {
+  async remoteExportList() {
+    return [{ id: 'standard', title: 'Standard', isDefault: true }]
+  },
+  async acquireScope() {
+    return { scope: { id: 'standard' }, dispose() {} }
+  },
+}
+const coalescedSkills = {
+  async list() {
+    coalescedScanCount += 1
+    await sleep(25)
+    return [
+      {
+        name: 'stale-a',
+        description: 'First stale skill.',
+        source: 'user-agents',
+        provider: 'filesystem',
+        path: staleTargetAPath,
+        invocation: { modelInvocable: false, userInvocable: false },
+      },
+    ]
+  },
+}
+const seventh = createFakeContext({
+  cwd: workspace,
+  services: new Map([
+    ['workingDirectory', { defaultDirectory: workspace }],
+    ['agentPresets', coalescedPresets],
+    ['skills', coalescedSkills],
+  ]),
+})
+apply(seventh.ctx)
+
+await check('concurrent GET state calls coalesce and skills/change debounces cleanly', async () => {
+  const [r1, r2, r3] = await Promise.all([
+    call(seventh.routes.get('/skill-dashboard/state')),
+    call(seventh.routes.get('/skill-dashboard/state')),
+    call(seventh.routes.get('/skill-dashboard/state')),
+  ])
+  assert.equal(r1.status, 200)
+  assert.equal(r2.status, 200)
+  assert.equal(r3.status, 200)
+  assert.equal(r1.body.generatedAt, r2.body.generatedAt)
+  assert.equal(r2.body.generatedAt, r3.body.generatedAt)
+  assert.equal(coalescedScanCount, 1)
+
+  const changeListeners = seventh.listeners.get('skills/change') ?? []
+  for (let i = 0; i < 4; i += 1) {
+    for (const listener of changeListeners) listener()
+    await sleep(15)
+  }
+  assert.equal(coalescedScanCount, 1)
+  await sleep(320)
+  assert.equal(coalescedScanCount, 2)
+
+  for (const listener of changeListeners) listener()
+  for (const entry of seventh.registered) {
+    if (typeof entry.disposer === 'function') entry.disposer()
+  }
+  await sleep(300)
+  assert.equal(coalescedScanCount, 2)
+})
+
+const warmHome = join(workspace, 'dsh-home-warm')
+const warmSkills = join(workspace, 'warm-skills')
+await mkdir(warmSkills, { recursive: true })
+await writeSkill(warmSkills, 'never-called', 'name: never-called\ndescription: Observed but never used.')
+const savedHome = process.env.DSH_HOME
+const savedAgentsHome = process.env.DSH_AGENTS_HOME
+process.env.DSH_HOME = warmHome
+process.env.DSH_AGENTS_HOME = warmSkills
+const ninth = createFakeContext({
+  cwd: workspace,
+  services: new Map([
+    ['workingDirectory', { defaultDirectory: workspace }],
+    ['skills', { async list() {
+      return [{
+        name: 'never-called',
+        description: 'Observed but never used.',
+        source: 'user-agents',
+        provider: 'filesystem',
+        path: join(warmSkills, 'never-called', 'SKILL.md'),
+        invocation: { modelInvocable: true, userInvocable: true },
+      }]
+    } }],
+  ]),
+})
+apply(ninth.ctx)
+
+await check('the activation warm-up persists the write-once observation stamps', async () => {
+  await sleep(1200)
+  const usagePath = join(warmHome, 'skill-dashboard', 'usage.json')
+  const stored = JSON.parse(await readFile(usagePath, 'utf8'))
+  assert.ok(stored.since > 0, 'the observation start reaches disk without any skill call')
+  assert.equal(typeof stored.catalog?.['never-called'], 'number', 'the first-sight stamp reaches disk')
+
+  const reread = await call(ninth.routes.get('/skill-dashboard/state'))
+  assert.equal(reread.status, 200)
+  const row = reread.body.diagnosis.skills.find((entry) => entry.name === 'never-called')
+  assert.equal(row.watchedDays, reread.body.diagnosis.observedDays, 'the window starts at the persisted stamp')
+})
+
+for (const entry of ninth.registered) {
+  if (typeof entry.disposer === 'function') entry.disposer()
+}
+await sleep(50)
+process.env.DSH_HOME = savedHome
+process.env.DSH_AGENTS_HOME = savedAgentsHome
+
 // ------------------------------------------------------------------- teardown
 
+for (const entry of sixth.registered) {
+  if (typeof entry.disposer === 'function') entry.disposer()
+}
 for (const entry of fifth.registered) {
   if (typeof entry.disposer === 'function') entry.disposer()
 }

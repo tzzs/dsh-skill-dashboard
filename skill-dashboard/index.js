@@ -150,7 +150,9 @@ const MAX_OUTBOUND_BYTES = 4 * 1024 * 1024
 /** Every outbound registry request is bounded, including the concurrency fan-out. */
 const OUTBOUND_TIMEOUT_MS = 10_000
 /** The merged state is reused for this long so a burst of UI fetches scans once. */
-const STATE_CACHE_MS = 1_500
+const STATE_TTL_MS = 1_500
+/** Provider-side `skills/change` bursts debounce into one background refresh. */
+const STATE_INVALIDATE_DEBOUNCE_MS = 250
 /** A frontmatter write is trusted over the catalog for this long (watcher lag). */
 const RECENT_EDIT_TTL_MS = 5_000
 /** Both JSON stores flush at most once per this window. */
@@ -818,108 +820,124 @@ export async function detectAgentRuntimes({ home, cwd, agentsHome, dshHome, skil
   }
 
   const canonicalPaths = [join(context.agentsHome, 'skills'), join(context.cwd, '.agents', 'skills')]
-  const canonicalRoots = []
-  for (const path of canonicalPaths) {
-    const resolved = await resolve(path)
-    if (resolved !== null) canonicalRoots.push(normalizePathKey(resolved))
-  }
+  const resolvedCanonical = await Promise.all(canonicalPaths.map((path) => resolve(path)))
+  const canonicalRoots = resolvedCanonical.filter((resolved) => resolved !== null).map(normalizePathKey)
+  const isInCanonical = (path) => canonicalRoots.some((root) => path === root || path.startsWith(`${root}${sep}`))
 
   /** One listing per root, reused by every runtime that reads that root. */
   const listings = new Map()
-  const listRoot = async (path) => {
+  const listRoot = (path) => {
     if (listings.has(path)) return listings.get(path)
-    let names = []
-    try {
-      const entries = await readdir(path, { withFileTypes: true, encoding: 'utf8' })
-      names = entries
-        .filter((entry) => !RUNTIME_SKIPPED_ENTRIES.has(entry.name))
-        .map((entry) => entry.name)
-    } catch {
-      names = []
-    }
-    listings.set(path, names)
-    return names
+    const pending = (async () => {
+      try {
+        const entries = await readdir(path, { withFileTypes: true, encoding: 'utf8' })
+        return entries
+          .filter((entry) => !RUNTIME_SKIPPED_ENTRIES.has(entry.name))
+          .map((entry) => entry.name)
+      } catch {
+        return []
+      }
+    })()
+    listings.set(path, pending)
+    return pending
   }
 
   /** The resolved skill entries of one root: directories and flat `.md` skills. */
   const entryCache = new Map()
-  const entriesOf = async (path) => {
+  const entriesOf = (path) => {
     if (entryCache.has(path)) return entryCache.get(path)
-    const directories = new Map()
-    const files = new Map()
-    for (const name of await listRoot(path)) {
-      const key = name.toLowerCase()
-      const flat = key.endsWith('.md') ? key.slice(0, -3) : null
-      if (!wanted.has(key) && (flat === null || !wanted.has(flat))) continue
-      const resolved = await resolve(join(path, name))
-      if (resolved === null) continue
-      if (flat !== null) files.set(flat, normalizePathKey(resolved))
-      else directories.set(key, normalizePathKey(resolved))
-    }
-    const entries = { directories, files }
-    entryCache.set(path, entries)
-    return entries
+    const pending = (async () => {
+      const candidates = []
+      for (const name of await listRoot(path)) {
+        const key = name.toLowerCase()
+        const flat = key.endsWith('.md') ? key.slice(0, -3) : null
+        if (!wanted.has(key) && (flat === null || !wanted.has(flat))) continue
+        candidates.push({ name, key, flat })
+      }
+      const resolvedList = await Promise.all(candidates.map((candidate) => resolve(join(path, candidate.name))))
+      const directories = new Map()
+      const files = new Map()
+      for (let index = 0; index < candidates.length; index += 1) {
+        const resolved = resolvedList[index]
+        if (resolved === null) continue
+        const { key, flat } = candidates[index]
+        if (flat !== null) files.set(flat, normalizePathKey(resolved))
+        else directories.set(key, normalizePathKey(resolved))
+      }
+      return { directories, files }
+    })()
+    entryCache.set(path, pending)
+    return pending
   }
 
   // Every skill is placed by its resolved directory, or, for a flat skill, by
   // the resolved files the roots list for it. A skill whose directory cannot
   // be resolved keeps no path, so no agent root claims it.
-  const locations = []
-  for (const skill of catalog) {
-    if (!isRecord(skill) || typeof skill.name !== 'string' || skill.name.length === 0) continue
-    const key = skill.name.toLowerCase()
-    if (typeof skill.dir === 'string' && skill.dir.length > 0) {
-      const resolved = await resolve(skill.dir)
-      locations.push({ name: skill.name, key, flat: false, paths: resolved === null ? [] : [normalizePathKey(resolved)] })
-      continue
+  const validCatalog = catalog.filter((skill) => isRecord(skill) && typeof skill.name === 'string' && skill.name.length > 0)
+  const locations = await Promise.all(
+    validCatalog.map(async (skill) => {
+      const key = skill.name.toLowerCase()
+      if (typeof skill.dir === 'string' && skill.dir.length > 0) {
+        const resolved = await resolve(skill.dir)
+        return { name: skill.name, key, flat: false, paths: resolved === null ? [] : [normalizePathKey(resolved)] }
+      }
+      return { name: skill.name, key, flat: true, paths: [] }
+    }),
+  )
+  const flatLocations = locations.filter((location) => location.flat)
+  if (flatLocations.length > 0) {
+    const rootPaths = new Set(canonicalPaths)
+    for (const runtime of RUNTIME_REGISTRY) {
+      for (const entry of runtime.roots) rootPaths.add(runtimeRootPath(entry, context))
     }
-    locations.push({ name: skill.name, key, flat: true, paths: [] })
-  }
-  const rootPaths = new Set(canonicalPaths)
-  for (const runtime of RUNTIME_REGISTRY) {
-    for (const entry of runtime.roots) rootPaths.add(runtimeRootPath(entry, context))
-  }
-  for (const location of locations) {
-    if (location.flat === false) continue
-    for (const path of rootPaths) {
-      const { files } = await entriesOf(path)
-      const resolved = files.get(location.key)
-      if (resolved === undefined) continue
-      location.paths.push(normalizePathKey(resolved))
+    const rootEntries = await Promise.all([...rootPaths].map((path) => entriesOf(path)))
+    for (const location of flatLocations) {
+      for (const { files } of rootEntries) {
+        const resolved = files.get(location.key)
+        if (resolved !== undefined) location.paths.push(normalizePathKey(resolved))
+      }
     }
   }
 
+  const probedRuntimes = await Promise.all(
+    RUNTIME_REGISTRY.map(async (runtime) => {
+      const rootChecks = await Promise.all(
+        runtime.roots.map(async (entry) => {
+          const path = runtimeRootPath(entry, context)
+          const [dirExists, resolved] = await Promise.all([
+            runtime.id === 'dsh' ? Promise.resolve(true) : isDirectory(path),
+            resolve(path),
+          ])
+          const own = resolved !== null ? await entriesOf(path) : null
+          return { dirExists, own }
+        }),
+      )
+      let present = runtime.id === 'dsh' || rootChecks.some((check) => check.dirExists)
+      const ownEntries = rootChecks.map((check) => check.own).filter((own) => own !== null)
+      if (!present && runtime.markers.length > 0) {
+        const markerChecks = await Promise.all(
+          runtime.markers.map((marker) => isDirectory(runtimeRootPath(marker, context))),
+        )
+        present = markerChecks.some(Boolean)
+      }
+      return { runtime, present, ownEntries }
+    }),
+  )
+
   const runtimes = []
   const bySkill = new Map()
-  for (const runtime of RUNTIME_REGISTRY) {
-    let present = runtime.id === 'dsh'
-    const ownEntries = []
-    for (const entry of runtime.roots) {
-      const path = runtimeRootPath(entry, context)
-      if (!present && await isDirectory(path)) present = true
-      const resolved = await resolve(path)
-      if (resolved === null) continue
-      ownEntries.push(await entriesOf(path))
-    }
-    if (!present) {
-      for (const marker of runtime.markers) {
-        if (await isDirectory(runtimeRootPath(marker, context))) {
-          present = true
-          break
-        }
-      }
-    }
+  for (const { runtime, present, ownEntries } of probedRuntimes) {
     if (!present) continue
 
     const names = []
     for (const location of locations) {
-      if (location.flat === true && runtime.universal === false) continue
       // A dot entry is not a skill of any root, wherever it is found.
       if (RUNTIME_SKIPPED_ENTRIES.has(location.name)) continue
-      const inCanonical = runtime.universal
-        && location.paths.some((path) => canonicalRoots.some((root) => path === root || path.startsWith(`${root}${sep}`)))
-      const inOwnRoot = location.paths.some((path) => ownEntries.some((own) =>
-        own.directories.get(location.key) === path || own.files.get(location.key) === path))
+      const inCanonical = runtime.universal && location.paths.some(isInCanonical)
+      const inOwnRoot = location.paths.some((path) => {
+        if (location.flat && !runtime.universal && isInCanonical(path)) return false
+        return ownEntries.some((own) => own.directories.get(location.key) === path || own.files.get(location.key) === path)
+      })
       if (!inCanonical && !inOwnRoot) continue
       names.push(location.name)
       const claimed = bySkill.get(location.name) ?? []
@@ -1561,6 +1579,10 @@ function createJsonStore({ path, empty, log }) {
   }
 
   const flush = async () => {
+    if (timer !== undefined) {
+      clearTimeout(timer)
+      timer = undefined
+    }
     if (!dirty || value === undefined) return
     dirty = false
     try {
@@ -2350,13 +2372,22 @@ export function apply(ctx) {
   })
 
   /** Mutable per-activation state; nothing here survives a plugin reload. */
+  const stateCache = {
+    data: null,
+    builtAt: 0,
+    inFlight: null,
+    dirty: false,
+    invalidateTimer: null,
+    warmupTimer: null,
+  }
+  let stateVersion = 0
+  let dirtyVersion = 0
+
   const runtime = {
     disposed: false,
-    stateCache: undefined,
-    stateCacheAt: 0,
-    stateInFlight: undefined,
     runtimeCache: undefined,
     runtimeCacheAt: 0,
+    statePresence: new Map(),
     recentEdits: new Map(),
   }
 
@@ -2387,18 +2418,17 @@ export function apply(ctx) {
    *
    * @returns {Promise<string[]>} resolved installation roots.
    */
-  const resolvedInstallRoots = async () => {
-    const roots = []
-    for (const root of installRoots()) {
-      try {
-        roots.push(await realpath(root))
-      } catch {
-        // A root that cannot be resolved is still compared by name.
-        roots.push(root)
-      }
-    }
-    return roots
-  }
+  const resolvedInstallRoots = async () =>
+    Promise.all(
+      installRoots().map(async (root) => {
+        try {
+          return await realpath(root)
+        } catch {
+          // A root that cannot be resolved is still compared by name.
+          return root
+        }
+      }),
+    )
 
   /** Working directory the Host serves, when the profile mounts that service. */
   const workspaceDirectory = () => {
@@ -2435,7 +2465,7 @@ export function apply(ctx) {
       seen.set(key, path)
     }
     for (const root of knownSkillRoots()) add(root.path)
-    for (const skill of runtime.stateCache?.skills ?? []) {
+    for (const skill of stateCache.data?.skills ?? []) {
       if (skill?.writable !== true) continue
       if (typeof skill.path !== 'string') continue
       add(skill.dir !== null && typeof skill.dir === 'string' ? dirname(skill.dir) : dirname(skill.path))
@@ -2625,15 +2655,16 @@ export function apply(ctx) {
    * @param {string} path - absolute skill file path.
    * @returns {Promise<{ writable: boolean, createdAt: number }>} permission and creation instant (0 when unknown).
    */
-  const resolveWritable = async (path) => {
+  const resolveWritable = async (path, protectedRoots) => {
     if (typeof path !== 'string' || path.length === 0) return { writable: false, createdAt: 0 }
     try {
       const real = await realpath(path)
       const info = await stat(real)
       if (!info.isFile()) return { writable: false, createdAt: 0 }
       const birth = Number(info.birthtimeMs)
+      const roots = Array.isArray(protectedRoots) ? protectedRoots : await resolvedInstallRoots()
       return {
-        writable: !isProtectedInstallPath(real, await resolvedInstallRoots()),
+        writable: !isProtectedInstallPath(real, roots),
         createdAt: Number.isFinite(birth) && birth > 0 ? birth : 0,
       }
     } catch {
@@ -2760,13 +2791,18 @@ export function apply(ctx) {
   const buildState = async () => {
     const now = Date.now()
     pruneRecentEdits(now)
-    const usageState = await usageStore.load()
-    const roster = await readAgentRoster()
+    const [usageState, roster, installedState, protectedRoots] = await Promise.all([
+      usageStore.load(),
+      readAgentRoster(),
+      installedStore.load(),
+      resolvedInstallRoots(),
+    ])
     const lists = []
     if (roster.length > 0) {
-      for (const agent of roster) {
-        const catalog = await readScopedCatalog(agent.id)
-        if (catalog !== undefined) lists.push({ id: agent.id, skills: catalog })
+      const catalogs = await Promise.all(roster.map((agent) => readScopedCatalog(agent.id)))
+      for (let index = 0; index < roster.length; index += 1) {
+        const catalog = catalogs[index]
+        if (catalog !== undefined) lists.push({ id: roster[index].id, skills: catalog })
       }
     }
     let agents = roster
@@ -2784,11 +2820,10 @@ export function apply(ctx) {
     }
     const merged = mergeAgentSkills(lists, { usageOf: (name) => usageForSkill(usageState, name, now) })
     overlayRecentEdits(merged)
-    const installedState = await installedStore.load()
     const presence = new Map()
     await Promise.all(
       merged.map(async (skill) => {
-        const file = await resolveWritable(skill.path)
+        const file = await resolveWritable(skill.path, protectedRoots)
         skill.writable = file.writable
         if (file.createdAt > 0) presence.set(skill.name, file.createdAt)
         skill.installed = await provenanceOf(skill, installedState)
@@ -2801,55 +2836,117 @@ export function apply(ctx) {
     const runtimes = detected.runtimes.map((entry) => ({ id: entry.id, title: entry.title, skillCount: entry.skills.length }))
     if (stampUsage(usageState, merged, presence, now)) usageStore.schedule()
     return {
-      ok: true,
-      generatedAt: now,
-      agents,
-      runtimes,
-      skills: merged,
-      usage: summarizeUsage(usageState, now),
-      diagnosis: diagnoseSkills(merged, usageState, { now, since: usageState.since, presence }),
-      sources: Object.values(sources).map((source) => ({
-        id: source.id,
-        title: source.title,
-        status: 'ready',
-        note: null,
-      })),
+      presence,
+      snapshot: {
+        ok: true,
+        generatedAt: now,
+        agents,
+        runtimes,
+        skills: merged,
+        usage: summarizeUsage(usageState, now),
+        diagnosis: diagnoseSkills(merged, usageState, { now, since: usageState.since, presence }),
+        sources: Object.values(sources).map((source) => ({
+          id: source.id,
+          title: source.title,
+          status: 'ready',
+          note: null,
+        })),
+      },
     }
   }
 
-  /** Serve the merged state, reusing a short-lived cache unless `force` is set. */
-  const getState = async (force = false) => {
-    const now = Date.now()
-    if (!force && runtime.stateCache !== undefined && now - runtime.stateCacheAt < STATE_CACHE_MS) {
-      return runtime.stateCache
-    }
-    if (runtime.stateInFlight !== undefined) return runtime.stateInFlight
-    runtime.stateInFlight = (async () => {
+  /** Run at most one coalesced state build, ignoring results superseded by invalidation. */
+  const startStateBuild = () => {
+    if (stateCache.inFlight !== null) return stateCache.inFlight
+    const buildVersion = stateVersion
+    const buildDirtyVersion = dirtyVersion
+    const pending = (async () => {
       try {
-        const state = await buildState()
-        runtime.stateCache = state
-        runtime.stateCacheAt = Date.now()
-        return state
+        const { snapshot, presence } = await buildState()
+        if (!runtime.disposed && buildVersion === stateVersion) {
+          stateCache.data = snapshot
+          stateCache.builtAt = Date.now()
+          runtime.statePresence = presence
+          if (dirtyVersion === buildDirtyVersion) stateCache.dirty = false
+        }
+        return snapshot
       } finally {
-        runtime.stateInFlight = undefined
+        if (stateCache.inFlight === pending) stateCache.inFlight = null
       }
     })()
-    return runtime.stateInFlight
+    stateCache.inFlight = pending
+    return pending
   }
 
-  /** Forget the cached state; the next read rescans every preset. */
+  /**
+   * Serve the merged state.
+   *
+   * Fresh snapshots return immediately; stale or dirty snapshots return the
+   * cached document immediately while coalescing one background rebuild; cold
+   * or forced reads await a fresh build.
+   */
+  const getState = async (options = {}) => {
+    const force = typeof options === 'boolean' ? options : options?.force === true
+    const now = Date.now()
+    if (!force && !stateCache.dirty && stateCache.data !== null && now - stateCache.builtAt < STATE_TTL_MS) {
+      return stateCache.data
+    }
+    if (!force && stateCache.data !== null) {
+      if (!runtime.disposed && stateCache.inFlight === null) void startStateBuild().catch(() => {})
+      return stateCache.data
+    }
+    if (force) {
+      stateVersion += 1
+      stateCache.inFlight = null
+    }
+    return startStateBuild()
+  }
+
+  /** Forget the cached state immediately; the next read awaits a fresh scan. */
   const invalidateState = () => {
-    runtime.stateCache = undefined
-    runtime.stateCacheAt = 0
+    if (stateCache.invalidateTimer !== null) {
+      clearTimeout(stateCache.invalidateTimer)
+      stateCache.invalidateTimer = null
+    }
+    stateVersion += 1
+    stateCache.data = null
+    stateCache.builtAt = 0
+    stateCache.inFlight = null
+    stateCache.dirty = false
+    runtime.statePresence = new Map()
     runtime.runtimeCache = undefined
     runtime.runtimeCacheAt = 0
   }
 
+  /** Mark state dirty immediately and debounce provider-change refreshes. */
+  const scheduleStateInvalidation = () => {
+    if (runtime.disposed) return
+    dirtyVersion += 1
+    stateCache.dirty = true
+    if (stateCache.invalidateTimer !== null) clearTimeout(stateCache.invalidateTimer)
+    stateCache.invalidateTimer = setTimeout(() => {
+      stateCache.invalidateTimer = null
+      if (runtime.disposed) return
+      runtime.runtimeCache = undefined
+      runtime.runtimeCacheAt = 0
+      if (stateCache.inFlight !== null) {
+        void stateCache.inFlight.catch(() => {}).finally(() => {
+          if (!runtime.disposed && stateCache.dirty && stateCache.inFlight === null) {
+            void startStateBuild().catch(() => {})
+          }
+        })
+        return
+      }
+      void startStateBuild().catch(() => {})
+    }, STATE_INVALIDATE_DEBOUNCE_MS)
+    stateCache.invalidateTimer.unref?.()
+  }
+
   /** Find one skill entry in the cached state by absolute path. */
   const findCachedSkill = (path) => {
-    if (typeof path !== 'string' || runtime.stateCache === undefined) return undefined
+    if (typeof path !== 'string' || stateCache.data === null) return undefined
     const key = normalizePathKey(path)
-    return runtime.stateCache.skills.find((skill) => typeof skill.path === 'string' && normalizePathKey(skill.path) === key)
+    return stateCache.data.skills.find((skill) => typeof skill.path === 'string' && normalizePathKey(skill.path) === key)
   }
 
   // ----------------------------------------------------------------- writes
@@ -3038,7 +3135,7 @@ export function apply(ctx) {
       provider: previous?.provider ?? 'filesystem',
       path: filePath,
       dir: directory,
-      agents: previous?.agents ?? (runtime.stateCache?.agents ?? [DEFAULT_AGENT]).map((agent) => agent.id),
+      agents: previous?.agents ?? (stateCache.data?.agents ?? [DEFAULT_AGENT]).map((agent) => agent.id),
       runtimes: previous?.runtimes ?? (await detectRuntimes([{ name: parsed.name, dir: directory }], false))
         .bySkill.get(parsed.name) ?? ['dsh'],
       modelInvocable: parsed.modelInvocable,
@@ -3049,9 +3146,12 @@ export function apply(ctx) {
       installed: await provenanceOf({ name: parsed.name, dir: directory }, installedState),
       usage: summarizeSkillUsage(isRecord(usageState?.skills) ? usageState.skills[parsed.name] : undefined, now),
     }
-    // Patch the cached state in place so the next fetch already agrees with the
-    // file, even though the provider's watcher needs a moment to catch up.
-    if (runtime.stateCache !== undefined) {
+    // Patch the cached state in place and recompute diagnosis atomically so
+    // both this response and the next GET /state agree with the file.
+    let diagnosis
+    if (stateCache.data !== null) {
+      stateVersion += 1
+      stateCache.inFlight = null
       const cached = findCachedSkill(filePath)
       if (cached !== undefined) {
         cached.modelInvocable = skill.modelInvocable
@@ -3060,9 +3160,16 @@ export function apply(ctx) {
         cached.installed = skill.installed
         cached.usage = skill.usage
       }
-      runtime.stateCacheAt = now
+      stateCache.data.diagnosis = diagnoseSkills(stateCache.data.skills, usageState, {
+        now,
+        since: usageState.since,
+        presence: runtime.statePresence,
+      })
+      stateCache.builtAt = now
+      stateCache.dirty = false
+      diagnosis = stateCache.data.diagnosis
     }
-    return { status: 200, body: { ok: true, skill } }
+    return { status: 200, body: { ok: true, skill, ...(diagnosis === undefined ? {} : { diagnosis }) } }
   }
 
   /** `remove`: delete a whole skill directory or one flat Markdown file. */
@@ -3084,17 +3191,16 @@ export function apply(ctx) {
     }
     const name = parsed.ok === true ? parsed.name : typeof body.name === 'string' ? body.name : undefined
     if (name !== undefined) {
-      void (async () => {
-        try {
-          const installed = await installedStore.load()
-          if (isRecord(installed.skills) && Object.hasOwn(installed.skills, name)) {
-            delete installed.skills[name]
-            installedStore.schedule()
-          }
-        } catch (error) {
-          log.warn(`skill-dashboard: provenance cleanup failed: ${errorMessage(error)}`)
+      try {
+        const installed = await installedStore.load()
+        if (isRecord(installed.skills) && Object.hasOwn(installed.skills, name)) {
+          delete installed.skills[name]
+          installedStore.schedule()
+          await installedStore.flush()
         }
-      })()
+      } catch (error) {
+        log.warn(`skill-dashboard: provenance cleanup failed: ${errorMessage(error)}`)
+      }
     }
     invalidateState()
     return { status: 200, body: { ok: true, removed: [target.target] } }
@@ -3113,7 +3219,7 @@ export function apply(ctx) {
     if (typeof body.keep !== 'boolean') {
       return { status: 400, body: failure('bad-request', 'keep must be a boolean') }
     }
-    const state = await getState(false)
+    const state = await getState({ force: false })
     if (!state.skills.some((skill) => skill.name === body.name)) {
       return { status: 404, body: failure('not-found', `no skill named "${body.name}"`) }
     }
@@ -3170,7 +3276,9 @@ export function apply(ctx) {
     const results = []
     let succeeded = 0
     let failed = 0
+    let allCached = body.mode === 'disable' && stateCache.data !== null
     for (const target of targets) {
+      if (allCached && findCachedSkill(target.path) === undefined) allCached = false
       let outcome
       try {
         outcome = body.mode === 'disable'
@@ -3192,8 +3300,15 @@ export function apply(ctx) {
         })
       }
     }
-    invalidateState()
-    return { status: 200, body: { ok: true, mode: body.mode, succeeded, failed, results } }
+    let diagnosis
+    if (body.mode === 'disable' && allCached && stateCache.data !== null) {
+      diagnosis = stateCache.data.diagnosis
+    } else {
+      invalidateState()
+      const nextState = await getState({ force: true })
+      diagnosis = nextState.diagnosis
+    }
+    return { status: 200, body: { ok: true, mode: body.mode, succeeded, failed, results, diagnosis } }
   }
 
   /** Write one fetched file set into a fresh directory, refusing escapes. */
@@ -3418,7 +3533,7 @@ export function apply(ctx) {
   /** `refresh`: drop the merged-state cache and answer with a fresh timestamp. */
   const refreshState = async () => {
     invalidateState()
-    const state = await getState(true)
+    const state = await getState({ force: true })
     return { status: 200, body: { ok: true, generatedAt: state.generatedAt } }
   }
 
@@ -3446,10 +3561,25 @@ export function apply(ctx) {
   /** Look up one source adapter by id. */
   const SOURCES_LOOKUP = (id) => (typeof id === 'string' && Object.hasOwn(sources, id) ? sources[id] : undefined)
 
-  /** Names recorded in `installed.json`, used to mark discovery results. */
+  /** Names recorded in `installed.json` unioned with live catalog skills. */
   const installedNames = async () => {
-    const state = await installedStore.load()
-    return new Set(isRecord(state.skills) ? Object.keys(state.skills) : [])
+    const installedState = await installedStore.load()
+    const names = new Set(isRecord(installedState.skills) ? Object.keys(installedState.skills) : [])
+    let skills = stateCache.data?.skills
+    if (skills === undefined) {
+      try {
+        const snapshot = await getState({ force: false })
+        skills = snapshot.skills
+      } catch {
+        skills = []
+      }
+    }
+    for (const skill of skills) {
+      if (isRecord(skill) && typeof skill.name === 'string' && skill.name.length > 0) {
+        names.add(skill.name)
+      }
+    }
+    return names
   }
 
   /** `discover`: proxy one registry search through this Host. */
@@ -3487,7 +3617,7 @@ export function apply(ctx) {
       if (body.source !== undefined || typeof body.path !== 'string' || !isAbsolute(body.path) || body.path.includes('\0')) {
         return fail(400, 'bad-request', 'path must be an absolute catalog skill path')
       }
-      const state = await getState(body.refresh === true)
+      const state = await getState({ force: body.refresh === true })
       // Resolve only the catalog's spelling, never a caller-provided disk path.
       const skill = state.skills.find((entry) => entry.path === body.path)
       if (skill === undefined) return fail(404, 'skill-not-found', 'skill is not in the current catalog')
@@ -3649,7 +3779,7 @@ export function apply(ctx) {
   /** `GET /skill-dashboard/state`. */
   const stateRoute = guard('GET', async (_req, res) => {
     try {
-      const state = await getState(false)
+      const state = await getState({ force: false })
       sendJson(res, 200, state)
     } catch (error) {
       log.warn(`skill-dashboard: state read failed: ${errorMessage(error)}`)
@@ -3806,37 +3936,51 @@ export function apply(ctx) {
           const preset = presets.presetForSession(session)
           if (typeof preset === 'string' && preset.length > 0) agentId = preset
         } catch {
-          // An unreadable projection falls back to the SessionId below.
+          // An unreadable projection falls back to `'default'` below.
         }
       }
-      recordUsage(name, agentId ?? sessionId ?? 'default', sessionId, 'user')
+      recordUsage(name, agentId ?? 'default', sessionId, 'user')
     } catch (error) {
       log.warn(`skill-dashboard: session usage listener failed: ${errorMessage(error)}`)
     }
   })
 
-  // A provider-side catalog change makes the cached merge stale.
+  // A provider-side catalog change marks the cache dirty and debounces the refresh.
   ctx.on('skills/change', () => {
     try {
-      invalidateState()
+      scheduleStateInvalidation()
     } catch {
       // Cache invalidation is best effort.
     }
   })
 
-  // Flush both stores on teardown so a debounce window never loses a count.
+  // Flush both stores and clear timers on teardown so reloads and tests exit cleanly.
   ctx.effect(
     () => () => {
       runtime.disposed = true
+      if (stateCache.warmupTimer !== null) {
+        clearTimeout(stateCache.warmupTimer)
+        stateCache.warmupTimer = null
+      }
+      if (stateCache.invalidateTimer !== null) {
+        clearTimeout(stateCache.invalidateTimer)
+        stateCache.invalidateTimer = null
+      }
       void usageStore.flush()
       void installedStore.flush()
     },
     'skill-dashboard: store flusher',
   )
 
-  // Warm both stores so the first route call does not pay two disk reads.
+  // Warm both stores and the initial state snapshot so the first UI paint is instant.
   void usageStore.load().catch(() => {})
   void installedStore.load().catch(() => {})
+  stateCache.warmupTimer = setTimeout(() => {
+    stateCache.warmupTimer = null
+    if (runtime.disposed) return
+    void getState({ force: false }).catch(() => {})
+  }, 0)
+  stateCache.warmupTimer.unref?.()
 }
 
 /**

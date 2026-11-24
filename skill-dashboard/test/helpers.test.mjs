@@ -602,6 +602,26 @@ await testAsync('the canonical set and the Claude Code set can differ', async ()
   }
 })
 
+await testAsync('a flat Markdown skill in a non-universal own root belongs to that runtime', async () => {
+  const fixture = await detectionFixture()
+  try {
+    const claudeSkills = join(fixture.home, '.claude', 'skills')
+    await mkdir(claudeSkills, { recursive: true })
+    await mkdir(join(fixture.home, '.codex'), { recursive: true })
+    await writeFile(join(claudeSkills, 'own-flat.md'), 'x', 'utf8')
+    const detected = await detectAgentRuntimes({
+      home: fixture.home,
+      cwd: fixture.cwd,
+      agentsHome: fixture.agentsHome,
+      dshHome: fixture.dshHome,
+      skills: [{ name: 'own-flat', dir: null }],
+    })
+    assert.deepEqual(detected.bySkill.get('own-flat'), ['claude-code', 'dsh'])
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
 // ------------------------------------------------------------------- report
 
 console.log('')
