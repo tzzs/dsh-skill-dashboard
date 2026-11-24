@@ -50,6 +50,12 @@ window.__ModuleLoader__.load({
     const MIN_FREQUENT_PEERS = 3;
     /** Enough rows to fill the fold, few enough that one batch paints inside a single frame. */
     const ROW_BATCH = 15;
+    /** One check result stays authoritative this long; the panel auto-checks once per window. */
+    const UPDATES_TTL_MS = 6 * 60 * 60 * 1000;
+    /** One check request covers this many tracked skills, so each route call stays inside the 10 s bound. */
+    const UPDATE_CHECK_CHUNK = 4;
+    /** `全部更新` applies at most this many available skills in one gesture. */
+    const UPDATE_APPLY_MAX = 10;
 
     // ---------------------------------------------------------------- locale
     const zh = {
@@ -110,12 +116,22 @@ window.__ModuleLoader__.load({
       'installed.sort.recent': '最近使用',
       'installed.permissions': '调用权限',
       'installed.hint': '自动调用由模型按需触发，/name 由你在对话中手动触发；共享技能的权限变更会影响全部关联 Agent。',
+      'updates.check': '检查更新',
+      'updates.checking': '正在检查更新 {done}/{total}',
+      'updates.lastChecked': '上次检查 {time}',
+      'updates.never': '尚未检查',
+      'updates.available': '可更新 {count} 个技能',
+      'updates.applyAll': '全部更新',
+      'updates.applying': '正在更新 {done}/{total}',
+      'updates.dismiss': '稍后',
+      'updates.applied': '已更新 {ok} 个技能，{failed} 个失败',
       'skill.runtimesOne': '仅 {agent}',
       'skill.runtimesSome': '{count}/{total} 个 Agent',
       'skill.callsLabel': '调用',
       'skill.usageTitle': '共 {count} 次 · 自动 {model} · 手动 {user}',
       'skill.readonly': '只读',
       'skill.frequent': '高频',
+      'skill.updatable': '可更新',
       'skill.closed': '已停用',
       'skill.model': '自动调用',
       'skill.user': '/name 手动',
@@ -395,12 +411,22 @@ window.__ModuleLoader__.load({
       'installed.sort.recent': 'Recently used',
       'installed.permissions': 'Invocation permissions',
       'installed.hint': 'Auto-invoke lets agents choose a skill automatically; /name lets you invoke it explicitly. Changes to shared skills apply to all linked agents.',
+      'updates.check': 'Check for updates',
+      'updates.checking': 'Checking for updates {done}/{total}',
+      'updates.lastChecked': 'Last checked {time}',
+      'updates.never': 'Not checked yet',
+      'updates.available': '{count} updates available',
+      'updates.applyAll': 'Update all',
+      'updates.applying': 'Updating {done}/{total}',
+      'updates.dismiss': 'Later',
+      'updates.applied': 'Updated {ok} skills, {failed} failed',
       'skill.runtimesOne': '{agent} only',
       'skill.runtimesSome': '{count}/{total} agents',
       'skill.callsLabel': 'Calls',
       'skill.usageTitle': '{count} calls · {model} auto · {user} manual',
       'skill.readonly': 'Read-only',
       'skill.frequent': 'Frequent',
+      'skill.updatable': 'Update available',
       'skill.closed': 'Disabled',
       'skill.model': 'Auto-invoke',
       'skill.user': '/name manual',
@@ -700,6 +726,11 @@ window.__ModuleLoader__.load({
 
 .skd-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:12px 0 0;padding:10px 14px;border:1px solid color-mix(in srgb,var(--skd-error) 28%,transparent);border-radius:var(--skd-radius);background:var(--skd-error-bg);color:var(--skd-error);font-size:.8125rem;line-height:1.5}
 .skd-banner .skd-button{min-height:28px;padding:3px 10px;font-size:.75rem}
+
+.skd-updatesBar{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin:0 0 14px;padding:9px 12px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-surface);font-size:.8125rem;line-height:1.5;min-height:48px}
+.skd-updatesBar[data-tone=accent]{border-color:color-mix(in srgb,var(--skd-accent) 32%,transparent);background:var(--skd-accent-bg)}
+.skd-updatesText{font-weight:600;color:var(--skd-fg)}
+.skd-updatesStatus{margin-inline-start:auto;color:var(--skd-muted);font-size:.75rem}
 
 .skd-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:16px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-surface);overflow:hidden}
 .skd-overviewItem{display:flex;flex-direction:column;gap:2px;padding:12px 16px;border-inline-end:1px solid var(--skd-line)}
@@ -1320,6 +1351,9 @@ window.__ModuleLoader__.load({
         pending: null,
         note: null,
         rowNotes: {},
+        updatesChecking: false,
+        updatesProgress: { done: 0, total: 0 },
+        updatingAll: null,
         discover: { source: null, query: '', status: 'idle', items: [], error: null, note: null, at: 0 },
       });
       const patch = (fields) => store.set((current) => ({ ...current, ...fields }));
@@ -1331,6 +1365,7 @@ window.__ModuleLoader__.load({
       let revision = 0;
       let inFlightRefresh = null;
       let inFlightRevision = -1;
+      let inFlightCheck = null;
       let discoverToken = 0;
 
       const loadState = async (silent) => {
@@ -1469,6 +1504,94 @@ window.__ModuleLoader__.load({
             },
           },
         );
+      };
+
+      /** The catalog row for one name, so a bulk update reuses the exact path the Host listed. */
+      const skillByName = (data, name) => {
+        const listed = objectOf(data) !== null && Array.isArray(data.skills) ? data.skills : [];
+        return listed.map((entry) => objectOf(entry)).find((entry) => entry !== null && textOf(entry.name) === name) ?? null;
+      };
+
+      /**
+       * Walk the Host's tracked skills in bounded chunks. One check at a time: a
+       * second gesture while running joins the first instead of racing it.
+       */
+      const checkUpdates = ({ refresh: force = false } = {}) => {
+        if (inFlightCheck !== null) return inFlightCheck;
+        patch({ updatesChecking: true, updatesProgress: { done: 0, total: 0 } });
+        const run = (async () => {
+          let cursor = 0;
+          let total = 0;
+          let stalls = 0;
+          let ok = true;
+          for (;;) {
+            const result = await requestJson(ROUTE_ACTION, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                action: 'check-updates',
+                cursor,
+                limit: UPDATE_CHECK_CHUNK,
+                ...(force ? { refresh: true } : {}),
+              }),
+            });
+            if (result.ok !== true) {
+              ok = false;
+              break;
+            }
+            const value = objectOf(result.value) ?? {};
+            const reported = countOf(value.total);
+            const next = countOf(value.nextCursor);
+            // A tracked count that collapses between chunks is a transient Host
+            // read, not the end of the walk: retry that cursor before giving up.
+            if ((reported === 0 && cursor > 0) || (total > cursor && next <= cursor)) {
+              stalls += 1;
+              if (stalls > 2) {
+                ok = false;
+                break;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              continue;
+            }
+            stalls = 0;
+            total = reported;
+            const done = value.done === true || next >= total || next <= cursor;
+            cursor = next;
+            patch({ updatesProgress: { done: Math.min(cursor, total), total } });
+            if (done) break;
+          }
+          patch({ updatesChecking: false });
+          if (ok) await refresh();
+          return ok;
+        })().finally(() => {
+          if (inFlightCheck === run) inFlightCheck = null;
+        });
+        inFlightCheck = run;
+        return run;
+      };
+
+      /** Apply the available updates by name, sequentially, at most UPDATE_APPLY_MAX. */
+      const applyUpdates = async (names) => {
+        const targets = (Array.isArray(names) ? names : [])
+          .map((name) => textOf(name))
+          .filter((name) => name !== '')
+          .slice(0, UPDATE_APPLY_MAX);
+        if (targets.length === 0 || store.getSnapshot().updatingAll !== null) return false;
+        patch({ updatingAll: { done: 0, total: targets.length }, note: null });
+        let succeeded = 0;
+        let failed = 0;
+        for (let index = 0; index < targets.length; index += 1) {
+          const skill = skillByName(store.getSnapshot().data, targets[index]);
+          if (skill !== null && (await updateSkill(skill))) succeeded += 1;
+          else failed += 1;
+          patch({ updatingAll: { done: index + 1, total: targets.length } });
+        }
+        patch({
+          updatingAll: null,
+          note: { tone: failed === 0 ? 'ok' : 'idle', key: 'updates.applied', params: { ok: succeeded, failed } },
+        });
+        await refresh();
+        return failed === 0;
       };
 
       /** A discover card carries its name and source; the GitHub form sends a bare reference. */
@@ -1670,6 +1793,8 @@ window.__ModuleLoader__.load({
         setInvocation,
         removeSkill,
         updateSkill,
+        checkUpdates,
+        applyUpdates,
         installSkill,
         keepSkill,
         cleanupSkills,
@@ -1793,6 +1918,19 @@ window.__ModuleLoader__.load({
         const field = sort === 'recent' ? 'lastUsedAt' : 'count';
         return countOf(objectOf(right.usage)?.[field]) - countOf(objectOf(left.usage)?.[field]) || alphabetical;
       });
+    }
+
+    /**
+     * Whether the panel should run its one automatic update check: at least one
+     * tracked skill, and no check result yet or one older than the TTL.
+     */
+    function shouldAutoCheck(updates, skills, now = Date.now()) {
+      const listed = Array.isArray(skills) ? skills : [];
+      const tracked = listed.some((skill) => objectOf(skill?.installed) !== null && textOf(skill?.dir) !== '');
+      if (!tracked) return false;
+      const block = objectOf(updates);
+      const checkedAt = countOf(block?.checkedAt);
+      return checkedAt === 0 || now - checkedAt >= UPDATES_TTL_MS;
     }
 
     /** The five buckets in the strip's order; their membership is decided by the Host. */
@@ -2433,7 +2571,7 @@ window.__ModuleLoader__.load({
     /** One installed skill: identity, description, calls, both switches, and its menu. */
     function SkillRowBase(props) {
       const {
-        skill, t, frequent, busy, writesLocked, pathShown, confirming, runtimes,
+        skill, t, frequent, busy, writesLocked, pathShown, confirming, runtimes, updatable,
         onToggle, onUpdate, onAskRemove, onConfirmRemove, onCancelRemove, onTogglePath, onPreview,
       } = props;
       const name = textOf(skill?.name) !== '' ? textOf(skill.name) : '—';
@@ -2487,6 +2625,7 @@ window.__ModuleLoader__.load({
               'aria-label': t('preview.open', { name }), onClick: () => onPreview(skill) }, name),
             el('div', { className: 'skd-badges' },
               source !== '' && el(Badge, { className: 'skd-badge' }, source),
+              updatable === true && el(Badge, { className: 'skd-badge' }, t('skill.updatable')),
               badge.kind === 'one' && el(Badge, { className: 'skd-badge' }, t('skill.runtimesOne', { agent: badge.agent })),
               badge.kind === 'some' && el(Badge, { className: 'skd-badge', title: badge.title },
                 t('skill.runtimesSome', { count: badge.count, total: badge.total })),
@@ -2618,7 +2757,8 @@ window.__ModuleLoader__.load({
     function InstalledTab(props) {
       const {
         skills, t, frequentRule, pending, filtered, runtimes, memoKey, onReset, onDiscover,
-        expandedPath, confirmingPath, onToggle, onUpdate, onAskRemove, onConfirmRemove, onCancelRemove, onTogglePath, onPreview,
+        expandedPath, confirmingPath, updatableNames,
+        onToggle, onUpdate, onAskRemove, onConfirmRemove, onCancelRemove, onTogglePath, onPreview,
       } = props;
       const [limit, setLimit] = useState(ROW_BATCH);
       // The first batch paints in the mount task; every later batch gets its own frame, so no task
@@ -2663,6 +2803,7 @@ window.__ModuleLoader__.load({
           writesLocked: pending !== null,
           pathShown: path !== '' && expandedPath === path,
           confirming: path !== '' && confirmingPath === path,
+          updatable: updatableNames.has(name),
           onToggle,
           onUpdate,
           onAskRemove,
@@ -3415,6 +3556,7 @@ window.__ModuleLoader__.load({
       const {
         useDashboard, t, refresh, setInvocation, removeSkill, updateSkill,
         installSkill, keepSkill, cleanupSkills, selectSource, runDiscover, dismissNote,
+        checkUpdates, applyUpdates,
       } = props;
       const snapshot = useDashboard((current) => current);
       const data = objectOf(snapshot.data);
@@ -3433,6 +3575,8 @@ window.__ModuleLoader__.load({
       const [sort, setSort] = useState('usage');
       const [usageView, setUsageView] = useState({ period: '7', start: '', end: '', query: '', selected: '', sort: { key: 'count', direction: 'descending' } });
       const [diagnosisView, setDiagnosisView] = useState({ bucket: 'cleanup', query: '', selected: [] });
+      const [updatesDismissed, setUpdatesDismissed] = useState(false);
+      const autoChecked = useRef(false);
       const scrollRef = useRef(null);
       const libraryInputRef = useRef(null);
       const contentRef = useRef(null);
@@ -3514,6 +3658,30 @@ window.__ModuleLoader__.load({
       }, [runtimes, agentFilter]);
 
       const invocable = useMemo(() => skills.filter((skill) => skill.modelInvocable === true).length, [skills]);
+
+      // Update availability rides on the same state read; an older Host sends no block.
+      const updatesSupported = objectOf(data?.updates) !== null;
+      const updates = useMemo(() => objectOf(data?.updates) ?? { checkedAt: 0, available: [] }, [data]);
+      const availableUpdates = useMemo(() => (
+        Array.isArray(updates.available) ? updates.available.map((entry) => objectOf(entry)).filter((entry) => entry !== null) : []
+      ), [updates]);
+      const availableNames = useMemo(
+        () => new Set(availableUpdates.map((entry) => textOf(entry.name))),
+        [availableUpdates],
+      );
+      const updatesProgress = objectOf(snapshot.updatesProgress) ?? { done: 0, total: 0 };
+      const updatingAll = objectOf(snapshot.updatingAll);
+      const updatesCheckedAt = countOf(updates.checkedAt);
+      const showUpdatesBanner = availableUpdates.length > 0 && updatesDismissed === false;
+
+      // One automatic check after the first successful load, when nothing was
+      // checked in the last six hours and the Host tracks at least one skill.
+      useEffect(() => {
+        if (autoChecked.current || data === null || snapshot.updatesChecking === true) return;
+        if (!updatesSupported || !shouldAutoCheck(updates, skills)) return;
+        autoChecked.current = true;
+        void checkUpdates({ refresh: false });
+      }, [data, updates, updatesSupported, skills, snapshot.updatesChecking, checkUpdates]);
 
       // DSH's translator keeps its identity when the language changes; derive localized labels each render.
       const sources = (() => {
@@ -3763,6 +3931,35 @@ window.__ModuleLoader__.load({
               'aria-labelledby': pageId + '-tab-' + tab,
               tabIndex: 0,
             },
+              tab === 'installed' && updatesSupported && el('div', {
+                className: 'skd-updatesBar',
+                'data-tone': showUpdatesBanner ? 'accent' : undefined,
+                'aria-busy': snapshot.updatesChecking === true ? true : undefined,
+              },
+                showUpdatesBanner && el('span', { className: 'skd-updatesText' },
+                  t('updates.available', { count: availableUpdates.length })),
+                showUpdatesBanner && el(Button, {
+                  type: 'button', className: 'skd-button', 'data-variant': 'primary',
+                  disabled: pending !== null || updatingAll !== null || snapshot.updatesChecking === true,
+                  onClick: () => { void applyUpdates(availableUpdates.map((entry) => textOf(entry.name))); },
+                }, updatingAll !== null
+                  ? t('updates.applying', { done: countOf(updatingAll.done), total: countOf(updatingAll.total) })
+                  : t('updates.applyAll')),
+                showUpdatesBanner && el(Button, {
+                  type: 'button', className: 'skd-button', 'data-variant': 'text',
+                  onClick: () => setUpdatesDismissed(true),
+                }, t('updates.dismiss')),
+                el('span', { className: 'skd-updatesStatus', role: 'status' },
+                  snapshot.updatesChecking === true
+                    ? t('updates.checking', { done: countOf(updatesProgress.done), total: countOf(updatesProgress.total) })
+                    : updatesCheckedAt > 0 ? t('updates.lastChecked', { time: formatClock(updatesCheckedAt) })
+                      : t('updates.never')),
+                el(Button, {
+                  type: 'button', className: 'skd-button', 'data-variant': 'outline',
+                  disabled: snapshot.updatesChecking === true || updatingAll !== null,
+                  onClick: () => { void checkUpdates({ refresh: true }); },
+                }, t('updates.check')),
+              ),
               tab === 'installed' && el('search', { className: 'skd-toolbar skd-filterBar', 'aria-label': t('installed.search') },
                 el('div', { className: 'skd-searchField' },
                   el('label', { className: 'skd-fieldLabel', htmlFor: libraryInputId }, t('installed.search')),
@@ -3801,6 +3998,7 @@ window.__ModuleLoader__.load({
                 onDiscover: () => changeTab('discover', true),
                 expandedPath,
                 confirmingPath,
+                updatableNames: availableNames,
                 onToggle: toggleInvocation,
                 onUpdate: updateRow,
                 onAskRemove: askRemove,
@@ -3923,6 +4121,8 @@ window.__ModuleLoader__.load({
             setInvocation: runtime.setInvocation,
             removeSkill: runtime.removeSkill,
             updateSkill: runtime.updateSkill,
+            checkUpdates: runtime.checkUpdates,
+            applyUpdates: runtime.applyUpdates,
             installSkill: runtime.installSkill,
             keepSkill: runtime.keepSkill,
             cleanupSkills: runtime.cleanupSkills,

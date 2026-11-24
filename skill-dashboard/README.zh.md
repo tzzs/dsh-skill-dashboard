@@ -56,6 +56,7 @@
 - 首屏立即渲染完整 DSH 原生页壳（页头、状态胶囊与四页签栏），并展示 4 张 KPI 骨架卡片、筛选栏骨架与 6 行列表骨架，使用 `--dsw-alias-bg-skeleton` 脉冲动画（在 `prefers-reduced-motion` 下关闭）。
 - Host 侧 `StateCache` 在插件激活时预热，合并并发的 SWR 读取（1.5 秒 TTL），并将 `skills/change` 事件合并去抖（250 毫秒）后刷新；预设目录扫描与 `detectAgentRuntimes()` I/O 并行执行，安装根提前解析。
 - 客户端合并并发的 `refresh()` 请求；写入操作直接使用返回的权威状态，不再做盲目的 800 毫秒延迟二次拉取；后台刷新失败时保留已加载界面并显示内联重试横幅，不清空页面。
+- 更新检查默认开启且只读：首屏数据到达后自动跑一次后台检查，每次请求覆盖 4 个已跟踪技能（`check-updates`，单技能 6 秒上限），结果保留 6 小时，手动「检查更新」才绕过；同一仓库的多个技能共享 10 分钟的 tree / payload 缓存。已安装页在工具栏上方显示「可更新 N 个技能」横幅与「全部更新」（最多 10 个，顺序执行，结束后只读一次状态），可更新行带一个安静的「可更新」标记。检查既不写技能目录也不写溯源；旧版 Host 没有该 action 时不显示更新入口。
 - 已安装列表每帧只渲染 15 行，未完成时标记 `aria-busy`，行组件做了 memo 缓存，技能很多时也不会一次性阻塞主线程；搜索输入框即时响应，过滤结果使用延迟值渲染。
 - 全部 25 个 Host 错误码均已在 `locale/en.json` 和 `locale/zh.json` 中本地化，用户界面文案不含内部 Host 术语。
 
@@ -118,6 +119,10 @@ Host 环境里已有 `GITHUB_TOKEN` / `GH_TOKEN` 时会带上。
 - `$DSH_HOME/skill-dashboard/installed.json` 保存本插件安装或关联过的技能溯源：
   `{ source, ref, commit, name, version, installedAt, path }`，同时镜像到
   `<skill>/.skill-source.json`（不含 `path`），手工复制的技能也会保留来源。记录只描述写入时所在的那个目录，同名但另一个目录的技能不会借用它。
+  由 skills CLI 安装的技能没有这份记录，因此面板还会只读 `$DSH_AGENTS_HOME/.skill-lock.json`（5 秒缓存），仅当锁文件里的 `skillPath` 对应 `<installRoot>/<name>` 时报告为 `{ source: "github", ref }`。
+- `$DSH_HOME/skill-dashboard/updates.json` 缓存每个技能最近一次更新检查：
+  `{ version: 1, skills: { "<name>": { available, changedPaths, checkedAt } | { error, checkedAt } } }`。
+  结果保留 6 小时；更新成功后清除该技能的记录。
 - 除此之外不写任何文件。插件不会修改可写根之外的技能（`$DSH_HOME/skills`、`$DSH_AGENTS_HOME/skills`、项目内 `.dsh/skills` / `.agents/skills`），对 bundled 与 `app.asar` 内的技能一律返回 `read-only`。
 
 ## 测试

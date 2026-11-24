@@ -87,6 +87,13 @@ then reloading the page.
 - On the client, concurrent `refresh()` calls coalesce into one request, post-mutation updates
   use the authoritative response without a blind delayed double-refetch, and background refresh
   failures keep loaded UI mounted with an inline retry banner instead of blanking the page.
+- Update checks are on by default and read-only. The first successful load runs one background
+  check in chunks of four tracked skills (`check-updates`, 6 s per skill), reuses a recorded
+  result for six hours unless the user refreshes, and shares the 10-minute repository caches
+  across the skills of one repo. The installed tab gains an “N updates available” banner with
+  Update all (at most 10 rows, sequential, one state read at the end) and a quiet badge on each
+  available row. Checking never writes a skill tree or provenance; an older Host without the
+  action simply shows no update affordance.
 - The installed list paints 15 rows per animation frame with `aria-busy` until it is complete, and
   each row is memoized, so a large skill library never renders in one blocking task. The search
   input updates urgently while the filtered list reads a deferred value.
@@ -166,6 +173,12 @@ no handler can throw into the carrier.
   installed or linked: `{ source, ref, commit, name, version, installedAt, path }`, mirrored into
   `<skill>/.skill-source.json` (without `path`) so a hand-copied skill keeps its origin. A record
   only describes the directory it was written for; a same-named skill elsewhere is unaffected.
+  Skills the skills CLI installed carry no such record, so the panel also reads
+  `$DSH_AGENTS_HOME/.skill-lock.json` read-only, for 5 seconds at a time, and reports the entry as
+  `{ source: "github", ref }` only when the lock's `skillPath` matches `<installRoot>/<name>`.
+- `$DSH_HOME/skill-dashboard/updates.json` caches the last check per skill:
+  `{ version: 1, skills: { "<name>": { available, changedPaths, checkedAt } | { error, checkedAt } } }`.
+  A result is trusted for six hours; a successful update clears that skill's record.
 - Nothing else. The plugin never edits a skill outside the writable roots
   (`$DSH_HOME/skills`, `$DSH_AGENTS_HOME/skills`, project `.dsh/skills` / `.agents/skills`) and
   refuses bundled/`app.asar` skills with `read-only`.

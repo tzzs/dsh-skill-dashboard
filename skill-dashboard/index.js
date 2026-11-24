@@ -175,6 +175,17 @@ const TREE_CACHE_MS = 10 * 60_000
 const COMMIT_CACHE_MS = 60_000
 /** The detected coding agents are re-read at most once per this window. */
 const RUNTIME_CACHE_MS = 30_000
+/** `.skill-lock.json` is re-read at most once per this window; its mtime invalidates within it. */
+const LOCK_CACHE_MS = 5_000
+/** One completed update check is reused for this long before the panel asks upstream again. */
+const UPDATE_CHECK_TTL_MS = 6 * 60 * 60 * 1000
+/** A failed check is retried after this short window instead of waiting the full six hours. */
+const UPDATE_CHECK_ERROR_TTL_MS = 10 * 60_000
+/** One skill's upstream read during a check; bounded so one chunk stays inside the client's 10 s fetch. */
+const UPDATE_CHECK_TIMEOUT_MS = 6_000
+/** One `check-updates` call asks about this many skills unless the caller says otherwise. */
+const UPDATE_CHECK_LIMIT = 4
+const UPDATE_CHECK_LIMIT_MAX = 8
 
 const USER_AGENT = 'dsh-skill-dashboard/1.0 (+https://github.com/tzzs/dsh-skill-dashboard)'
 
@@ -765,6 +776,111 @@ export function sanitizeSkillRelativePath(value) {
   return segments.join('/')
 }
 
+/**
+ * Provenance for one catalog skill, derived from the skills CLI's `.skill-lock.json`.
+ *
+ * The lock records every skill the CLI installed, but reads it by name: a
+ * same-named skill can live in another root, so a mapping is trusted only when
+ * the catalog's directory is exactly `<root>/<name>` and the recorded
+ * `skillPath` agrees about the folder. Anything ambiguous answers `null`.
+ *
+ * @param {{ name?: string, dir?: string | null }} skill - catalog entry.
+ * @param {unknown} lock - parsed `.skill-lock.json`.
+ * @param {string} root - the user agents skill root.
+ * @returns {{ source: 'github', ref: string, version: null, installedAt: number | null } | null} installed shape.
+ */
+export function lockProvenanceOf(skill, lock, root) {
+  const name = typeof skill?.name === 'string' ? skill.name : ''
+  const directory = typeof skill?.dir === 'string' ? skill.dir : ''
+  if (name.length === 0 || directory.length === 0 || typeof root !== 'string' || root.length === 0) return null
+  if (normalizePathKey(directory) !== normalizePathKey(join(root, name))) return null
+  const entries = isRecord(lock) && isRecord(lock.skills) ? lock.skills : {}
+  const entry = Object.hasOwn(entries, name) ? entries[name] : undefined
+  if (!isRecord(entry)) return null
+  if (entry.sourceType !== undefined && entry.sourceType !== 'github') return null
+  const source = typeof entry.source === 'string' ? entry.source : ''
+  const segments = source.split('/')
+  if (segments.length !== 2) return null
+  const [owner, repo] = segments
+  if (!OWNER_OR_REPO.test(owner) || !OWNER_OR_REPO.test(repo)) return null
+  if (owner === '.' || owner === '..' || repo === '.' || repo === '..') return null
+  if (typeof entry.skillPath !== 'string') return null
+  const pathSegments = entry.skillPath.replace(/\\/g, '/').replace(/^\.\//, '').split('/')
+  if (pathSegments[pathSegments.length - 1].toLowerCase() !== 'skill.md') return null
+  const folderSegments = pathSegments.slice(0, -1)
+  if (folderSegments.length > 0 && folderSegments[folderSegments.length - 1].toLowerCase() !== name.toLowerCase()) return null
+  if (folderSegments.some((part) => part.length === 0 || part === '.' || part === '..')) return null
+  const folder = folderSegments.join('/')
+  const updatedAt = Date.parse(entry.updatedAt)
+  return {
+    source: 'github',
+    ref: folder.length === 0 ? `${owner}/${repo}` : `${owner}/${repo}#${folder}`,
+    version: null,
+    installedAt: Number.isFinite(updatedAt) ? updatedAt : null,
+  }
+}
+
+/**
+ * The CONTRACT §4 update-check block, limited to names the catalog still lists.
+ *
+ * `checkedAt` is the oldest record among the tracked skills, not the newest.
+ * An interrupted walk leaves the unchecked names at zero, so the panel asks
+ * again on the next mount instead of waiting out the full TTL.
+ *
+ * @param {unknown} updatesState - parsed `updates.json`.
+ * @param {{ name: string, dir?: string | null, installed?: unknown }[]} skills - merged catalog.
+ * @returns {{ checkedAt: number, available: { name: string, changedPaths: string[], checkedAt: number }[] }} state block.
+ */
+export function describeUpdates(updatesState, skills) {
+  const records = isRecord(updatesState?.skills) ? updatesState.skills : {}
+  const listed = Array.isArray(skills) ? skills : []
+  const present = new Set(listed.map((skill) => skill.name))
+  let checkedAt = 0
+  let tracked = false
+  for (const skill of listed) {
+    if (!isRecord(skill.installed) || typeof skill.dir !== 'string' || skill.dir.length === 0) continue
+    const record = Object.hasOwn(records, skill.name) ? records[skill.name] : undefined
+    const at = isRecord(record) && Number.isFinite(record.checkedAt) ? record.checkedAt : 0
+    checkedAt = tracked ? Math.min(checkedAt, at) : at
+    tracked = true
+  }
+  if (!tracked) checkedAt = 0
+  const available = []
+  for (const [name, record] of Object.entries(records)) {
+    if (!isRecord(record)) continue
+    const at = Number.isFinite(record.checkedAt) ? record.checkedAt : 0
+    if (!present.has(name) || record.available !== true) continue
+    available.push({
+      name,
+      changedPaths: Array.isArray(record.changedPaths) ? record.changedPaths.filter((path) => typeof path === 'string') : [],
+      checkedAt: at,
+    })
+  }
+  available.sort((left, right) => compareNames(left.name, right.name))
+  return { checkedAt, available }
+}
+
+/**
+ * Relative paths whose fetched bytes differ from the local skill tree.
+ *
+ * Shared by `update` (its `changed` flag) and `check-updates`, so both answer
+ * the same question about the same fetched file set.
+ *
+ * @param {string} directory - local skill directory.
+ * @param {{ path: string, text: string }[]} files - fetched file set.
+ * @returns {Promise<string[]>} changed relative paths, in fetch order.
+ */
+export async function changedSkillPaths(directory, files) {
+  const changed = []
+  for (const file of Array.isArray(files) ? files : []) {
+    const relativePath = sanitizeSkillRelativePath(file?.path)
+    if (relativePath === null) continue
+    const existing = await readFile(join(directory, relativePath), 'utf8').catch(() => undefined)
+    if (existing !== file.text) changed.push(relativePath)
+  }
+  return changed
+}
+
 // ---------------------------------------------------------------------------
 // Coding agent runtimes
 // ---------------------------------------------------------------------------
@@ -1240,6 +1356,11 @@ function emptyUsageStore() {
 
 /** One empty provenance store. */
 function emptyInstalledStore() {
+  return { version: 1, skills: {} }
+}
+
+/** One empty update-check store. */
+function emptyUpdatesStore() {
   return { version: 1, skills: {} }
 }
 
@@ -2432,10 +2553,6 @@ function createSources() {
       const nameHint = typeof hints.name === 'string' && hints.name.length > 0 ? hints.name : undefined
       // An update must read the upstream now; only an install may reuse a payload.
       const refresh = hints.refresh === true
-      const cacheKey = `skills-sh:${owner}/${repo}@${rev ?? ''}#${subpath}#${nameHint ?? ''}`
-      const cached = refresh ? undefined : payloadCache.get(cacheKey)
-      if (cached !== undefined) return cached
-
       let tree = await loadRepoTrees(owner, repo, rev, signal, refresh)
       if (tree.ok !== true) {
         // A sha has no jsDelivr listing; guessing one would record a pin the
@@ -2447,6 +2564,11 @@ function createSources() {
         tree = await loadFallbackTree(owner, repo, rev, signal)
         if (tree.ok !== true) return tree
       }
+      // A branch payload is only valid for the tree it came from, so the tree
+      // revision is part of its identity; a moved branch never serves old bytes.
+      const cacheKey = `skills-sh:${owner}/${repo}@${tree.rev}#${subpath}#${nameHint ?? ''}`
+      const cached = refresh ? undefined : payloadCache.get(cacheKey)
+      if (cached !== undefined) return cached
       const picked = selectSkillDirectory(tree.paths, locator, nameHint)
       if (picked.ok !== true) return picked
       const prefix = picked.directory.length > 0 ? `${picked.directory}/` : ''
@@ -2480,6 +2602,12 @@ function createSources() {
       const result = { ok: true, files, version: null, commit, truncatedFiles: tree.truncated === true || wanted.length > files.length }
       payloadCache.set(cacheKey, result)
       return result
+    },
+
+    /** Refresh one repository's tree once, so a check's skills share one fresh listing. */
+    async warm(locator, signal) {
+      const tree = await loadRepoTrees(locator.owner, locator.repo, locator.rev, signal, true)
+      return tree.ok === true ? { ok: true } : tree
     },
   }
 
@@ -2649,6 +2777,11 @@ export function apply(ctx) {
   const installedStore = createJsonStore({
     path: join(dshHome, 'skill-dashboard', 'installed.json'),
     empty: emptyInstalledStore,
+    log,
+  })
+  const updatesStore = createJsonStore({
+    path: join(dshHome, 'skill-dashboard', 'updates.json'),
+    empty: emptyUpdatesStore,
     log,
   })
 
@@ -3016,14 +3149,47 @@ export function apply(ctx) {
     }
   }
 
+  /** Parsed `.skill-lock.json`, reused for five seconds; a rewrite changes its mtime and wins. */
+  const skillLockCache = { value: null, mtimeMs: -1, at: 0 }
+
+  /** Read the skills CLI's lock file, or null when it is missing or unreadable. */
+  const readSkillLock = async () => {
+    const path = join(agentsHome, '.skill-lock.json')
+    const now = Date.now()
+    let mtimeMs
+    try {
+      mtimeMs = (await stat(path)).mtimeMs
+    } catch {
+      skillLockCache.value = null
+      skillLockCache.mtimeMs = -1
+      skillLockCache.at = now
+      return null
+    }
+    if (skillLockCache.at !== 0 && now - skillLockCache.at < LOCK_CACHE_MS && skillLockCache.mtimeMs === mtimeMs) {
+      return skillLockCache.value
+    }
+    let value = null
+    try {
+      const parsed = JSON.parse(await readFile(path, 'utf8'))
+      if (isRecord(parsed) && isRecord(parsed.skills)) value = parsed
+    } catch {
+      // A malformed lock is no provenance, not an error.
+    }
+    skillLockCache.value = value
+    skillLockCache.mtimeMs = mtimeMs
+    skillLockCache.at = now
+    return value
+  }
+
   /**
    * Provenance for one catalog entry.
    *
    * `installed.json` is the source of truth, but its record is only borrowed
    * when its stored directory is the directory this entry resolved to — a
    * same-named skill in another root must never inherit someone else's record.
-   * Fallback: the skill's own `.skill-source.json`, which cannot be ambiguous.
-   * Anything unprovable answers `null`.
+   * Fallback: the skill's own `.skill-source.json`, which cannot be ambiguous,
+   * then the skills CLI's lock file, which maps by name and is re-validated
+   * against the skill's exact install directory.
    */
   const provenanceOf = async (skill, installedState) => {
     const name = typeof skill?.name === 'string' ? skill.name : ''
@@ -3037,7 +3203,9 @@ export function apply(ctx) {
         storedPath === null || (directory !== null && normalizePathKey(storedPath) === normalizePathKey(directory))
       if (proven) return describeProvenance(record)
     }
-    return describeProvenance(await readProvenanceInDirectory(directory))
+    const sidecar = describeProvenance(await readProvenanceInDirectory(directory))
+    if (sidecar !== null) return sidecar
+    return lockProvenanceOf(skill, await readSkillLock(), installRoot())
   }
 
   /**
@@ -3072,11 +3240,12 @@ export function apply(ctx) {
   const buildState = async () => {
     const now = Date.now()
     pruneRecentEdits(now)
-    const [usageState, roster, installedState, protectedRoots] = await Promise.all([
+    const [usageState, roster, installedState, protectedRoots, updatesState] = await Promise.all([
       usageStore.load(),
       readAgentRoster(),
       installedStore.load(),
       resolvedInstallRoots(),
+      updatesStore.load(),
     ])
     const lists = []
     if (roster.length > 0) {
@@ -3126,6 +3295,7 @@ export function apply(ctx) {
         skills: merged,
         usage: summarizeUsage(usageState, now),
         diagnosis: diagnoseSkills(merged, usageState, { now, since: usageState.since, presence }),
+        updates: describeUpdates(updatesState, merged),
         sources: Object.values(sources).map((source) => ({
           id: source.id,
           title: source.title,
@@ -3808,14 +3978,16 @@ export function apply(ctx) {
     const recordMatches = record !== undefined && (typeof record.path !== 'string' || record.path.length === 0
       || normalizePathKey(record.path) === normalizePathKey(directory))
     const stored = recordMatches ? record : await readProvenanceInDirectory(directory)
-    if (body.path !== undefined && localName === undefined && describeProvenance(stored) === null) {
+    // The skills CLI's lock file is a third origin, valid only for this exact directory.
+    const lockRecord = lockProvenanceOf({ name, dir: directory }, await readSkillLock(), installRoot())
+    if (body.path !== undefined && localName === undefined && describeProvenance(stored) === null && lockRecord === null) {
       return {
         status: 409,
         body: failure('name-mismatch', 'the skill file at this path declares no name and has no recorded origin'),
       }
     }
     const inputRef = typeof body.ref === 'string' && body.ref.length > 0 ? body.ref
-      : stored?.ref ?? (body.path === undefined ? (await readProvenanceFile(name))?.ref : undefined)
+      : stored?.ref ?? (body.path === undefined ? (await readProvenanceFile(name))?.ref : undefined) ?? lockRecord?.ref
     if (typeof inputRef !== 'string' || inputRef.length === 0) {
       return { status: 400, body: failure('unknown-ref', 'no source record exists for this skill; pass a reference') }
     }
@@ -3847,13 +4019,8 @@ export function apply(ctx) {
         body: failure('name-mismatch', `this skill is "${name}" but the source declares "${remoteName}"`),
       }
     }
-    let changed = false
-    for (const file of files) {
-      const relativePath = sanitizeSkillRelativePath(file.path)
-      if (relativePath === null) continue
-      const existing = await readFile(join(directory, relativePath), 'utf8').catch(() => undefined)
-      if (existing !== file.text) changed = true
-    }
+    const changedPaths = await changedSkillPaths(directory, files)
+    const changed = changedPaths.length > 0
     const installedAt = Date.now()
     const provenance = {
       source: locator.source,
@@ -3871,6 +4038,7 @@ export function apply(ctx) {
         return { status: 500, body: failure('write-failed', `the skill could not be updated: ${errorMessage(error)}`) }
       }
       await recordProvenance({ ...provenance, path: directory })
+      await recordUpdateChecked(name, { available: false, changedPaths: [], checkedAt: Date.now() })
       invalidateState()
       return { status: 200, body: { ok: true, name, path: directory, changed: false } }
     }
@@ -3897,9 +4065,124 @@ export function apply(ctx) {
       if (backup !== undefined) await discardTree(backup)
     }
     await recordProvenance({ ...provenance, path: directory })
+    await recordUpdateChecked(name, { available: false, changedPaths: [], checkedAt: Date.now() })
     invalidateState()
     log.info(`skill-dashboard: updated "${name}" from ${locator.source}`)
     return { status: 200, body: { ok: true, name, path: directory, changed } }
+  }
+
+  /**
+   * One skill's upstream read for `check-updates`, bounded and never writing.
+   *
+   * `refresh` is true only for a manual check: the source adapters share their
+   * tree and payload caches across the skills of one repository, so bypassing
+   * them per skill would refetch a whole repository tree once per skill.
+   */
+  const checkOneSkill = async (skill, signal, refresh) => {
+    const parsed = parseRef(skill.installed?.ref)
+    if (parsed.ok !== true) return { error: parsed.code }
+    const source = SOURCES_LOOKUP(parsed.value.source)
+    if (source === undefined) return { error: 'unknown-source' }
+    const timeout = AbortSignal.timeout(UPDATE_CHECK_TIMEOUT_MS)
+    const bounded = typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, timeout]) : signal
+    let fetched
+    try {
+      fetched = await source.fetch(parsed.value, bounded, { name: skill.name, refresh })
+    } catch {
+      return { error: timeout.aborted ? 'timeout' : 'source-unavailable' }
+    }
+    if (fetched.ok !== true) return { error: fetched.code ?? 'source-unavailable' }
+    if (!fetched.files.some((file) => file.path.toLowerCase() === 'skill.md')) return { error: 'invalid-skill' }
+    const changedPaths = await changedSkillPaths(skill.dir, fetched.files)
+    return { available: changedPaths.length > 0, changedPaths }
+  }
+
+  /** `check-updates`: compare one bounded slice of tracked skills against their sources. */
+  const checkUpdates = async (body, signal) => {
+    const state = await getState({ force: false })
+    const tracked = (Array.isArray(state.skills) ? state.skills : [])
+      .filter((skill) => isRecord(skill.installed) && typeof skill.dir === 'string' && skill.dir.length > 0)
+      .sort((left, right) => compareNames(left.name, right.name))
+    const total = tracked.length
+    const requestedCursor = Number.isFinite(body.cursor) ? Math.trunc(body.cursor) : 0
+    const requestedLimit = Number.isFinite(body.limit) ? Math.trunc(body.limit) : UPDATE_CHECK_LIMIT
+    const limit = Math.min(UPDATE_CHECK_LIMIT_MAX, Math.max(1, requestedLimit))
+    const cursor = Math.min(Math.max(0, requestedCursor), total)
+    const refresh = body.refresh === true
+    const now = Date.now()
+    const updatesState = await updatesStore.load()
+    const records = isRecord(updatesState.skills) ? updatesState.skills : {}
+    const slice = tracked.slice(cursor, cursor + limit)
+    // Refresh each repository's tree once per chunk: the per-skill reads then
+    // share one listing, and their payload keys carry that tree's revision.
+    const prepared = slice.map((skill) => {
+      const cached = isRecord(records[skill.name]) ? records[skill.name] : undefined
+      const cacheTtl = typeof cached?.error === 'string' ? UPDATE_CHECK_ERROR_TTL_MS : UPDATE_CHECK_TTL_MS
+      const fresh = !refresh && cached !== undefined && Number.isFinite(cached.checkedAt) && now - cached.checkedAt < cacheTtl
+      return { skill, cached, fresh }
+    })
+    // Refresh each repository's tree once per chunk for the skills that need a
+    // read: the per-skill payloads then carry that tree's revision, so a moved
+    // branch is never compared against old bytes. Cached verdicts cost nothing.
+    const warmed = new Set()
+    await Promise.all(prepared.filter((entry) => entry.fresh === false).map(async ({ skill }) => {
+      const parsed = parseRef(skill.installed?.ref)
+      if (parsed.ok !== true) return
+      const source = SOURCES_LOOKUP(parsed.value.source)
+      if (typeof source?.warm !== 'function') return
+      const key = `${parsed.value.owner}/${parsed.value.repo}`
+      if (warmed.has(key)) return
+      warmed.add(key)
+      // Warm budget stays below the per-skill budget, so a slow tree cannot
+      // push the whole chunk past the client's ten-second request bound.
+      const timeout = AbortSignal.timeout(4_000)
+      const bounded = typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, timeout]) : signal
+      try {
+        await source.warm(parsed.value, bounded)
+      } catch {
+        // The per-skill read below records the real failure.
+      }
+    }))
+    const checked = await Promise.all(prepared.map(async ({ skill, cached, fresh }) => {
+      if (fresh) {
+        return {
+          name: skill.name,
+          available: cached.available === true,
+          changedPaths: Array.isArray(cached.changedPaths) ? cached.changedPaths : [],
+          ...(typeof cached.error === 'string' ? { error: cached.error } : {}),
+          cached: true,
+        }
+      }
+      return { name: skill.name, ...(await checkOneSkill(skill, signal, refresh)) }
+    }))
+    for (const entry of checked) {
+      if (entry.cached === true) continue
+      records[entry.name] = entry.error === undefined
+        ? { available: entry.available === true, changedPaths: entry.changedPaths, checkedAt: now }
+        : { error: entry.error, checkedAt: now }
+    }
+    updatesState.skills = records
+    updatesStore.schedule()
+    await updatesStore.flush()
+    invalidateState()
+    const nextCursor = Math.min(cursor + limit, total)
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        total,
+        cursor,
+        nextCursor,
+        done: nextCursor >= total,
+        checked: checked.map((entry) => ({
+          name: entry.name,
+          available: entry.available === true,
+          changedPaths: Array.isArray(entry.changedPaths) ? entry.changedPaths : [],
+          ...(entry.error === undefined ? {} : { error: entry.error }),
+        })),
+        checkedAt: now,
+      },
+    }
   }
 
   /** `refresh`: drop the merged-state cache and answer with a fresh timestamp. */
@@ -3919,6 +4202,15 @@ export function apply(ctx) {
     } catch (error) {
       log.warn(`skill-dashboard: provenance recording failed: ${errorMessage(error)}`)
     }
+  }
+
+  /** Remember one update-check verdict; a manual update clears an older "available" record. */
+  const recordUpdateChecked = async (name, result) => {
+    const state = await updatesStore.load()
+    if (!isRecord(state.skills)) state.skills = {}
+    state.skills[name] = result
+    updatesStore.schedule()
+    await updatesStore.flush()
   }
 
   /** Read `.skill-source.json` from the known roots as a fallback provenance. */
@@ -4194,6 +4486,9 @@ export function apply(ctx) {
           break
         case 'update':
           outcome = await updateSkill(body.value, fenced.signal)
+          break
+        case 'check-updates':
+          outcome = await checkUpdates(body.value, fenced.signal)
           break
         case 'refresh':
           outcome = await refreshState()
