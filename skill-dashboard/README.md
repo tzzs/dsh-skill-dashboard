@@ -138,7 +138,7 @@ reported as `source-unavailable` / `source-rate-limited` and the page offers the
 | `index.js` | Host half: `StateCache` SWR lifecycle, parallel catalog/runtime reads, frontmatter edits, usage store, registry adapters, four exact HTTP routes |
 | `client.js` | Client half: rail icon, panel, tabs, skeleton loaders, preview dialog, single-pass DSH-native styles (no build step, no JSX) |
 | `locale/*.json` | `meta.title` / `meta.description` for the Plugins page, UI dictionaries, and all 25 localized error codes |
-| `icon.svg` | Original artwork |
+| `icon.svg` | Original artwork: transparent 36×36, drawn onto the host's tile so light and dark themes both match |
 | `cordis.patch.yml` | Inserts the `skill-dashboard` Host row |
 | `test/*.mjs` | Offline helper, route and preview assertions; `real-skills` is a manual sweep |
 

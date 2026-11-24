@@ -21,6 +21,13 @@
 - Windows 高对比度模式下为弹窗、批量条与菜单启用 `CanvasText` 边框，主按钮使用 `ButtonFace`/`ButtonText`，当前页签与选中文件项使用 `Highlight` 标记。
 - 所有 CSS 使用 `skd-` 前缀，主题变量限定在面板和预览弹窗内。
 
+## 插件图标
+
+- `skill-dashboard/icon.svg` 采用 `36×36` 画布，**背景完全透明**，由 Host 的插件管理器绘制底板与边框。旧版图标内嵌 `#141A24` 深色圆角方块，在浅色主题下与其它插件图标不一致，已改为透明底。
+- 图形语言与官方插件保持一致：蓝色渐变卡片（`#7EB8EA` → `#5A6FD6`）作为主体，紫蓝渐变四角星（`#A797FC` → `#658EFF`）作为辅助标记，中间留出连接弧线表示技能栈。
+- 只使用平铺填充与短渐变，不使用发光、投影、高光或 emoji；不含 `<script>`、`<style>`、动画、`<image>` 与 `<foreignObject>`，字形不依赖外部字体。
+- 在 Host 实际显示尺寸（列表行 `30px`、卡片 `36px`）下与 `dsh-skill-badge`、`dsh-personalized-recommendations` 等官方图标并排比对，主体清晰、光色主题下均无裁切。
+
 ## 加载体验与容错
 
 - 首屏加载直接渲染完整页壳（页头、四页签栏），主体展示 4 张 KPI 骨架卡片、4 格筛选工具栏骨架与 6 行技能列表骨架。骨架块使用 `--dsw-alias-bg-skeleton` 与 `2s cubic-bezier(0.36, 0, 0.64, 1) infinite` 脉冲动画，在 `prefers-reduced-motion: reduce` 下停止动画。

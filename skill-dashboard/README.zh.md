@@ -99,7 +99,7 @@ user-invocable: false            # 从 `/skill` 手势中隐藏
 | `index.js` | Host：`StateCache` SWR 生命周期、并行目录与 Agent 扫描、用量存储、两个源适配、四个精确 HTTP 路由 |
 | `client.js` | Client：侧栏图标、面板、页签、骨架屏加载、预览弹层、单层 DSH 原生样式（无构建步骤、无 JSX） |
 | `locale/*.json` | 插件页显示的 `meta.title` / `meta.description`、界面字典与 25 个本地化错误码 |
-| `icon.svg` | 原创图标 |
+| `icon.svg` | 原创图标：36×36 透明底，由宿主底板承载，浅色与深色主题下均与其它插件一致 |
 | `cordis.patch.yml` | 插入 `skill-dashboard` 的 Host 行 |
 | `test/*.mjs` | 客户端、辅助函数、路由、预览、统计周期、诊断断言脚本及手动实测脚本 |
 
