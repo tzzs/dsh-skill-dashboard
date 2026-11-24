@@ -9,7 +9,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rename as fsRename, rm, symlink as fsSymlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rename as fsRename, rm, symlink as fsSymlink, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -1186,8 +1186,467 @@ await check('an unknown action verb still answers 400', async () => {
   assert.equal(response.body.code, 'unknown-action')
 })
 
+// ---------------- scenario 7: GitHub install, one-time bind, pinned update
+
+console.log('')
+console.log('scenario 7: GitHub installs, one-time binds, and pinned updates')
+
+const githubHome = join(workspace, 'dsh-home-github')
+const githubAgents = join(workspace, 'agents-home-github')
+const githubSkills = join(githubAgents, 'skills')
+const projectSkills = join(workspace, '.agents', 'skills')
+process.env.DSH_HOME = githubHome
+process.env.DSH_AGENTS_HOME = githubAgents
+await mkdir(join(githubHome, 'skill-dashboard'), { recursive: true })
+await mkdir(githubSkills, { recursive: true })
+await mkdir(projectSkills, { recursive: true })
+
+const SHA_ONE = 'e4bb5d960d87126ff3b3a8af1a104b7db67560ba'
+const SHA_TWO = '1b0e1d3a4c5f60718293a4b5c6d7e8f901234567'
+const pdfSkill = '---\nname: pdf\ndescription: Fill in a PDF form.\n---\n\n# pdf\n'
+const notesSkill = '---\nname: notes\ndescription: Take notes.\n---\n\n# notes\n'
+const legacySkill = '---\nname: legacy\ndescription: An old install.\n---\n\n# legacy\n'
+const remoteSkill = '---\nname: remote\ndescription: Served through jsDelivr only.\n---\n\n# remote\n'
+
+/** Stubbed upstream state: repositories of path→text, one head commit, one outage switch. */
+const network = { calls: [], sha: SHA_ONE, api: 'ok', raw: 'ok' }
+const repos = new Map()
+const putRemote = (repo, path, text) => {
+  if (!repos.has(repo)) repos.set(repo, new Map())
+  repos.get(repo).set(path, text)
+}
+putRemote('anthropics/skills', 'skills/pdf/SKILL.md', pdfSkill)
+putRemote('anthropics/skills', 'skills/pdf/references/guide.md', 'PDF guide.\n')
+putRemote('anthropics/skills', 'skills/docx/SKILL.md', '---\nname: docx\ndescription: A docx skill.\n---\n')
+putRemote('anthropics/skills', 'skills/notes/SKILL.md', notesSkill)
+putRemote('anthropics/skills', 'skills/legacy/SKILL.md', legacySkill)
+putRemote('acme/multi', 'alpha/SKILL.md', '---\nname: multi-alpha\ndescription: First.\n---\n')
+putRemote('acme/multi', 'beta/SKILL.md', '---\nname: multi-beta\ndescription: Second.\n---\n')
+putRemote('acme/fallback', 'skills/remote/SKILL.md', remoteSkill)
+
+const fetchText = (repo, path) => repos.get(repo)?.get(path)
+const repoOf = (address) => address.split('/repos/')[1].split('/').slice(0, 2).join('/')
+/** Answer one stubbed GitHub URL: the tree, the file bytes, the commit, and the jsDelivr mirrors. */
+const githubAnswer = (address) => {
+  if (address.startsWith('https://api.github.com/repos/')) {
+    if (network.api === 'forbidden') return new Response('', { status: 403 })
+    if (address.includes('/commits')) return Response.json([{ sha: network.sha }])
+    const files = repos.get(repoOf(address)) ?? new Map()
+    return Response.json({
+      tree: [...files.keys()].map((path) => ({ type: 'blob', path, size: Buffer.byteLength(files.get(path)) })),
+      truncated: false,
+    })
+  }
+  if (address.startsWith('https://raw.githubusercontent.com/')) {
+    if (network.raw === 'offline') throw new Error('raw read timed out')
+    const [owner, repo, , ...rest] = address.slice('https://raw.githubusercontent.com/'.length).split('/')
+    const text = fetchText(`${owner}/${decodeURIComponent(repo)}`, rest.map(decodeURIComponent).join('/'))
+    return text === undefined ? new Response('', { status: 404 }) : new Response(text)
+  }
+  if (address.startsWith('https://data.jsdelivr.com/v1/packages/gh/')) {
+    const files = repos.get(address.slice('https://data.jsdelivr.com/v1/packages/gh/'.length).split('@')[0])
+    if (files === undefined) return new Response('', { status: 404 })
+    return Response.json({ files: [...files.keys()].map((path) => ({ name: `/${path}`, size: Buffer.byteLength(files.get(path)) })) })
+  }
+  if (address.startsWith('https://cdn.jsdelivr.net/gh/')) {
+    const [owner, repoTail, ...rest] = address.slice('https://cdn.jsdelivr.net/gh/'.length).split('/')
+    const text = fetchText(`${owner}/${repoTail.split('@')[0]}`, rest.map(decodeURIComponent).join('/'))
+    return text === undefined ? new Response('', { status: 404 }) : new Response(text)
+  }
+  throw new Error(`unexpected upstream request ${address}`)
+}
+const originalGithubFetch = globalThis.fetch
+const stubNetwork = () => {
+  network.calls = []
+  globalThis.fetch = async (url) => {
+    network.calls.push(String(url))
+    return githubAnswer(String(url))
+  }
+}
+const restoreNetwork = () => {
+  globalThis.fetch = originalGithubFetch
+}
+
+// An old-shaped record and the skill directory it points at, written before the
+// Host reads its store, so the update below sees it exactly as a 1.3.0 install left it.
+const legacyDir = join(githubSkills, 'legacy')
+await mkdir(legacyDir, { recursive: true })
+await writeFile(join(legacyDir, 'SKILL.md'), '---\nname: legacy\ndescription: Hand written.\n---\n', 'utf8')
+await writeFile(join(githubHome, 'skill-dashboard', 'installed.json'), JSON.stringify({
+  version: 1,
+  skills: { legacy: { source: 'skills-sh', ref: 'anthropics/skills', version: null, installedAt: 1763000000000, path: legacyDir } },
+}), 'utf8')
+
+/** The catalog the state route merges: every directory under the two fixture roots. */
+const githubCatalog = async () => {
+  const entries = []
+  for (const [root, source] of [[githubSkills, 'user-agents'], [projectSkills, 'project-agents']]) {
+    for (const entry of await readdir(root, { withFileTypes: true }).catch(() => [])) {
+      if (entry.isDirectory() !== true) continue
+      entries.push({
+        name: entry.name,
+        description: 'A remote skill.',
+        source,
+        provider: 'filesystem',
+        path: join(root, entry.name, 'SKILL.md'),
+        invocation: { modelInvocable: true, userInvocable: true },
+      })
+    }
+  }
+  return entries
+}
+const githubServices = new Map([
+  ['workingDirectory', { defaultDirectory: workspace }],
+  ['skills', { list: githubCatalog }],
+])
+const seventh = createFakeContext({ cwd: workspace, services: githubServices })
+apply(seventh.ctx)
+
+const act = (body) => call(seventh.routes.get('/skill-dashboard/action'), {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(body),
+})
+const installedStoreFile = join(githubHome, 'skill-dashboard', 'installed.json')
+
+await check('install from a /tree/ URL pins the commit in both records', async () => {
+  stubNetwork()
+  try {
+    const installed = await act({ action: 'install', ref: 'https://github.com/anthropics/skills/tree/main/skills/pdf' })
+    assert.equal(installed.status, 200, JSON.stringify(installed.body))
+    assert.deepEqual(installed.body, { ok: true, name: 'pdf', path: join(githubSkills, 'pdf') })
+    assert.equal(await readFile(join(githubSkills, 'pdf', 'SKILL.md'), 'utf8'), pdfSkill)
+    assert.equal(await readFile(join(githubSkills, 'pdf', 'references', 'guide.md'), 'utf8'), 'PDF guide.\n')
+    assert.equal(network.calls.filter((url) => url.includes('/commits')).length, 1, 'the head commit is asked for once')
+    await sleep(900)
+    const record = JSON.parse(await readFile(installedStoreFile, 'utf8')).skills.pdf
+    assert.deepEqual(Object.keys(record), ['source', 'ref', 'commit', 'name', 'version', 'installedAt', 'path'])
+    assert.equal(record.source, 'skills-sh')
+    assert.equal(record.ref, 'anthropics/skills@main#skills/pdf')
+    assert.equal(record.commit, SHA_ONE)
+    assert.equal(record.name, 'pdf')
+    assert.equal(record.version, null)
+    assert.equal(typeof record.installedAt, 'number')
+    assert.equal(record.path, join(githubSkills, 'pdf'))
+    const sidecar = JSON.parse(await readFile(join(githubSkills, 'pdf', '.skill-source.json'), 'utf8'))
+    assert.deepEqual(sidecar, {
+      source: 'skills-sh',
+      ref: 'anthropics/skills@main#skills/pdf',
+      commit: SHA_ONE,
+      name: 'pdf',
+      version: null,
+      installedAt: record.installedAt,
+    }, 'the portable record carries the pin and no local path')
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('a no-op update reports no change, keeps the bytes, and reuses the warm tree', async () => {
+  stubNetwork()
+  const realNow = Date.now
+  // Step past the 60s commit cache so the update has to ask the head again.
+  Date.now = () => realNow() + 61_000
+  try {
+    const before = await readFile(join(githubSkills, 'pdf', 'SKILL.md'), 'utf8')
+    const updated = await act({ action: 'update', name: 'pdf' })
+    assert.equal(updated.status, 200, JSON.stringify(updated.body))
+    assert.deepEqual(updated.body, { ok: true, name: 'pdf', path: join(githubSkills, 'pdf'), changed: false })
+    assert.equal(network.calls.filter((url) => url.includes('/commits')).length, 1, 'the head commit is asked for once')
+    assert.equal(network.calls.filter((url) => url.includes('/git/trees/')).length, 0, 'the install tree is still cached')
+    assert.equal(await readFile(join(githubSkills, 'pdf', 'SKILL.md'), 'utf8'), before, 'an up-to-date skill keeps its bytes')
+  } finally {
+    Date.now = realNow
+    restoreNetwork()
+  }
+})
+
+await check('a moved pin rewrites the tree, records the new commit, and leaves no staging tree', async () => {
+  const secondRevision = `${pdfSkill}\nSecond revision.\n`
+  putRemote('anthropics/skills', 'skills/pdf/SKILL.md', secondRevision)
+  network.sha = SHA_TWO
+  stubNetwork()
+  const realNow = Date.now
+  // Past the 10-minute payload, tree and commit caches, including the timestamp
+  // the previous case wrote: an update has to read upstream again.
+  Date.now = () => realNow() + 30 * 60_000
+  try {
+    const updated = await act({ action: 'update', name: 'pdf' })
+    assert.equal(updated.status, 200, JSON.stringify(updated.body))
+    assert.equal(updated.body.changed, true)
+    assert.equal(await readFile(join(githubSkills, 'pdf', 'SKILL.md'), 'utf8'), secondRevision, 'the new bytes are on disk')
+    const sidecar = JSON.parse(await readFile(join(githubSkills, 'pdf', '.skill-source.json'), 'utf8'))
+    assert.equal(sidecar.commit, SHA_TWO, 'the record moved to the new head commit')
+    assert.deepEqual(await readdir(join(githubHome, 'skill-dashboard', 'staging')).catch(() => []), [])
+  } finally {
+    Date.now = realNow
+    restoreNetwork()
+  }
+})
+
+await check('a refused API degrades to jsDelivr and records no commit', async () => {
+  network.api = 'forbidden'
+  network.raw = 'offline'
+  stubNetwork()
+  try {
+    const installed = await act({ action: 'install', ref: 'acme/fallback#skills/remote' })
+    assert.equal(installed.status, 200, JSON.stringify(installed.body))
+    assert.deepEqual(installed.body, { ok: true, name: 'remote', path: join(githubSkills, 'remote') })
+    assert.equal(await readFile(join(githubSkills, 'remote', 'SKILL.md'), 'utf8'), remoteSkill)
+    assert.equal(network.calls.some((url) => url.includes('/commits')), false, 'a degraded read never guesses a pin')
+    assert.equal(network.calls.some((url) => url.includes('data.jsdelivr.com')), true, 'the listing came from jsDelivr')
+    assert.equal(network.calls.some((url) => url.includes('cdn.jsdelivr.net')), true, 'the bytes came from the CDN')
+    const sidecar = JSON.parse(await readFile(join(githubSkills, 'remote', '.skill-source.json'), 'utf8'))
+    assert.equal(sidecar.commit, null)
+    assert.equal(sidecar.ref, 'acme/fallback#skills/remote')
+  } finally {
+    network.api = 'ok'
+    network.raw = 'ok'
+    restoreNetwork()
+  }
+})
+
+await check('a one-time bind records the local name, directory, and pin', async () => {
+  const localDir = join(projectSkills, 'notes')
+  await mkdir(localDir, { recursive: true })
+  await writeFile(join(localDir, 'SKILL.md'), '---\nname: notes\ndescription: Local notes, hand edited.\n---\n', 'utf8')
+  stubNetwork()
+  try {
+    const updated = await act({
+      action: 'update',
+      name: 'notes',
+      path: join(localDir, 'SKILL.md'),
+      ref: 'anthropics/skills#skills/notes',
+    })
+    assert.equal(updated.status, 200, JSON.stringify(updated.body))
+    assert.equal(updated.body.changed, true, 'the remote bytes replaced the local file')
+    assert.equal(updated.body.path, localDir)
+    assert.equal(await readFile(join(localDir, 'SKILL.md'), 'utf8'), notesSkill)
+    await sleep(900)
+    const record = JSON.parse(await readFile(installedStoreFile, 'utf8')).skills.notes
+    assert.equal(record.source, 'skills-sh')
+    assert.equal(record.ref, 'anthropics/skills#skills/notes')
+    assert.equal(record.commit, network.sha)
+    assert.equal(record.name, 'notes')
+    assert.equal(record.version, null)
+    assert.equal(record.path, localDir, 'the record points at the local directory, not installRoot')
+    assert.notEqual(localDir, join(githubSkills, 'notes'))
+    const sidecar = JSON.parse(await readFile(join(localDir, '.skill-source.json'), 'utf8'))
+    assert.equal(sidecar.commit, network.sha)
+    assert.equal(sidecar.ref, 'anthropics/skills#skills/notes')
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('a bind whose source declares another name writes nothing', async () => {
+  const localDir = join(projectSkills, 'mismatch-local')
+  await mkdir(localDir, { recursive: true })
+  const local = '---\nname: mismatch-local\ndescription: A local skill.\n---\n'
+  await writeFile(join(localDir, 'SKILL.md'), local, 'utf8')
+  stubNetwork()
+  try {
+    const updated = await act({
+      action: 'update',
+      name: 'mismatch-local',
+      path: join(localDir, 'SKILL.md'),
+      ref: 'anthropics/skills#skills/notes',
+    })
+    assert.equal(updated.status, 409)
+    assert.equal(updated.body.code, 'name-mismatch')
+    assert.match(updated.body.message, /mismatch-local/)
+    assert.match(updated.body.message, /notes/)
+    assert.equal(await readFile(join(localDir, 'SKILL.md'), 'utf8'), local, 'the local file is untouched')
+    assert.equal(existsSync(join(localDir, '.skill-source.json')), false, 'no provenance is written')
+    await sleep(900)
+    assert.equal(JSON.parse(await readFile(installedStoreFile, 'utf8')).skills['mismatch-local'], undefined)
+    assert.deepEqual(await readdir(join(githubHome, 'skill-dashboard', 'staging')).catch(() => []), [])
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('a bound skill cannot be re-pointed at a differently named source', async () => {
+  const skillFile = join(githubSkills, 'pdf', 'SKILL.md')
+  const before = await readFile(skillFile, 'utf8')
+  stubNetwork()
+  try {
+    const updated = await act({
+      action: 'update', name: 'pdf', path: skillFile, ref: 'anthropics/skills#skills/docx',
+    })
+    assert.equal(updated.status, 409)
+    assert.equal(updated.body.code, 'name-mismatch')
+    assert.match(updated.body.message, /docx/)
+    assert.equal(await readFile(skillFile, 'utf8'), before, 'the bound skill keeps its own bytes')
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('a target outside every writable root is refused before any fetch', async () => {
+  const outsider = join(outside, 'rogue-notes.md')
+  await writeFile(outsider, '---\nname: rogue-notes\ndescription: Outside every root.\n---\n', 'utf8')
+  stubNetwork()
+  try {
+    const updated = await act({
+      action: 'update',
+      name: 'rogue-notes',
+      path: outsider,
+      ref: 'anthropics/skills#skills/notes',
+    })
+    assert.equal(updated.status, 403)
+    assert.equal(updated.body.code, 'read-only')
+    assert.deepEqual(network.calls, [], 'a refused target never reaches the network')
+    assert.equal(existsSync(outsider), true)
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('a source that disagrees with the reference is a bad request', async () => {
+  stubNetwork()
+  try {
+    const update = await act({ action: 'update', name: 'pdf', source: 'tencent', ref: 'anthropics/skills#skills/pdf' })
+    assert.equal(update.status, 400)
+    assert.equal(update.body.code, 'bad-request')
+    const install = await act({ action: 'install', source: 'tencent', ref: 'anthropics/skills#skills/pdf' })
+    assert.equal(install.status, 400)
+    assert.equal(install.body.code, 'bad-request')
+    assert.deepEqual(network.calls, [], 'a disagreement is refused before any fetch')
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('a multi-skill repository asks for a subpath instead of guessing', async () => {
+  stubNetwork()
+  try {
+    const ambiguous = await act({ action: 'install', ref: 'acme/multi' })
+    assert.equal(ambiguous.status, 409)
+    assert.equal(ambiguous.body.code, 'subpath-required')
+    assert.match(ambiguous.body.message, /#alpha/)
+    assert.match(ambiguous.body.message, /#beta/)
+    assert.equal(existsSync(join(githubSkills, 'multi')), false, 'nothing is written while the choice is open')
+    const installed = await act({ action: 'install', ref: 'acme/multi#beta' })
+    assert.equal(installed.status, 200, JSON.stringify(installed.body))
+    assert.equal(installed.body.name, 'multi-beta')
+    assert.equal(installed.body.path, join(githubSkills, 'multi-beta'))
+    const sidecar = JSON.parse(await readFile(join(githubSkills, 'multi-beta', '.skill-source.json'), 'utf8'))
+    assert.equal(sidecar.ref, 'acme/multi#beta')
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('an old record without a commit updates and gains a pin', async () => {
+  stubNetwork()
+  try {
+    const updated = await act({ action: 'update', name: 'legacy' })
+    assert.equal(updated.status, 200, JSON.stringify(updated.body))
+    assert.equal(updated.body.changed, true)
+    assert.equal(updated.body.path, legacyDir)
+    assert.equal(await readFile(join(legacyDir, 'SKILL.md'), 'utf8'), legacySkill)
+    await sleep(900)
+    const record = JSON.parse(await readFile(installedStoreFile, 'utf8')).skills.legacy
+    assert.equal(record.ref, 'anthropics/skills', 'the stored reference is kept as it was')
+    assert.equal(record.commit, network.sha, 'the update pinned the commit it read')
+    assert.equal(record.path, legacyDir)
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('a flat Markdown skill is refused in place', async () => {
+  const flat = join(projectSkills, 'flat-github.md')
+  await writeFile(flat, '---\nname: flat-github\ndescription: A flat skill.\n---\n', 'utf8')
+  stubNetwork()
+  try {
+    const updated = await act({
+      action: 'update',
+      name: 'flat-github',
+      path: flat,
+      ref: 'anthropics/skills#skills/notes',
+    })
+    assert.equal(updated.status, 409)
+    assert.equal(updated.body.code, 'flat-skill')
+    assert.deepEqual(network.calls, [], 'a flat target is refused before any fetch')
+    assert.equal(await readFile(flat, 'utf8'), '---\nname: flat-github\ndescription: A flat skill.\n---\n')
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('an update target must declare the skill the caller names', async () => {
+  const localDir = join(projectSkills, 'other-skill')
+  await mkdir(localDir, { recursive: true })
+  const local = '---\nname: other-skill\ndescription: Not the pdf skill.\n---\n'
+  await writeFile(join(localDir, 'SKILL.md'), local, 'utf8')
+  stubNetwork()
+  try {
+    const updated = await act({
+      action: 'update',
+      name: 'pdf',
+      path: join(localDir, 'SKILL.md'),
+      ref: 'anthropics/skills#skills/pdf',
+    })
+    assert.equal(updated.status, 409)
+    assert.equal(updated.body.code, 'name-mismatch')
+    assert.match(updated.body.message, /other-skill/)
+    assert.deepEqual(network.calls, [], 'a mismatched target never reaches the network')
+    assert.equal(await readFile(join(localDir, 'SKILL.md'), 'utf8'), local)
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('a record only describes the directory it was written for', async () => {
+  // A same-named install in another root exists in installed.json. Clicking a
+  // different directory must not borrow that record's reference.
+  const recordDir = join(githubSkills, 'local-pdf')
+  const clickedDir = join(projectSkills, 'local-pdf')
+  for (const directory of [recordDir, clickedDir]) {
+    await mkdir(directory, { recursive: true })
+    await writeFile(join(directory, 'SKILL.md'), '---\nname: local-pdf\ndescription: Two copies.\n---\n', 'utf8')
+  }
+  const store = JSON.parse(await readFile(installedStoreFile, 'utf8'))
+  store.skills['local-pdf'] = {
+    source: 'skills-sh', ref: 'anthropics/skills#skills/pdf', commit: network.sha,
+    name: 'local-pdf', version: null, installedAt: 1763000000000, path: recordDir,
+  }
+  await writeFile(installedStoreFile, JSON.stringify(store), 'utf8')
+  stubNetwork()
+  try {
+    const updated = await act({ action: 'update', name: 'local-pdf', path: join(clickedDir, 'SKILL.md') })
+    assert.equal(updated.status, 400)
+    assert.equal(updated.body.code, 'unknown-ref', 'the other directory has no origin of its own')
+    assert.deepEqual(network.calls, [], 'nothing is fetched for a row with no origin')
+    assert.equal(await readFile(join(clickedDir, 'SKILL.md'), 'utf8'),
+      '---\nname: local-pdf\ndescription: Two copies.\n---\n')
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('state still exposes exactly the four legacy provenance keys', async () => {
+  const record = JSON.parse(await readFile(installedStoreFile, 'utf8')).skills.pdf
+  const response = await call(seventh.routes.get('/skill-dashboard/state'))
+  assert.equal(response.status, 200)
+  const pdf = response.body.skills.find((skill) => skill.name === 'pdf')
+  assert.ok(pdf !== undefined, 'the installed skill is in the catalog')
+  assert.deepEqual(pdf.installed, {
+    source: record.source,
+    ref: record.ref,
+    version: record.version,
+    installedAt: record.installedAt,
+  }, 'the pin stays out of the state document')
+  assert.deepEqual(Object.keys(pdf.installed), ['source', 'ref', 'version', 'installedAt'])
+})
+
 // ------------------------------------------------------------------- teardown
 
+for (const entry of seventh.registered) {
+  if (typeof entry.disposer === 'function') entry.disposer()
+}
 for (const entry of fifth.registered) {
   if (typeof entry.disposer === 'function') entry.disposer()
 }

@@ -285,6 +285,32 @@ test('skills.sh nested discovery selects named directory without downloading uno
   } finally { globalThis.fetch = originalFetch }
 })
 
+test('skills.sh subpath reference previews without a separate name', async () => {
+  const originalFetch = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (url) => {
+    calls.push(url)
+    if (url.includes('/git/trees/')) return Response.json({ tree: [
+      { type: 'blob', path: 'skills/pdf/SKILL.md' },
+      { type: 'blob', path: 'skills/pdf/references/guide.md' },
+      { type: 'blob', path: 'skills/pdf/image.png' },
+      { type: 'blob', path: 'skills/docx/SKILL.md' },
+    ] })
+    return new Response(url.endsWith('/guide.md') ? 'PDF guide.' : markdown)
+  }
+  try {
+    const response = await host()({ source: 'skills-sh', ref: 'owner/repo@main#skills/pdf', file: 'references/guide.md' })
+    assert.equal(response.status, 200)
+    assert.equal(response.body.skill.source, 'skills-sh')
+    assert.equal(response.body.skill.name, 'pdf', 'the path segment names the skill when no name is sent')
+    assert.equal(response.body.file.content, 'PDF guide.')
+    assert.deepEqual(response.body.files.map((file) => file.path), ['SKILL.md', 'references/guide.md', 'image.png'])
+    assert.equal(calls.length, 2, 'one tree and one selected file')
+    assert(calls[0].includes('/git/trees/main?'), 'a pinned revision is read once, with no branch probe')
+    assert(calls[1].endsWith('/main/skills/pdf/references/guide.md'))
+  } finally { globalThis.fetch = originalFetch }
+})
+
 test('remote display and adapter file caps report truncation', async () => {
   const originalFetch = globalThis.fetch
   globalThis.fetch = async (url) => {
