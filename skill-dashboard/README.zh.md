@@ -91,7 +91,7 @@ user-invocable: false            # 从 `/skill` 手势中隐藏
 
 两个源 API 都不带 CORS 头，所以所有源请求都在 Host 进程里完成，浏览器只访问
 `/skill-dashboard/*`。外发请求有界（10 秒、4 MiB、并发 4），结果会缓存（搜索 60 秒、提交
-60 秒、tree 与内容 10 分钟）。失败会以 `source-unavailable` / `source-rate-limited` 报出，
+60 秒、tree 与内容 10 分钟），而更新总是重新读取来源，不复用这些缓存。失败会以 `source-unavailable` / `source-rate-limited` 报出，
 页面提示改用另一个源。
 
 GitHub 提交来自 `api.github.com/repos/{o}/{r}/commits`，被限流时退到仓库的

@@ -129,7 +129,8 @@ coding agents read it before you flip the switch.
 
 Neither registry API sends CORS headers, which is why every registry call runs in the Host process
 and the browser only talks to `/skill-dashboard/*`. Outbound requests are bounded (10 s, 4 MiB,
-concurrency 4) and results are cached (search 60 s, commits 60 s, trees and payloads 10 min). A
+concurrency 4) and results are cached (search 60 s, commits 60 s, trees and payloads 10 min), and an update always
+reads the source fresh instead of reusing those caches. A
 failure is reported as `source-unavailable` / `source-rate-limited` and the page offers the other
 source.
 

@@ -254,6 +254,7 @@ Consequences the plugin implements:
 3. **No version-only "up to date".** SkillHub republishes under a stable version string, and
    GitHub's revision says nothing about the local disk, so update compares file bytes on every
    source. `changed` is therefore a content fact, not a revision guess.
-4. **Rate budget.** One update = one commits call (cached 60 s) + a tree (cached 10 min) + one raw
-   read per file (not API-quota). The 60/h anonymous budget is only spent on real head checks;
+4. **Rate budget.** An install may reuse cached lookups (commits 60 s, tree 10 min), but an update
+   bypasses all three caches and re-reads the source: one commits call + one tree + one raw read per
+   file (not API-quota) per update. The 60/h anonymous budget is only spent on real head checks;
    `GITHUB_TOKEN` / `GH_TOKEN` lifts it to 5,000/h when the Host environment already has one.
