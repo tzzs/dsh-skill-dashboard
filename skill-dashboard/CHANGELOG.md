@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.3.0...v1.4.0) (2026-11-24)
+
+
+### Features
+
+* **skill-dashboard:** redesign loading & DSH-native UI, refine i18n, and optimize runtime ([#10](https://github.com/tzzs/dsh-skill-dashboard/issues/10)) ([4ae341c](https://github.com/tzzs/dsh-skill-dashboard/commit/4ae341c3618b3d20c7806b51e075d9da72751aa6))
+* **skill-dashboard:** update skills from GitHub and both registries ([#13](https://github.com/tzzs/dsh-skill-dashboard/issues/13)) ([f418f62](https://github.com/tzzs/dsh-skill-dashboard/commit/f418f625f0fc0d79aeadea00f0f5ec1c36b15b41))
+
+
+### Performance Improvements
+
+* **skill-dashboard:** paint the installed list in batches and memoize rows ([#14](https://github.com/tzzs/dsh-skill-dashboard/issues/14)) ([4828f02](https://github.com/tzzs/dsh-skill-dashboard/commit/4828f022953ddec6213e234b5b5006f3c59eee87))
+
 ## [1.3.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.2.0...v1.3.0) (2026-11-23)
 
 
