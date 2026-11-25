@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.7.0...v1.7.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* **skill-dashboard:** keep the diagnosis queue responsive while scrolling ([#25](https://github.com/tzzs/dsh-skill-dashboard/issues/25)) ([14d4c4c](https://github.com/tzzs/dsh-skill-dashboard/commit/14d4c4c1c88bbb5c4c26501ffa6979a2fa467d6b))
+
 ## [1.7.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.6.1...v1.7.0) (2026-11-25)
 
 
