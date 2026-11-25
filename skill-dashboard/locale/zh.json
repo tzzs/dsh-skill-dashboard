@@ -305,5 +305,16 @@
   "error.not-installed": "该技能尚未安装或缺少来源记录，无法更新",
   "error.not-installable": "该技能暂不支持直接安装",
   "error.install-failed": "安装技能失败，请检查网络后重试",
-  "error.update-failed": "更新技能失败，请检查网络后重试"
+  "error.update-failed": "更新技能失败，请检查网络后重试",
+  "installed.updatable": "可更新",
+  "updates.pill": "可更新 {count}",
+  "updates.pillChecking": "检查中 {done}/{total}",
+  "updates.pillLatest": "已是最新",
+  "updates.pillInterrupted": "检查中断",
+  "updates.pillNone": "检查更新",
+  "updates.panelTitle": "技能更新",
+  "updates.panelAvailable": "{count} 个技能可更新",
+  "updates.onlyAvailable": "只看可更新",
+  "updates.autoBack": "返回",
+  "updates.pillCheckingStart": "检查中…"
 }

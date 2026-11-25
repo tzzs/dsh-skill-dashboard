@@ -122,6 +122,7 @@ window.__ModuleLoader__.load({
       'installed.enabled': '自动调用已开',
       'installed.disabled': '自动调用已关',
       'installed.writable': '可管理',
+      'installed.updatable': '可更新',
       'installed.sort': '排序方式',
       'installed.sort.usage': '调用最多',
       'installed.sort.name': '名称 A–Z',
@@ -132,6 +133,16 @@ window.__ModuleLoader__.load({
       'updates.checking': '正在检查更新 {done}/{total}',
       'updates.lastChecked': '上次检查 {time}',
       'updates.never': '尚未检查',
+      'updates.pill': '可更新 {count}',
+      'updates.pillChecking': '检查中 {done}/{total}',
+      'updates.pillLatest': '已是最新',
+      'updates.pillCheckingStart': '检查中…',
+      'updates.pillInterrupted': '检查中断',
+      'updates.pillNone': '检查更新',
+      'updates.panelTitle': '技能更新',
+      'updates.panelAvailable': '{count} 个技能可更新',
+      'updates.onlyAvailable': '只看可更新',
+      'updates.autoBack': '返回',
       'updates.interrupted': '检查中断，已完成 {done}/{total}，可再次检查',
       'updates.available': '可更新 {count} 个技能',
       'updates.applyAll': '全部更新 ({count})',
@@ -428,6 +439,7 @@ window.__ModuleLoader__.load({
       'installed.enabled': 'Auto-invoke on',
       'installed.disabled': 'Auto-invoke off',
       'installed.writable': 'Manageable',
+      'installed.updatable': 'Update available',
       'installed.sort': 'Sort by',
       'installed.sort.usage': 'Most used',
       'installed.sort.name': 'Name A–Z',
@@ -438,6 +450,16 @@ window.__ModuleLoader__.load({
       'updates.checking': 'Checking for updates {done}/{total}',
       'updates.lastChecked': 'Last checked {time}',
       'updates.never': 'Not checked yet',
+      'updates.pill': '{count} to update',
+      'updates.pillChecking': 'Checking {done}/{total}',
+      'updates.pillLatest': 'Up to date',
+      'updates.pillCheckingStart': 'Checking…',
+      'updates.pillInterrupted': 'Check interrupted',
+      'updates.pillNone': 'Check for updates',
+      'updates.panelTitle': 'Skill updates',
+      'updates.panelAvailable': '{count} skills can be updated',
+      'updates.onlyAvailable': 'Show updates only',
+      'updates.autoBack': 'Back',
       'updates.interrupted': 'Check stopped after {done}/{total}; check again',
       'updates.available': '{count} updates available',
       'updates.applyAll': 'Update all ({count})',
@@ -761,20 +783,32 @@ window.__ModuleLoader__.load({
 .skd-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:12px 0 0;padding:10px 14px;border:1px solid color-mix(in srgb,var(--skd-error) 28%,transparent);border-radius:var(--skd-radius);background:var(--skd-error-bg);color:var(--skd-error);font-size:.8125rem;line-height:1.5}
 .skd-banner .skd-button{min-height:28px;padding:3px 10px;font-size:.75rem}
 
-.skd-updatesBar{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin:0 0 14px;padding:9px 12px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-surface);font-size:.8125rem;line-height:1.5;min-height:48px}
-.skd-updatesBar[data-tone=accent]{border-color:color-mix(in srgb,var(--skd-accent) 32%,transparent);background:var(--skd-accent-bg)}
-.skd-updatesText{font-weight:600;color:var(--skd-fg)}
-.skd-updatesStatus{margin-inline-start:auto;color:var(--skd-muted);font-size:.75rem}
-.skd-updatesAuto{display:flex;align-items:center;gap:8px;flex:none}
-.skd-updatesBar .skd-switchControl{width:auto}
-.skd-updatesPicker{display:flex;flex-direction:column;gap:8px;margin:0 0 14px;padding:10px 12px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-surface)}
-.skd-updatesPicker:focus-visible{outline:2px solid var(--skd-accent);outline-offset:2px}
-.skd-updatesPickerHead{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap}
-.skd-updatesPickerHead .skd-updatesText{margin-inline-end:auto}
-.skd-updatesPickerHint,.skd-updatesPickerEmpty{margin:0;color:var(--skd-muted);font-size:.75rem;line-height:1.5}
-.skd-updatesPickerList{display:flex;flex-direction:column;gap:2px;margin:0;padding:0;list-style:none;max-block-size:212px;overflow:auto}
-.skd-updatesPickerItem{display:flex;align-items:center;gap:8px;min-block-size:28px;font-size:.8125rem;line-height:1.5;cursor:pointer}
-.skd-updatesCheckInput{flex:none;margin:0;inline-size:1rem;block-size:1rem;accent-color:var(--skd-accent);cursor:inherit}
+.skd-updateWrap{position:relative;flex:none}
+.skd-updatePill{display:inline-flex;align-items:center;gap:7px;min-height:30px;padding:0 11px;border:1px solid var(--skd-line);border-radius:999px;background:var(--skd-surface);color:var(--skd-muted);font:inherit;font-size:.75rem;line-height:1.4;white-space:nowrap;cursor:pointer;transition:border-color .15s var(--skd-ease),background-color .15s var(--skd-ease),color .15s var(--skd-ease)}
+.skd-updatePill[data-tone=accent]{border-color:color-mix(in srgb,var(--skd-accent) 34%,transparent);background:var(--skd-accent-bg);color:var(--skd-accent-fill);font-weight:600}
+.skd-updatePill[data-tone=error]{border-color:color-mix(in srgb,var(--skd-error) 30%,transparent);background:var(--skd-error-bg);color:var(--skd-error)}
+.skd-updateDot{flex:none;inline-size:7px;block-size:7px;border-radius:50%;background:var(--skd-success)}
+.skd-updateDot[data-tone=accent]{background:var(--skd-accent-fill)}
+.skd-updateDot[data-tone=error]{background:var(--skd-error)}
+.skd-updateDot[data-busy]{animation:skd-pulse 1.2s ease-in-out infinite}
+.skd-updatePanel:focus{outline:none}
+.skd-updatePanel{position:absolute;top:calc(100% + 8px);right:0;z-index:40;width:min(360px,calc(100vw - 32px));padding:14px;border:1px solid var(--skd-control-line);border-radius:var(--skd-radius);background:var(--skd-overlay);box-shadow:0 14px 40px rgb(0 0 0 / .18);color:var(--skd-fg);font-size:.8125rem;line-height:1.5;text-align:start}
+.skd-updatePanelBody{display:flex;flex-direction:column;gap:10px}
+.skd-updatePanelHead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.skd-updatePanelTitle{font-weight:600;color:var(--skd-fg)}
+.skd-updatePanelStatus{color:var(--skd-muted);font-size:.75rem;white-space:nowrap}
+.skd-updateSummary{margin:0;color:var(--skd-fg)}
+.skd-updateSummaryQuiet{color:var(--skd-muted)}
+.skd-updateActions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.skd-updateAuto{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.skd-updateAuto .skd-switchControl{width:auto}
+.skd-updateHint{margin:0;color:var(--skd-muted);font-size:.75rem;line-height:1.5}
+.skd-updateFoot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:10px;border-top:1px solid var(--skd-line)}
+.skd-updateError{margin:0;color:var(--skd-error);font-size:.75rem}
+.skd-updatePickerActions{display:flex;align-items:center;gap:4px}
+.skd-updatePickerList{display:flex;flex-direction:column;gap:2px;margin:0;padding:0;list-style:none;max-block-size:212px;overflow:auto}
+.skd-updatePickerItem{display:flex;align-items:center;gap:8px;min-block-size:28px;font-size:.8125rem;line-height:1.5;cursor:pointer}
+.skd-updateCheckInput{flex:none;margin:0;inline-size:1rem;block-size:1rem;accent-color:var(--skd-accent);cursor:inherit}
 
 .skd-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:16px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-surface);overflow:hidden}
 .skd-overviewItem{display:flex;flex-direction:column;gap:2px;padding:12px 16px;border-inline-end:1px solid var(--skd-line)}
@@ -1080,6 +1114,7 @@ window.__ModuleLoader__.load({
 .skd-previewFooter>span:first-child{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 .skd-page :focus-visible,.skd-previewDialog :focus-visible{outline:2px solid var(--skd-accent);outline-offset:2px}
+.skd-page .skd-updatePanel:focus-visible{outline:none}
 .skd-page .skd-input:focus-visible,.skd-page .skd-select:focus-visible{outline-offset:1px}
 .skd-page .skd-menuItem:focus-visible,.skd-periodSkill:focus-visible,.skd-periodSort:focus-visible{outline-offset:-2px;border-radius:4px}
 
@@ -1142,9 +1177,10 @@ window.__ModuleLoader__.load({
 }
 @media (pointer:coarse){
   .skd-switchControl{min-block-size:44px}
-  .skd-updatesPickerItem{min-block-size:40px}
+  .skd-updatePickerItem{min-block-size:40px}
 }
 @media (max-width:700px){
+  .skd-updatePanel{position:fixed;left:12px;right:12px;bottom:12px;top:auto;width:auto;max-block-size:70dvh;overflow:auto}
   .skd-previewOverlay{padding:0}
   .skd-previewDialog{inline-size:calc(100vw - 16px);block-size:calc(100dvh - 16px);max-inline-size:calc(100vw - 16px);max-block-size:calc(100dvh - 16px);min-inline-size:0;resize:none;border-radius:var(--skd-radius)}
   .skd-windowTools .skd-sizeStep{display:none}
@@ -1164,7 +1200,7 @@ window.__ModuleLoader__.load({
   .skd-page *,.skd-previewDialog *{transition:none!important}
 }
 @media (forced-colors:active){
-  .skd-previewDialog,.skd-diagnosisRail,.skd-menu,.skd-updatesPicker{border-color:CanvasText;box-shadow:none}
+  .skd-previewDialog,.skd-diagnosisRail,.skd-menu,.skd-updatePanel{border-color:CanvasText;box-shadow:none}
   .skd-button[data-variant=primary]{background:ButtonFace;color:ButtonText;border-color:ButtonText}
   .skd-tab[aria-selected=true]{border-bottom:2px solid Highlight}
   .skd-segment[data-active]{border-color:Highlight;background:Highlight;color:HighlightText}
@@ -2057,13 +2093,14 @@ window.__ModuleLoader__.load({
     }
 
     /** Pure projection shared by the library controls: filtering never mutates the host snapshot. */
-    function filterSkills(skills, { runtime = 'all', query = '', status = 'all', sort = 'usage' } = {}) {
+    function filterSkills(skills, { runtime = 'all', query = '', status = 'all', sort = 'usage', updatable = null } = {}) {
       const needle = query.trim().toLocaleLowerCase();
       return skills.filter((skill) =>
         (runtime === 'all' || stringsOf(skill.runtimes).includes(runtime))
         && (needle === '' || [skill.name, skill.description, skill.source].some((value) => textOf(value).toLocaleLowerCase().includes(needle)))
         && (status === 'all' || (status === 'enabled' && skill.modelInvocable === true)
-          || (status === 'disabled' && skill.modelInvocable !== true) || (status === 'writable' && skill.writable === true))
+          || (status === 'disabled' && skill.modelInvocable !== true) || (status === 'writable' && skill.writable === true)
+          || (status === 'updatable' && updatable !== null && typeof updatable?.has === 'function' && updatable.has(textOf(skill.name))))
       ).sort((left, right) => {
         const alphabetical = textOf(left.name).localeCompare(textOf(right.name));
         if (sort === 'name') return alphabetical;
@@ -2618,8 +2655,8 @@ window.__ModuleLoader__.load({
           event.preventDefault();
           next.focus();
         };
-        document.addEventListener('keydown', onKeyDown, true);
-        return () => document.removeEventListener('keydown', onKeyDown, true);
+        window.addEventListener('keydown', onKeyDown, true);
+        return () => window.removeEventListener('keydown', onKeyDown, true);
       }, []);
       useEffect(() => {
         const force = refreshPreview.current;
@@ -3798,9 +3835,12 @@ window.__ModuleLoader__.load({
       const [usageView, setUsageView] = useState({ period: '7', start: '', end: '', query: '', selected: '', sort: { key: 'count', direction: 'descending' } });
       const [diagnosisView, setDiagnosisView] = useState({ bucket: 'cleanup', query: '', selected: [] });
       const [updatesDismissed, setUpdatesDismissed] = useState(false);
+      const [updatesOpen, setUpdatesOpen] = useState(false);
       const [autoUpdate, setAutoUpdate] = useState(() => readAutoUpdateSettings(storageOf()));
       const [pickerOpen, setPickerOpen] = useState(false);
-      const pickerRef = useRef(null);
+      const updateWrapRef = useRef(null);
+      const updateTriggerRef = useRef(null);
+      const updatePanelRef = useRef(null);
       const chooseRef = useRef(null);
       const autoAppliedSeq = useRef(0);
       const autoChecked = useRef(false);
@@ -3811,6 +3851,7 @@ window.__ModuleLoader__.load({
       const focusNextPage = useRef(false);
       const pageId = 'skd-' + useId().replace(/[^a-zA-Z0-9_-]/g, '');
       const libraryInputId = pageId + '-query';
+      const updatePanelId = pageId + '-updates';
 
       const scrollContainer = () => {
         const scroller = scrollRef.current;
@@ -3867,11 +3908,22 @@ window.__ModuleLoader__.load({
         return { active: true, threshold: percentileOf(counts, 0.75) };
       }, [skills]);
 
+      // Update availability rides on the same state read; an older Host sends no block.
+      const updatesSupported = objectOf(data?.updates) !== null;
+      const updates = useMemo(() => objectOf(data?.updates) ?? { checkedAt: 0, available: [] }, [data]);
+      const availableUpdates = useMemo(() => (
+        Array.isArray(updates.available) ? updates.available.map((entry) => objectOf(entry)).filter((entry) => entry !== null) : []
+      ), [updates]);
+      const availableNames = useMemo(
+        () => new Set(availableUpdates.map((entry) => textOf(entry.name))),
+        [availableUpdates],
+      );
+
       // The input stays urgent while the list catches up, so typing never waits on a filter pass.
       const deferredLibraryQuery = deferredValue(libraryQuery);
       const visible = useMemo(() => filterSkills(skills, {
-        runtime: agentFilter, query: deferredLibraryQuery, status: invocationFilter, sort,
-      }), [skills, agentFilter, deferredLibraryQuery, invocationFilter, sort]);
+        runtime: agentFilter, query: deferredLibraryQuery, status: invocationFilter, sort, updatable: availableNames,
+      }), [skills, agentFilter, deferredLibraryQuery, invocationFilter, sort, availableNames]);
       const hasFilters = agentFilter !== 'all' || libraryQuery !== '' || invocationFilter !== 'all';
       const resetFilters = () => {
         setAgentFilter('all'); setLibraryQuery(''); setInvocationFilter('all');
@@ -3889,22 +3941,11 @@ window.__ModuleLoader__.load({
 
       const invocable = useMemo(() => skills.filter((skill) => skill.modelInvocable === true).length, [skills]);
 
-      // Update availability rides on the same state read; an older Host sends no block.
-      const updatesSupported = objectOf(data?.updates) !== null;
-      const updates = useMemo(() => objectOf(data?.updates) ?? { checkedAt: 0, available: [] }, [data]);
-      const availableUpdates = useMemo(() => (
-        Array.isArray(updates.available) ? updates.available.map((entry) => objectOf(entry)).filter((entry) => entry !== null) : []
-      ), [updates]);
-      const availableNames = useMemo(
-        () => new Set(availableUpdates.map((entry) => textOf(entry.name))),
-        [availableUpdates],
-      );
       const updatesProgress = objectOf(snapshot.updatesProgress) ?? { done: 0, total: 0 };
       const updatesError = textOf(snapshot.updatesError);
       const updatingAll = objectOf(snapshot.updatingAll);
       const updatesCheckedAt = countOf(updates.checkedAt);
       const updatesCheckSeq = countOf(snapshot.updatesCheckSeq);
-      const showUpdatesBanner = availableUpdates.length > 0 && updatesDismissed === false;
       const availableNameList = useMemo(
         () => availableUpdates.map((entry) => textOf(entry.name)),
         [availableUpdates],
@@ -3916,10 +3957,113 @@ window.__ModuleLoader__.load({
       );
       const autoBusy = pending !== null || updatingAll !== null || snapshot.updatesChecking === true;
       const saveAutoUpdate = (next) => { setAutoUpdate(writeAutoUpdateSettings(storageOf(), next)); };
+      const updatesChecking = snapshot.updatesChecking === true;
+      const updatePillTone = availableUpdates.length > 0 && updatesDismissed === false ? 'accent'
+        : updatesError !== '' ? 'error' : 'ok';
+      // Keep the count visible while a check runs; the dot and the panel carry progress.
+      const updatePillLabel = availableUpdates.length > 0
+        ? t('updates.pill', { count: availableUpdates.length })
+        : updatesChecking ? t('updates.pillCheckingStart')
+          : updatesError !== ''
+            ? t('updates.pillInterrupted')
+            : updatesCheckedAt > 0 ? t('updates.pillLatest') : t('updates.pillNone');
       const closePicker = () => {
         setPickerOpen(false);
         chooseRef.current?.focus({ preventScroll: true });
       };
+      const closeUpdates = () => {
+        setUpdatesOpen(false);
+        setPickerOpen(false);
+        updateTriggerRef.current?.focus({ preventScroll: true });
+      };
+      const updateSummaryBody = el('div', { className: 'skd-updatePanelBody' },
+        el('div', { className: 'skd-updatePanelHead' },
+          el('span', { className: 'skd-updatePanelTitle' }, t('updates.panelTitle')),
+          el('span', { className: 'skd-updatePanelStatus' },
+            updatesChecking
+              ? t('updates.checking', { done: countOf(updatesProgress.done), total: countOf(updatesProgress.total) })
+              : updatesCheckedAt > 0 ? t('updates.lastChecked', { time: formatClock(updatesCheckedAt) }) : t('updates.never'))),
+        availableUpdates.length > 0
+          ? el('p', { className: 'skd-updateSummary' }, t('updates.panelAvailable', { count: availableUpdates.length }))
+          : el('p', { className: 'skd-updateSummary skd-updateSummaryQuiet' },
+            updatesCheckedAt > 0 ? t('updates.pillLatest') : t('updates.never')),
+        availableUpdates.length > 0 && el('div', { className: 'skd-updateActions' },
+          el(Button, {
+            type: 'button', className: 'skd-button', 'data-variant': 'primary', disabled: autoBusy,
+            onClick: () => { void applyUpdates(availableNameList); },
+          }, updatingAll !== null
+            ? t('updates.applying', { done: countOf(updatingAll.done), total: countOf(updatingAll.total) })
+            : t('updates.applyAll', { count: availableUpdates.length })),
+          commonNames.length > 0 && commonNames.length < availableUpdates.length && el(Button, {
+            type: 'button', className: 'skd-button', 'data-variant': 'outline', disabled: autoBusy,
+            onClick: () => { void applyUpdates(commonNames); },
+          }, t('updates.applyCommon', { count: commonNames.length })),
+          el(Button, {
+            type: 'button', className: 'skd-button', 'data-variant': 'text',
+            onClick: () => { setInvocationFilter('updatable'); closeUpdates(); },
+          }, t('updates.onlyAvailable'))),
+        el('div', { className: 'skd-updateAuto' },
+          el(Switch, {
+            checked: autoUpdate.enabled === true,
+            label: t('updates.autoToggle'),
+            hint: t('updates.autoHint'),
+            onChange: (checked) => {
+              saveAutoUpdate({ enabled: checked, names: autoUpdate.names });
+              if (checked && autoUpdate.names.length === 0) setPickerOpen(true);
+            },
+          }, t('updates.autoToggle')),
+          el(Button, {
+            type: 'button', className: 'skd-button', 'data-variant': 'text', ref: chooseRef,
+            onClick: () => { setPickerOpen(true); },
+          }, t('updates.autoChoose', { count: autoUpdate.names.length }))),
+        updatesError !== '' && el('p', { className: 'skd-updateError', title: updatesError },
+          t('updates.interrupted', { done: countOf(updatesProgress.done), total: countOf(updatesProgress.total) })),
+        el('div', { className: 'skd-updateFoot' },
+          el(Button, {
+            type: 'button', className: 'skd-button', 'data-variant': 'text',
+            disabled: updatesChecking || updatingAll !== null,
+            onClick: () => { void checkUpdates({ refresh: true }); },
+          }, t('updates.check')),
+          availableUpdates.length > 0 && updatesDismissed === false && el(Button, {
+            type: 'button', className: 'skd-button', 'data-variant': 'text',
+            onClick: () => { setUpdatesDismissed(true); closeUpdates(); },
+          }, t('updates.dismiss'))));
+      const updatePickerBody = el('div', { className: 'skd-updatePanelBody' },
+        el('div', { className: 'skd-updatePanelHead' },
+          el(Button, { type: 'button', className: 'skd-button', 'data-variant': 'text', onClick: closePicker },
+            t('updates.autoBack')),
+          el('span', { className: 'skd-updatePanelTitle' }, t('updates.autoPicker')),
+          el(Button, { type: 'button', className: 'skd-button', 'data-variant': 'text', onClick: closePicker },
+            t('updates.autoDone'))),
+        el('p', { className: 'skd-updateHint' }, t('updates.autoHint')),
+        el('div', { className: 'skd-updatePickerActions' },
+          el(Button, {
+            type: 'button', className: 'skd-button', 'data-variant': 'text',
+            onClick: () => saveAutoUpdate({ enabled: autoUpdate.enabled, names: [...autoUpdate.names, ...availableNameList] }),
+          }, t('updates.autoAll')),
+          el(Button, {
+            type: 'button', className: 'skd-button', 'data-variant': 'text',
+            onClick: () => saveAutoUpdate({ enabled: autoUpdate.enabled, names: [] }),
+          }, t('updates.autoNone'))),
+        availableUpdates.length === 0
+          ? el('p', { className: 'skd-updateHint' }, t('updates.autoEmpty'))
+          : el('ul', { className: 'skd-updatePickerList' }, availableUpdates.map((entry) => {
+            const name = textOf(entry.name);
+            return el('li', { key: name },
+              el('label', { className: 'skd-updatePickerItem' },
+                el(Input, {
+                  type: 'checkbox', className: 'skd-updateCheckInput',
+                  checked: autoUpdate.names.includes(name),
+                  onChange: (event) => saveAutoUpdate({
+                    enabled: autoUpdate.enabled,
+                    names: event.target.checked
+                      ? [...autoUpdate.names, name]
+                      : autoUpdate.names.filter((selected) => selected !== name),
+                  }),
+                }),
+                el('span', null, name)));
+          })));
+
 
       // One attempt per finished check. A settings edit is not a check, so ticking a name
       // never writes on its own, and a row that failed is not retried until the next check.
@@ -3931,10 +4075,39 @@ window.__ModuleLoader__.load({
         void applyUpdates(autoTargets, { auto: true });
       }, [updatesCheckSeq, autoUpdate, autoTargets, snapshot.updatesChecking, updatingAll, applyUpdates]);
 
-      // The picker is inline, not a modal: opening it moves focus into the panel so Escape reaches it.
+      // The picker lives inside the header popover; opening it moves focus into the list.
       useEffect(() => {
-        if (pickerOpen === true) pickerRef.current?.focus({ preventScroll: true });
+        if (pickerOpen === true) updatePanelRef.current?.querySelector('.skd-updatePickerItem input')?.focus?.({ preventScroll: true });
       }, [pickerOpen]);
+      useEffect(() => {
+        if (updatesOpen === false) return undefined;
+        const onPointer = (event) => {
+          if (updateWrapRef.current?.contains(event.target)) return;
+          setUpdatesOpen(false);
+          setPickerOpen(false);
+        };
+        document.addEventListener('pointerdown', onPointer, true);
+        return () => document.removeEventListener('pointerdown', onPointer, true);
+      }, [updatesOpen]);
+      useEffect(() => {
+        if (updatesOpen === false) return undefined;
+        updatePanelRef.current?.focus({ preventScroll: true });
+        return undefined;
+      }, [updatesOpen]);
+      // Escape belongs to the popover. Capture it before the host view can act on the same key.
+      useEffect(() => {
+        if (updatesOpen === false) return undefined;
+        const onKeyDown = (event) => {
+          if (event.key !== 'Escape') return;
+          event.preventDefault();
+          event.stopPropagation();
+          setUpdatesOpen(false);
+          setPickerOpen(false);
+          updateTriggerRef.current?.focus({ preventScroll: true });
+        };
+        document.addEventListener('keydown', onKeyDown, true);
+        return () => document.removeEventListener('keydown', onKeyDown, true);
+      }, [updatesOpen]);
 
       // One automatic check after the first successful load, when nothing was
       // checked in the last six hours and the Host tracks at least one skill.
@@ -4126,6 +4299,26 @@ window.__ModuleLoader__.load({
                 el('p', { className: 'skd-subtitle' }, t('panel.intro')),
               ),
               el('div', { className: 'skd-headerTools' },
+                tab === 'installed' && updatesSupported && el('div', { className: 'skd-updateWrap', ref: updateWrapRef },
+                  el(Button, {
+                    type: 'button', className: 'skd-updatePill', 'data-tone': updatePillTone === 'busy' ? undefined : updatePillTone,
+                    'aria-haspopup': 'dialog', 'aria-expanded': updatesOpen, 'aria-controls': updatePanelId,
+                    ref: updateTriggerRef,
+                    onClick: () => { if (updatesOpen === true) closeUpdates(); else setUpdatesOpen(true); },
+                    title: t('updates.panelTitle'),
+                  },
+                    el('span', {
+                      className: 'skd-updateDot',
+                      'data-tone': updatePillTone === 'accent' ? 'accent' : updatePillTone === 'error' ? 'error' : 'ok',
+                      'data-busy': updatesChecking ? '' : undefined,
+                      'aria-hidden': true,
+                    }),
+                    updatePillLabel),
+                  updatesOpen === true && el('div', {
+                    className: 'skd-updatePanel', role: 'dialog', 'aria-modal': false,
+                    'aria-label': t('updates.panelTitle'), id: updatePanelId, ref: updatePanelRef, tabIndex: -1,
+                    onKeyDown: (event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeUpdates(); } },
+                  }, pickerOpen === true ? updatePickerBody : updateSummaryBody)),
                 el('span', { className: 'skd-statusPill', 'data-tone': statusTone, role: 'status', title: statusLabel },
                   el('span', {
                     className: 'skd-statusDot',
@@ -4193,108 +4386,6 @@ window.__ModuleLoader__.load({
               'aria-labelledby': pageId + '-tab-' + tab,
               tabIndex: 0,
             },
-              tab === 'installed' && updatesSupported && el('div', {
-                className: 'skd-updatesBar',
-                'data-tone': showUpdatesBanner ? 'accent' : undefined,
-                'aria-busy': snapshot.updatesChecking === true ? true : undefined,
-              },
-                showUpdatesBanner && el('span', { className: 'skd-updatesText' },
-                  t('updates.available', { count: availableUpdates.length })),
-                showUpdatesBanner && el(Button, {
-                  type: 'button', className: 'skd-button', 'data-variant': 'primary',
-                  disabled: autoBusy,
-                  onClick: () => { void applyUpdates(availableNameList); },
-                }, updatingAll !== null
-                  ? t('updates.applying', { done: countOf(updatingAll.done), total: countOf(updatingAll.total) })
-                  : t('updates.applyAll', { count: availableUpdates.length })),
-                // Only offered when the used subset is a real subset: the count is the disclosure.
-                showUpdatesBanner && commonNames.length > 0 && commonNames.length < availableUpdates.length
-                  && el(Button, {
-                    type: 'button', className: 'skd-button', 'data-variant': 'outline',
-                    disabled: autoBusy,
-                    onClick: () => { void applyUpdates(commonNames); },
-                  }, t('updates.applyCommon', { count: commonNames.length })),
-                showUpdatesBanner && el(Button, {
-                  type: 'button', className: 'skd-button', 'data-variant': 'text',
-                  onClick: () => { setUpdatesDismissed(true); if (pickerOpen === true) closePicker(); },
-                }, t('updates.dismiss')),
-                el('span', {
-                  className: 'skd-updatesStatus',
-                  role: 'status',
-                  title: updatesError === '' ? undefined : updatesError,
-                },
-                  snapshot.updatesChecking === true
-                    ? t('updates.checking', { done: countOf(updatesProgress.done), total: countOf(updatesProgress.total) })
-                    : updatesError !== ''
-                      ? t('updates.interrupted', { done: countOf(updatesProgress.done), total: countOf(updatesProgress.total) })
-                      : updatesCheckedAt > 0 ? t('updates.lastChecked', { time: formatClock(updatesCheckedAt) })
-                        : t('updates.never')),
-                el('span', { className: 'skd-updatesAuto' },
-                  el(Switch, {
-                    checked: autoUpdate.enabled === true,
-                    label: t('updates.autoToggle'),
-                    hint: t('updates.autoHint'),
-                    onChange: (checked) => {
-                      saveAutoUpdate({ enabled: checked, names: autoUpdate.names });
-                      if (checked && autoUpdate.names.length === 0) setPickerOpen(true);
-                    },
-                  }, t('updates.autoToggle')),
-                  el(Button, {
-                    type: 'button', className: 'skd-button', 'data-variant': 'text', ref: chooseRef,
-                    'aria-expanded': pickerOpen === true,
-                    onClick: () => { if (pickerOpen === true) closePicker(); else setPickerOpen(true); },
-                  }, t('updates.autoChoose', { count: autoUpdate.names.length }))),
-                el(Button, {
-                  type: 'button', className: 'skd-button', 'data-variant': 'outline',
-                  disabled: snapshot.updatesChecking === true || updatingAll !== null,
-                  onClick: () => { void checkUpdates({ refresh: true }); },
-                }, t('updates.check')),
-              ),
-              tab === 'installed' && updatesSupported && pickerOpen === true && el('div', {
-                className: 'skd-updatesPicker',
-                role: 'group',
-                'aria-label': t('updates.autoPicker'),
-                ref: pickerRef,
-                tabIndex: -1,
-                onKeyDown: (event) => { if (event.key === 'Escape') { event.preventDefault(); closePicker(); } },
-              },
-                el('div', { className: 'skd-updatesPickerHead' },
-                  el('span', { className: 'skd-updatesText' }, t('updates.autoPicker')),
-                  el(Button, {
-                    type: 'button', className: 'skd-button', 'data-variant': 'text',
-                    onClick: () => saveAutoUpdate({
-                      enabled: autoUpdate.enabled,
-                      names: [...autoUpdate.names, ...availableNameList],
-                    }),
-                  }, t('updates.autoAll')),
-                  el(Button, {
-                    type: 'button', className: 'skd-button', 'data-variant': 'text',
-                    onClick: () => saveAutoUpdate({ enabled: autoUpdate.enabled, names: [] }),
-                  }, t('updates.autoNone')),
-                  el(Button, {
-                    type: 'button', className: 'skd-button', 'data-variant': 'outline',
-                    onClick: () => closePicker(),
-                  }, t('updates.autoDone'))),
-                el('p', { className: 'skd-updatesPickerHint' }, t('updates.autoHint')),
-                availableUpdates.length === 0
-                  ? el('p', { className: 'skd-updatesPickerEmpty' }, t('updates.autoEmpty'))
-                  : el('ul', { className: 'skd-updatesPickerList' }, availableUpdates.map((entry) => {
-                    const name = textOf(entry.name);
-                    return el('li', { key: name },
-                      el('label', { className: 'skd-updatesPickerItem' },
-                        el(Input, {
-                          type: 'checkbox', className: 'skd-updatesCheckInput',
-                          checked: autoUpdate.names.includes(name),
-                          onChange: (event) => saveAutoUpdate({
-                            enabled: autoUpdate.enabled,
-                            names: event.target.checked
-                              ? [...autoUpdate.names, name]
-                              : autoUpdate.names.filter((selected) => selected !== name),
-                          }),
-                        }),
-                        el('span', null, name)));
-                  })),
-              ),
               tab === 'installed' && el('search', { className: 'skd-toolbar skd-filterBar', 'aria-label': t('installed.search') },
                 el('div', { className: 'skd-searchField' },
                   el('label', { className: 'skd-fieldLabel', htmlFor: libraryInputId }, t('installed.search')),
@@ -4307,7 +4398,7 @@ window.__ModuleLoader__.load({
                     }))),
                 runtimes.length > 0 && el(SelectField, { label: t('filter.label'), value: agentFilter, onChange: setAgentFilter, options: filters }),
                 el(SelectField, { label: t('installed.status'), value: invocationFilter, onChange: setInvocationFilter,
-                  options: ['all', 'enabled', 'disabled', 'writable'].map((id) => ({ id, label: t('installed.' + id) })) }),
+                  options: ['all', 'enabled', 'disabled', 'writable'].concat(updatesSupported ? ['updatable'] : []).map((id) => ({ id, label: t('installed.' + id) })) }),
                 el(SelectField, { label: t('installed.sort'), value: sort, onChange: setSort,
                   options: ['usage', 'name', 'recent'].map((id) => ({ id, label: t('installed.sort.' + id) })) })),
               tab === 'installed' && el('div', { className: 'skd-resultLine skd-libraryResults' },

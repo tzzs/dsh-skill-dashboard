@@ -95,15 +95,18 @@ then reloading the page.
   across the skills of one repo; an archive source caches its download per URL for the same ten
   minutes. One chunk may take a cold tree warm plus four bounded reads, so it alone gets a 25 s
   request fence while every other route stays at 10 s; a chunk that still fails restarts the walk
-  once from the first skill without a record, and a second failure leaves `检查中断` in the bar
-  with the verdicts already on disk still shown. The installed tab gains an “N updates available”
-  banner with Update all (N), which applies the whole available set sequentially and shows
-  row-by-row progress, a Common only (M) button for the available skills you have actually
-  called, and Later. An Auto-update switch stores `{ enabled, names }` in `localStorage`: choose
-  the skills in the inline picker (a checkbox list with select all, clear, and done, closed by
-  Escape) and each finished check applies just those, with its own receipt; nothing else is ever
-  touched automatically. Checking never writes a skill tree or provenance; an older Host without
-  the action simply shows no update affordance.
+  once from the first skill without a record, and a second failure leaves `Check interrupted`
+  with the verdicts already on disk still shown. The installed tab keeps the result in the page
+  header: a compact “N updates available” pill (muted after Later, “Up to date” when nothing is
+  found, “Checking…” before the first result) opens a small popover with Update all (N), Common
+  only (M) for the available skills you have actually called, Show updates only (sets the status
+  filter to Update available), Check now, Later, and the Auto-update switch with Choose (N). The
+  apply loop stays sequential with row-by-row progress and one receipt. The Auto-update choice
+  stores `{ enabled, names }` in `localStorage`; the checkbox picker (select all, clear, done) lives
+  inside the same popover, and each finished check applies just the checked skills, with its own
+  receipt; nothing else is ever touched automatically. The status filter gains Update available
+  so the same rows can be isolated in the list. Checking never writes a skill tree or provenance;
+  an older Host without the action simply shows no update affordance.
 - The installed list paints 15 rows per animation frame with `aria-busy` until it is complete, and
   each row is memoized, so a large skill library never renders in one blocking task. The search
   input updates urgently while the filtered list reads a deferred value.

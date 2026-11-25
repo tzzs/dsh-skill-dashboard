@@ -36,6 +36,13 @@ test('library combines text, agent and permission filters without mutating its s
   assert.deepEqual(names(skills), ['beta', 'Alpha', 'gamma']);
 });
 
+test('library can filter to skills with an available update', () => {
+  const updatable = new Set(['beta']);
+  assert.deepEqual(names(filterSkills(skills, { status: 'updatable', updatable })), ['beta']);
+  assert.deepEqual(names(filterSkills(skills, { status: 'updatable', updatable: new Set() })), []);
+  assert.deepEqual(names(filterSkills(skills, { status: 'updatable' })), [], 'no set means no update rows');
+});
+
 test('library sorting handles usage, recency and missing counters', () => {
   assert.deepEqual(names(filterSkills(skills)), ['beta', 'Alpha', 'gamma']);
   assert.deepEqual(names(filterSkills(skills, { sort: 'name' })), ['Alpha', 'beta', 'gamma']);
