@@ -110,6 +110,9 @@ then reloading the page.
 - The installed list paints 15 rows per animation frame with `aria-busy` until it is complete, and
   each row is memoized, so a large skill library never renders in one blocking task. The search
   input updates urgently while the filtered list reads a deferred value.
+  The diagnosis queue instead mounts once, memoizes its rows, and uses `content-visibility` for
+  offscreen rows; its row callbacks stay stable, so a snapshot tick never hands every row new
+  props, and scrolling never writes React state.
 - All 25 Host error codes are localized in `locale/en.json` and `locale/zh.json`, and
   user-facing copy avoids internal Host terminology.
 
