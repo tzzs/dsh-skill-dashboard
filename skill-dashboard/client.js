@@ -203,6 +203,8 @@ window.__ModuleLoader__.load({
       'discover.githubSubmit': '安装',
       'discover.searchLabel': '搜索技能',
       'discover.popular': '浏览热门技能',
+      'discover.popularScope': '{source} · 热门技能',
+      'discover.popularResults': '{count} 个热门技能',
       'discover.results': '{count} 个搜索结果',
       'discover.queryScope': '{source} · 关键词：{query}',
       'discover.idle.title': '从技能来源开始浏览',
@@ -520,6 +522,8 @@ window.__ModuleLoader__.load({
       'discover.githubSubmit': 'Install',
       'discover.searchLabel': 'Search skills',
       'discover.popular': 'Browse popular skills',
+      'discover.popularScope': '{source} · Popular skills',
+      'discover.popularResults': '{count} popular skills',
       'discover.results': '{count} search results',
       'discover.queryScope': '{source} · “{query}”',
       'discover.idle.title': 'Browse a skill source',
@@ -3071,7 +3075,7 @@ window.__ModuleLoader__.load({
      * (`name`, the kebab slug) always appears as the mono sub-label, so a card can never
      * hide what would actually be installed.
      */
-    function DiscoverCard({ item, t, installing, writesLocked, onInstall, onPreview }) {
+    function DiscoverCardBase({ item, t, installing, writesLocked, onInstall, onPreview }) {
       const slug = textOf(item?.name);
       const heading = textOf(item?.title) !== '' ? textOf(item.title) : slug !== '' ? slug : '—';
       const description = textOf(item?.description);
@@ -3121,6 +3125,7 @@ window.__ModuleLoader__.load({
         ),
       );
     }
+    const DiscoverCard = memo(DiscoverCardBase);
 
     /** Discover: pick a source, search it, install a result; every state is explicit. */
     function DiscoverTab(props) {
@@ -3138,6 +3143,9 @@ window.__ModuleLoader__.load({
       const searchId = 'skd-discover-query-' + useId();
       const githubId = 'skd-discover-github-' + useId();
       const [githubDraft, setGithubDraft] = useState('');
+      const installOne = useCallback((entry) => onInstall(entry, discover.source), [onInstall, discover.source]);
+      const previewOne = useCallback((entry) => onPreview({ ...entry, source: discover.source }), [onPreview, discover.source]);
+      const popular = submittedQuery === '';
       const submitGithub = () => {
         const ref = githubDraft.trim();
         if (ref === '' || pending !== null) return;
@@ -3196,8 +3204,8 @@ window.__ModuleLoader__.load({
             t,
             installing: installingName !== '' && textOf(item?.name) === installingName,
             writesLocked: pending !== null,
-            onInstall: (entry) => onInstall(entry, discover.source),
-            onPreview: (entry) => onPreview({ ...entry, source: discover.source }),
+            onInstall: installOne,
+            onPreview: previewOne,
           });
         }));
       } else if (!sources.some((source) => !source.disabled)) {
@@ -3280,10 +3288,11 @@ window.__ModuleLoader__.load({
           }, t('discover.githubSubmit')),
         ),
         discover.status === 'ready' && el('div', { className: 'skd-resultLine skd-discoverResults', role: 'status' },
-          el('span', null, resultScope),
-          el('span', null, t('discover.results', { count: items.length }))),
-        // A Host hint about how these results were chosen (an empty query falls back to a listing).
-        discover.status === 'ready' && note !== '' && el('p', { className: 'skd-noteLine', role: 'note' }, note),
+          el('span', null, popular ? t('discover.popularScope', { source: sourceLabel }) : resultScope),
+          el('span', null, t(popular ? 'discover.popularResults' : 'discover.results', { count: items.length }))),
+        // A Host hint about how these results were chosen (an empty query falls back to a listing);
+        // the popular header already says that, so keep the note for actual searches only.
+        discover.status === 'ready' && note !== '' && popular === false && el('p', { className: 'skd-noteLine', role: 'note' }, note),
         body,
       );
     }
@@ -4145,6 +4154,8 @@ window.__ModuleLoader__.load({
       // Stable identities: a snapshot tick must not hand every memoized diagnosis row new verbs.
       const cleanupDiagnosis = useCallback((mode, targets) => cleanupSkills(mode, targets), [cleanupSkills]);
       const keepDiagnosis = useCallback((entries) => keepSkill(entries), [keepSkill]);
+      const installDiscover = useCallback((item, source) => installSkill(item, source), [installSkill]);
+      const retryDiscover = useCallback(() => { void runDiscover(discover.source, textOf(discover.query)); }, [discover.source, discover.query, runDiscover]);
       const askRemove = useCallback((skill) => { setConfirmingPath(textOf(skill?.path)); }, []);
       const cancelRemove = useCallback(() => { setConfirmingPath(''); }, []);
       const confirmRemove = useCallback((skill, next) => {
@@ -4437,9 +4448,9 @@ window.__ModuleLoader__.load({
                 pending,
                 onDraft: setQueryDraft,
                 onSearch: search,
-                onRetry: () => { void runDiscover(discover.source, textOf(discover.query)); },
+                onRetry: retryDiscover,
                 onSelectSource: changeDiscoverSource,
-                onInstall: (item, source) => installSkill(item, source),
+                onInstall: installDiscover,
                 onPreview: setPreviewTarget,
               }),
               tab === 'usage' && el(UsageTab, { data, t, view: usageView, setView: setUsageView }),

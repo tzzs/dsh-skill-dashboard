@@ -431,9 +431,13 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
   Agent`), and stays away when they all do.
 - Discover tab: source selector (skills.sh / 腾讯), search input with Enter-to-search,
   result cards with install button and installed state, plus loading / empty / error states.
-  Below the search form, one direct-install field (从 GitHub 安装) accepts the same reference
-  grammar and posts `install` with no `source`; a repository is not searchable, so it is not a
-  third source in the selector.
+  Result cards are memoized and receive stable install/preview verbs, so typing a query or a
+  snapshot tick (an update-check chunk, for example) does not re-render them. An empty query is
+  the source's popular listing and reads `{source} · 热门技能` / `{count} 个热门技能`; the Host's
+  `suggestions` note is suppressed for it because the header already says the same thing. Search
+  results keep the existing scope line, result count and note. Below the search form, one
+  direct-install field (从 GitHub 安装) accepts the same reference grammar and posts `install`
+  with no `source`; a repository is not searchable, so it is not a third source in the selector.
 - Usage tab: summary cards (总调用, 活跃技能, 今日调用), a 14-day bar chart, and the recent
   activity list. The chart is plain divs sized from the data — no chart library.
 - The skill preview is one in-page overlay, never a native `<dialog>` or top layer: `createPortal`

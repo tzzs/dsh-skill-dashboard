@@ -316,5 +316,7 @@
   "updates.panelAvailable": "{count} skills can be updated",
   "updates.onlyAvailable": "Show updates only",
   "updates.autoBack": "Back",
-  "updates.pillCheckingStart": "Checking…"
+  "updates.pillCheckingStart": "Checking…",
+  "discover.popularScope": "{source} · Popular skills",
+  "discover.popularResults": "{count} popular skills"
 }

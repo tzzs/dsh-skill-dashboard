@@ -316,5 +316,7 @@
   "updates.panelAvailable": "{count} 个技能可更新",
   "updates.onlyAvailable": "只看可更新",
   "updates.autoBack": "返回",
-  "updates.pillCheckingStart": "检查中…"
+  "updates.pillCheckingStart": "检查中…",
+  "discover.popularScope": "{source} · 热门技能",
+  "discover.popularResults": "{count} 个热门技能"
 }
