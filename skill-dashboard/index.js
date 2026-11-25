@@ -16,6 +16,7 @@
 import { copyFile, lstat, mkdir, open, opendir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { gunzipSync } from 'node:zlib'
 
 /** Cordis plugin name. */
 export const name = 'skill-dashboard'
@@ -147,6 +148,12 @@ async function localPreviewFiles(root, skillPath) {
 const MAX_BODY_BYTES = 1024 * 1024
 /** One outbound registry response may not exceed this. */
 const MAX_OUTBOUND_BYTES = 4 * 1024 * 1024
+/** One skill archive may not exceed this, declared or streamed. */
+const MAX_ARCHIVE_BYTES = 8 * 1024 * 1024
+/** One archive may decompress to at most this much tar. */
+const MAX_ARCHIVE_OUTPUT_BYTES = 32 * 1024 * 1024
+/** One archive is scanned for at most this many entries. */
+const MAX_ARCHIVE_ENTRIES = 200
 /** Every outbound registry request is bounded, including the concurrency fan-out. */
 const OUTBOUND_TIMEOUT_MS = 10_000
 /** The merged state is reused for this long so a burst of UI fetches scans once. */
@@ -367,7 +374,7 @@ const FLAT_SKILL_MESSAGE = 'a flat skill file cannot be updated in place; remove
 
 /**
  * @typedef {object} Locator
- * @property {'tencent'|'skills-sh'} source
+ * @property {'tencent'|'skills-sh'|'well-known'} source
  * @property {string} ref - canonical stored form.
  * @property {string} name - default skill-name hint implied by the reference.
  * @property {string} slug - tencent slug; '' for git.
@@ -375,6 +382,7 @@ const FLAT_SKILL_MESSAGE = 'a flat skill file cannot be updated in place; remove
  * @property {string} repo - '' for tencent.
  * @property {string} [rev] - branch, tag, or 40-hex commit; absent means the repository default.
  * @property {string} path - skill directory inside the repository; '' when the repository root is the skill.
+ * @property {string} [url] - the archive URL a `well-known` reference is; absent for every other source.
  */
 
 /** Whether one revision names a commit rather than a moving branch or tag. */
@@ -385,13 +393,53 @@ function isCommitRev(value) {
 const badRef = (message) => ({ ok: false, code: 'bad-request', message })
 
 /**
+ * Whether one hostname may serve a skill archive.
+ *
+ * A well-known source URL arrives from the lock file, so it is fetched without
+ * a user gesture. A single-label name, a loopback name, or an address literal
+ * is a private network target in disguise; requiring a dotted public name keeps
+ * a stored reference from turning into a probe of the local network.
+ *
+ * @param {string} hostname - `URL.hostname`.
+ * @returns {boolean} true when the host is a public DNS name.
+ */
+function isPublicArchiveHost(hostname) {
+  const host = hostname.toLowerCase()
+  if (host === 'localhost' || host.endsWith('.localhost')) return false
+  if (!host.includes('.') || host.startsWith('[')) return false
+  return !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)
+}
+
+/**
+ * The canonical archive reference one `https://` URL names, or null.
+ *
+ * A well-known registry publishes each skill as one gzipped tarball, so the URL
+ * is both the reference and the fetch address and needs no decomposition.
+ *
+ * @param {string} text - trimmed, control-character-free reference text.
+ * @returns {string | null} the URL to store and fetch, or null when it is not one.
+ */
+function archiveRefOf(text) {
+  if (!/^https:\/\//i.test(text)) return null
+  let url
+  try {
+    url = new URL(text)
+  } catch {
+    return null
+  }
+  if (!url.pathname.toLowerCase().endsWith('.tar.gz')) return null
+  return isPublicArchiveHost(url.hostname) ? text : null
+}
+
+/**
  * Parse one reference into the locator every adapter takes.
  *
- * Tencent references are a single kebab-case slug. Everything else is a
- * GitHub reference: `owner/repo[@rev][#path]`, `owner/repo/a/b`, or a URL with
- * an optional scheme, `www.`, or bare `github.com/` prefix. The canonical `ref`
- * is what provenance stores, so `parseRef(parseRef(x).value.ref)` must be a
- * fixed point: a URL and its bare form have to land on the same string.
+ * Tencent references are a single kebab-case slug. A public `https://….tar.gz`
+ * URL is a well-known registry archive and is its own locator. Everything else
+ * is a GitHub reference: `owner/repo[@rev][#path]`, `owner/repo/a/b`, or a URL
+ * with an optional scheme, `www.`, or bare `github.com/` prefix. The canonical
+ * `ref` is what provenance stores, so `parseRef(parseRef(x).value.ref)` must be
+ * a fixed point: a URL and its bare form have to land on the same string.
  *
  * @param {unknown} input - reference from a request body or a stored record.
  * @returns {{ ok: true, value: Locator } | { ok: false, code: 'bad-request', message: string }} outcome.
@@ -403,6 +451,14 @@ export function parseRef(input) {
   if (text.length > REF_MAX_LENGTH) return badRef(`a reference must be at most ${REF_MAX_LENGTH} characters`)
   if (/[\u0000-\u001f\u007f]/.test(text)) return badRef('a reference must not contain control characters')
   if (text.includes('\\')) return badRef('a reference must use forward slashes')
+
+  const archive = archiveRefOf(text)
+  if (archive !== null) {
+    return {
+      ok: true,
+      value: { source: 'well-known', ref: archive, url: archive, name: '', slug: '', owner: '', repo: '', path: '' },
+    }
+  }
 
   let body = text
   let fromUrl = false
@@ -781,13 +837,15 @@ export function sanitizeSkillRelativePath(value) {
  *
  * The lock records every skill the CLI installed, but reads it by name: a
  * same-named skill can live in another root, so a mapping is trusted only when
- * the catalog's directory is exactly `<root>/<name>` and the recorded
- * `skillPath` agrees about the folder. Anything ambiguous answers `null`.
+ * the catalog's directory is exactly `<root>/<name>`. The lock key is the
+ * installed name, so the recorded folder may differ from it: a repository
+ * directory is only where the skill came from, not what it is called. A
+ * well-known entry carries no folder at all, only the archive it was read from.
  *
  * @param {{ name?: string, dir?: string | null }} skill - catalog entry.
  * @param {unknown} lock - parsed `.skill-lock.json`.
  * @param {string} root - the user agents skill root.
- * @returns {{ source: 'github', ref: string, version: null, installedAt: number | null } | null} installed shape.
+ * @returns {{ source: 'github' | 'well-known', ref: string, version: null, installedAt: number | null } | null} installed shape.
  */
 export function lockProvenanceOf(skill, lock, root) {
   const name = typeof skill?.name === 'string' ? skill.name : ''
@@ -797,6 +855,13 @@ export function lockProvenanceOf(skill, lock, root) {
   const entries = isRecord(lock) && isRecord(lock.skills) ? lock.skills : {}
   const entry = Object.hasOwn(entries, name) ? entries[name] : undefined
   if (!isRecord(entry)) return null
+  const updatedAt = Date.parse(entry.updatedAt)
+  const installedAt = Number.isFinite(updatedAt) ? updatedAt : null
+  if (entry.sourceType === 'well-known') {
+    const parsed = parseRef(typeof entry.sourceUrl === 'string' ? entry.sourceUrl : '')
+    if (parsed.ok !== true || parsed.value.source !== 'well-known') return null
+    return { source: 'well-known', ref: parsed.value.ref, version: null, installedAt }
+  }
   if (entry.sourceType !== undefined && entry.sourceType !== 'github') return null
   const source = typeof entry.source === 'string' ? entry.source : ''
   const segments = source.split('/')
@@ -808,15 +873,13 @@ export function lockProvenanceOf(skill, lock, root) {
   const pathSegments = entry.skillPath.replace(/\\/g, '/').replace(/^\.\//, '').split('/')
   if (pathSegments[pathSegments.length - 1].toLowerCase() !== 'skill.md') return null
   const folderSegments = pathSegments.slice(0, -1)
-  if (folderSegments.length > 0 && folderSegments[folderSegments.length - 1].toLowerCase() !== name.toLowerCase()) return null
   if (folderSegments.some((part) => part.length === 0 || part === '.' || part === '..')) return null
   const folder = folderSegments.join('/')
-  const updatedAt = Date.parse(entry.updatedAt)
   return {
     source: 'github',
     ref: folder.length === 0 ? `${owner}/${repo}` : `${owner}/${repo}#${folder}`,
     version: null,
-    installedAt: Number.isFinite(updatedAt) ? updatedAt : null,
+    installedAt,
   }
 }
 
@@ -2058,6 +2121,61 @@ async function httpText(url, options = {}) {
   }
 }
 
+/**
+ * One bounded outbound request returning raw bytes, for a whole skill archive.
+ * @param {string} url - absolute URL.
+ * @param {{ signal?: AbortSignal }} [options] - request options.
+ * @returns {Promise<{ ok: true, bytes: Buffer } | { ok: false, code: string, message: string, status?: number }>} outcome.
+ */
+async function httpBytes(url, options = {}) {
+  const fenced = fenceSignal(options.signal, OUTBOUND_TIMEOUT_MS)
+  const tooLarge = () =>
+    failure('source-unavailable', `${hostOf(url)} answered a payload larger than ${MAX_ARCHIVE_BYTES} bytes`)
+  let reader
+  try {
+    const response = await fetch(url, {
+      signal: fenced.signal,
+      redirect: 'follow',
+      headers: {
+        'user-agent': USER_AGENT,
+        accept: 'application/gzip, application/octet-stream',
+      },
+    })
+    if (!response.ok) {
+      const status = response.status
+      const code = status === 429 ? 'source-rate-limited' : 'source-unavailable'
+      return { ok: false, code, message: `${hostOf(url)} answered HTTP ${status}`, status }
+    }
+    const declared = Number(response.headers.get('content-length') ?? '0')
+    if (Number.isFinite(declared) && declared > MAX_ARCHIVE_BYTES) return tooLarge()
+    reader = response.body?.getReader()
+    if (!reader) return { ok: true, bytes: Buffer.alloc(0) }
+    const chunks = []
+    let received = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      received += value.length
+      if (received > MAX_ARCHIVE_BYTES) return tooLarge()
+      chunks.push(Buffer.from(value))
+    }
+    return { ok: true, bytes: Buffer.concat(chunks, received) }
+  } catch (error) {
+    const message =
+      fenced.signal.aborted === true
+        ? `${hostOf(url)} did not answer within ${OUTBOUND_TIMEOUT_MS / 1000}s`
+        : `${hostOf(url)} could not be reached: ${errorMessage(error)}`
+    return failure('source-unavailable', message)
+  } finally {
+    try {
+      await reader?.cancel()
+    } catch {
+      // A stream that already ended needs no cancellation.
+    }
+    fenced.dispose()
+  }
+}
+
 /** Fetch only a bounded byte prefix of one selected remote file, then cancel. */
 async function httpPreviewFile(url, path, knownSize, signal) {
   const fenced = fenceSignal(signal, OUTBOUND_TIMEOUT_MS)
@@ -2165,6 +2283,91 @@ function boundFileSet(files) {
     kept.push(file)
   }
   return kept
+}
+
+const TAR_BLOCK_BYTES = 512
+
+/** Whether one tar block is the zero block that ends the archive. */
+function isTarZeroBlock(block) {
+  for (const byte of block) if (byte !== 0) return false
+  return true
+}
+
+/** Read one NUL-terminated field of a tar header as text. */
+function tarField(header, from, to) {
+  const slice = header.subarray(from, to)
+  const end = slice.indexOf(0)
+  return slice.subarray(0, end < 0 ? slice.length : end).toString('utf8')
+}
+
+/**
+ * The archived path of one tar entry: a ustar prefix plus the short name.
+ *
+ * The prefix is only honoured for a real ustar header. GNU tar stores atime and
+ * ctime in the same bytes, so reading a prefix from it would invent directories.
+ */
+function tarEntryPath(header) {
+  const name = tarField(header, 0, 100)
+  if (header.subarray(257, 262).toString('latin1') !== 'ustar') return name
+  const prefix = tarField(header, 345, 500)
+  return prefix.length > 0 ? `${prefix}/${name}` : name
+}
+
+/**
+ * The byte size in one tar header, or -1 when it is not octal.
+ * A base-256 size is refused rather than guessed: no skill file needs one.
+ */
+function tarEntrySize(header) {
+  const raw = header.subarray(124, 136).toString('latin1').replace(/\0.*$/, '').trim()
+  if (raw.length === 0) return 0
+  return /^[0-7]+$/.test(raw) ? Number.parseInt(raw, 8) : -1
+}
+
+/**
+ * Read the textual skill files out of one decompressed tar archive.
+ *
+ * Only regular-file entries are written: a directory or a link is not text, and
+ * a link's target is a path escape a name sanitizer cannot see. PAX and GNU
+ * extension headers describe the next entry, so they are skipped, and a total
+ * text budget stops a decompression bomb from filling memory.
+ *
+ * @param {Buffer} buffer - the decompressed tar bytes.
+ * @returns {{ ok: true, entries: { path: string, text: string }[], truncated: boolean } | { ok: false, code: string, message: string }} outcome.
+ */
+export function readTarEntries(buffer) {
+  if (!Buffer.isBuffer(buffer)) return failure('source-unavailable', 'the archive is not a buffer')
+  const entries = []
+  let offset = 0
+  let scanned = 0
+  let textBytes = 0
+  let truncated = false
+  while (offset + TAR_BLOCK_BYTES <= buffer.length) {
+    const header = buffer.subarray(offset, offset + TAR_BLOCK_BYTES)
+    if (isTarZeroBlock(header)) break
+    const size = tarEntrySize(header)
+    if (size < 0) return failure('source-unavailable', 'the archive has a malformed entry header')
+    const start = offset + TAR_BLOCK_BYTES
+    const end = start + size
+    if (end > buffer.length) return failure('source-unavailable', 'the archive is truncated')
+    offset = start + Math.ceil(size / TAR_BLOCK_BYTES) * TAR_BLOCK_BYTES
+    scanned += 1
+    if (scanned > MAX_ARCHIVE_ENTRIES) {
+      truncated = true
+      break
+    }
+    const type = String.fromCharCode(header[156])
+    if (type !== '0' && type !== '\u0000') continue
+    const relative = sanitizeSkillRelativePath(tarEntryPath(header))
+    if (relative === null || !isTextualSkillFile(relative)) continue
+    if (textBytes + size > MAX_INSTALL_BYTES) {
+      truncated = true
+      continue
+    }
+    textBytes += size
+    entries.push({ path: relative, text: buffer.subarray(start, end).toString('utf8') })
+  }
+  entries.sort((left, right) => skillFileOrder(left.path) - skillFileOrder(right.path) || compareNames(left.path, right.path))
+  return { ok: true, entries, truncated }
 }
 
 // ---------------------------------------------------------------------------
@@ -2611,6 +2814,47 @@ function createSources() {
     },
   }
 
+  /**
+   * A well-known registry: one skill per gzipped tarball, at a recorded URL.
+   *
+   * There is no listing to search and no revision to resolve, so this adapter is
+   * only a locator for a stored reference; Discover never offers it.
+   */
+  const wellKnown = {
+    id: 'well-known',
+    title: 'Well-known',
+
+    async fetch(locator, signal, hints = {}) {
+      const url = locator.url
+      const cacheKey = `well-known:${url}`
+      const cached = hints.refresh === true ? undefined : payloadCache.get(cacheKey)
+      if (cached !== undefined) return cached
+      const download = await httpBytes(url, { signal })
+      if (download.ok !== true) return download
+      let tar
+      try {
+        tar = gunzipSync(download.bytes, { maxOutputLength: MAX_ARCHIVE_OUTPUT_BYTES })
+      } catch (error) {
+        return failure('source-unavailable', `${hostOf(url)} answered an archive that could not be unpacked: ${errorMessage(error)}`)
+      }
+      const parsed = readTarEntries(tar)
+      if (parsed.ok !== true) return parsed
+      const files = boundFileSet(parsed.entries)
+      if (!files.some((file) => file.path.toLowerCase() === 'skill.md')) {
+        return failure('source-unavailable', 'this skill did not provide a SKILL.md')
+      }
+      const result = {
+        ok: true,
+        files,
+        version: null,
+        commit: null,
+        truncatedFiles: parsed.truncated === true || parsed.entries.length > files.length,
+      }
+      payloadCache.set(cacheKey, result)
+      return result
+    },
+  }
+
   /** Preview metadata and content have separate short caches; unopened files are never fetched. */
   const previewSource = async (sourceId, locator, signal, hints = {}) => {
     const key = `${sourceId}:${locator.ref}#${hints.name ?? ''}`
@@ -2708,7 +2952,7 @@ function createSources() {
   }
   tencent.preview = (locator, signal, hints) => previewSource('tencent', locator, signal, hints)
   skillsSh.preview = (locator, signal, hints) => previewSource('skills-sh', locator, signal, hints)
-  return { 'skills-sh': skillsSh, tencent }
+  return { 'skills-sh': skillsSh, tencent, 'well-known': wellKnown }
 }
 
 /** Order one file set so SKILL.md is fetched (and therefore capped) first. */
@@ -3296,7 +3540,9 @@ export function apply(ctx) {
         usage: summarizeUsage(usageState, now),
         diagnosis: diagnoseSkills(merged, usageState, { now, since: usageState.since, presence }),
         updates: describeUpdates(updatesState, merged),
-        sources: Object.values(sources).map((source) => ({
+        // Discover offers a source only when it can search; an archive locator
+        // is followed from a recorded reference and never browsed.
+        sources: Object.values(sources).filter((source) => typeof source.search === 'function').map((source) => ({
           id: source.id,
           title: source.title,
           status: 'ready',
@@ -4249,7 +4495,7 @@ export function apply(ctx) {
   /** `discover`: proxy one registry search through this Host. */
   const discover = async (body, signal) => {
     const source = SOURCES_LOOKUP(body.source)
-    if (source === undefined) {
+    if (source === undefined || typeof source.search !== 'function') {
       return { status: 400, body: failure('unknown-source', `unknown source "${String(body.source)}"`) }
     }
     const query = typeof body.query === 'string' ? body.query.trim() : ''
@@ -4316,7 +4562,9 @@ export function apply(ctx) {
         version: skill.installed?.version ?? null, readonly: !skill.writable, agents: skill.agents, runtimes: skill.runtimes,
       }, ...(body.fileOnly === true ? {} : listing), file } }
     }
-    if (typeof body.source !== 'string' || !Object.hasOwn(sources, body.source)) return fail(400, 'bad-request', 'source must be tencent or skills-sh')
+    if (typeof body.source !== 'string' || typeof sources[body.source]?.preview !== 'function') {
+      return fail(400, 'bad-request', 'source must be tencent or skills-sh')
+    }
     const parsed = parseRef(body.ref)
     if (parsed.ok !== true) return fail(400, parsed.code, parsed.message)
     const locator = parsed.value

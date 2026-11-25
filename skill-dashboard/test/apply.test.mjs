@@ -13,6 +13,8 @@ import { mkdir, mkdtemp, readdir, readFile, rename as fsRename, rm, stat, symlin
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { gzipSync } from 'node:zlib'
+import { tarArchive } from './tar-fixture.mjs'
 
 const { apply, moveStagedTree, lockProvenanceOf, changedSkillPaths, describeUpdates } = await import('../index.js')
 
@@ -220,7 +222,7 @@ await check('GET state answers the CONTRACT §4 shape from disk', async () => {
   assert.deepEqual(state.sources.map((source) => [source.id, source.status]), [
     ['skills-sh', 'ready'],
     ['tencent', 'ready'],
-  ])
+  ], 'an archive locator is followed from a reference and never browsed')
 })
 
 await check('a corrupt store is ignored instead of breaking the route', () => {
@@ -402,13 +404,15 @@ await check('POST action refresh bypasses the cache', async () => {
 })
 
 await check('POST discover names an unknown source instead of throwing', async () => {
-  const response = await call(first.routes.get('/skill-dashboard/discover'), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ source: 'nope', query: 'x' }),
-  })
-  assert.equal(response.status, 400)
-  assert.equal(response.body.code, 'unknown-source')
+  for (const source of ['nope', 'well-known']) {
+    const response = await call(first.routes.get('/skill-dashboard/discover'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ source, query: 'x' }),
+    })
+    assert.equal(response.status, 400, source)
+    assert.equal(response.body.code, 'unknown-source', source)
+  }
 })
 
 await check('usage listeners count model loads and user invocations separately', async () => {
@@ -1216,6 +1220,8 @@ const putRemote = (repo, path, text) => {
   if (!repos.has(repo)) repos.set(repo, new Map())
   repos.get(repo).set(path, text)
 }
+/** Archive URLs served as gzipped tars, exactly as a well-known registry would. */
+const archives = new Map()
 putRemote('anthropics/skills', 'skills/pdf/SKILL.md', pdfSkill)
 putRemote('anthropics/skills', 'skills/pdf/references/guide.md', 'PDF guide.\n')
 putRemote('anthropics/skills', 'skills/docx/SKILL.md', '---\nname: docx\ndescription: A docx skill.\n---\n')
@@ -1229,6 +1235,7 @@ const fetchText = (repo, path) => repos.get(repo)?.get(path)
 const repoOf = (address) => address.split('/repos/')[1].split('/').slice(0, 2).join('/')
 /** Answer one stubbed GitHub URL: the tree, the file bytes, the commit, and the jsDelivr mirrors. */
 const githubAnswer = (address) => {
+  if (archives.has(address)) return new Response(archives.get(address), { status: 200 })
   if (address.startsWith('https://api.github.com/repos/')) {
     if (network.api === 'forbidden') return new Response('', { status: 403 })
     if (address.includes('/commits')) return Response.json([{ sha: network.sha }])
@@ -2049,18 +2056,42 @@ await writeSkill(lockSkills, 'lock-nested', 'name: lock-nested\ndescription: Loc
 await writeSkill(lockSkills, 'lock-root', 'name: lock-root\ndescription: A repository-root skill.')
 await writeSkill(lockSkills, 'hand-made', 'name: hand-made\ndescription: No origin at all.')
 await writeSkill(lockSkills, 'broken-ref', 'name: broken-ref\ndescription: A record that cannot parse.')
+// A well-known registry skill: the CLI records only the archive it came from.
+const LARK_URL = 'https://open.feishu.cn/lark-cli/skills/regular/.well-known/agent-skills/lark-doc.tar.gz'
+const LARK_SKILL = '---\nname: lark-doc\ndescription: 飞书云文档，读写 Docx 与 Wiki。\n---\n\n# lark-doc\n'
+await writeSkill(lockSkills, 'lark-doc', 'name: lark-doc\ndescription: A locally edited copy.')
+await mkdir(join(lockSkills, 'lark-doc', 'references'), { recursive: true })
+await writeFile(join(lockSkills, 'lark-doc', 'references', 'guide.md'), 'local guide\n', 'utf8')
+archives.set(LARK_URL, gzipSync(tarArchive([
+  { path: 'references/', type: '5' },
+  { path: 'SKILL.md', text: LARK_SKILL },
+  { path: 'references/guide.md', text: 'upstream guide\n' },
+])))
 
 const LOCK_UPDATED_NESTED = '2026-11-20T10:00:00.000Z'
 const LOCK_UPDATED_ROOT = '2026-11-21T10:00:00.000Z'
+const LOCK_UPDATED_LARK = '2026-11-22T10:00:00.000Z'
 const lockDocument = {
   version: 3,
   skills: {
     'lock-nested': { source: 'acme/lock', sourceType: 'github', skillPath: 'skills/lock-nested/SKILL.md', updatedAt: LOCK_UPDATED_NESTED },
     'lock-root': { source: 'acme/lock', sourceType: 'github', skillPath: 'SKILL.md', updatedAt: LOCK_UPDATED_ROOT },
     'hand-made': { source: 'acme/lock', sourceType: 'github', skillPath: 'skills/other-name/SKILL.md' },
+    'lark-doc': {
+      source: 'open.feishu.cn',
+      sourceType: 'well-known',
+      sourceUrl: LARK_URL,
+      sourceBaseUrl: 'https://open.feishu.cn/lark-cli/skills/regular',
+      skillFolderHash: '',
+      installedAt: '2026-11-01T10:00:00.000Z',
+      updatedAt: LOCK_UPDATED_LARK,
+    },
     'missing-name': { source: 'acme/lock', sourceType: 'github', skillPath: 'skills/SKILL.md' },
+    'dot-path': { source: 'acme/lock', sourceType: 'github', skillPath: 'skills/./SKILL.md' },
+    'no-skill-file': { source: 'acme/lock', sourceType: 'github', skillPath: 'skills/other-name/README.md' },
     'wrong-source': { source: 'acme/one/two', sourceType: 'github', skillPath: 'skills/wrong-source/SKILL.md' },
     'wrong-type': { source: 'acme/lock', sourceType: 'gitlab', skillPath: 'skills/wrong-type/SKILL.md' },
+    'broken-archive': { source: 'open.feishu.cn', sourceType: 'well-known', sourceUrl: 'https://open.feishu.cn/lark-cli/skills/regular/lark-doc' },
   },
 }
 await writeFile(join(lockAgents, '.skill-lock.json'), JSON.stringify(lockDocument), 'utf8')
@@ -2088,7 +2119,7 @@ const snapshotTree = async (root) => {
   return entries.sort((left, right) => left[0].localeCompare(right[0]))
 }
 
-const lockCatalog = async () => ['lock-nested', 'lock-root', 'hand-made', 'broken-ref'].map((name) => ({
+const lockCatalog = async () => ['lock-nested', 'lock-root', 'hand-made', 'broken-ref', 'lark-doc'].map((name) => ({
   name,
   description: 'A lock-tracked skill.',
   source: 'user-agents',
@@ -2125,20 +2156,74 @@ await check('a lock entry maps to a ref only for its exact install directory and
   }, 'a repository-root skillPath becomes a bare owner/repo ref')
   assert.equal(lockProvenanceOf({ name: 'lock-nested', dir: join(lockSkills, 'lock-root') }, lockDocument, lockSkills), null,
     'another directory never borrows the entry')
-  assert.equal(lockProvenanceOf({ name: 'hand-made', dir: join(lockSkills, 'hand-made') }, lockDocument, lockSkills), null,
-    'a path that names another skill is refused')
-  assert.equal(lockProvenanceOf({ name: 'missing-name', dir: join(lockSkills, 'missing-name') }, lockDocument, lockSkills), null,
-    'a path with no name segment is refused')
+  assert.deepEqual(lockProvenanceOf({ name: 'hand-made', dir: join(lockSkills, 'hand-made') }, lockDocument, lockSkills), {
+    source: 'github',
+    ref: 'acme/lock#skills/other-name',
+    version: null,
+    installedAt: null,
+  }, 'the lock key is the installed name, so the source folder may differ from it')
+  assert.deepEqual(lockProvenanceOf({ name: 'missing-name', dir: join(lockSkills, 'missing-name') }, lockDocument, lockSkills), {
+    source: 'github',
+    ref: 'acme/lock#skills',
+    version: null,
+    installedAt: null,
+  }, 'a source folder that carries no skill name is still a source folder')
+  assert.equal(lockProvenanceOf({ name: 'dot-path', dir: join(lockSkills, 'dot-path') }, lockDocument, lockSkills), null,
+    'a path with a "." segment is refused')
+  assert.equal(lockProvenanceOf({ name: 'no-skill-file', dir: join(lockSkills, 'no-skill-file') }, lockDocument, lockSkills), null,
+    'a skillPath that does not end in SKILL.md is refused')
   assert.equal(lockProvenanceOf({ name: 'wrong-source', dir: join(lockSkills, 'wrong-source') }, lockDocument, lockSkills), null,
     'a source that is not owner/repo is refused')
   assert.equal(lockProvenanceOf({ name: 'wrong-type', dir: join(lockSkills, 'wrong-type') }, lockDocument, lockSkills), null,
-    'a non-GitHub sourceType is refused')
+    'an unknown sourceType is refused')
+  assert.deepEqual(lockProvenanceOf({ name: 'lark-doc', dir: join(lockSkills, 'lark-doc') }, lockDocument, lockSkills), {
+    source: 'well-known',
+    ref: LARK_URL,
+    version: null,
+    installedAt: Date.parse(LOCK_UPDATED_LARK),
+  }, 'a well-known entry maps through the archive it recorded')
+  assert.equal(lockProvenanceOf({ name: 'broken-archive', dir: join(lockSkills, 'broken-archive') }, lockDocument, lockSkills), null,
+    'a well-known entry whose URL is not an archive is refused')
   const noTimestamp = lockProvenanceOf(
     { name: 'lock-root', dir: join(lockSkills, 'lock-root') },
     { version: 3, skills: { 'lock-root': { source: 'acme/lock', skillPath: 'SKILL.md' } } },
     lockSkills,
   )
   assert.equal(noTimestamp.installedAt, null, 'a missing updatedAt is null, not NaN')
+})
+
+await check('every renamed repository folder in the real lock shape maps', () => {
+  // The ten Leonxlnx/taste-skill entries: the installed name is the lock key, the
+  // folder is only where the skill came from.
+  const renamed = {
+    'design-taste-frontend': 'skills/taste-skill',
+    'design-taste-frontend-v1': 'skills/taste-skill-v1',
+    'full-output-enforcement': 'skills/output-skill',
+    'gpt-taste': 'skills/gpt-tasteskill',
+    'high-end-visual-design': 'skills/soft-skill',
+    'image-to-code': 'skills/image-to-code-skill',
+    'industrial-brutalist-ui': 'skills/brutalist-skill',
+    'minimalist-ui': 'skills/minimalist-skill',
+    'redesign-existing-projects': 'skills/redesign-skill',
+    'stitch-design-taste': 'skills/stitch-skill',
+  }
+  const entries = {}
+  for (const [name, folder] of Object.entries(renamed)) {
+    entries[name] = { source: 'Leonxlnx/taste-skill', sourceType: 'github', skillPath: `${folder}/SKILL.md`, updatedAt: LOCK_UPDATED_NESTED }
+  }
+  const document = { version: 3, skills: entries }
+  for (const [name, folder] of Object.entries(renamed)) {
+    assert.deepEqual(
+      lockProvenanceOf({ name, dir: join(lockSkills, name) }, document, lockSkills),
+      { source: 'github', ref: `Leonxlnx/taste-skill#${folder}`, version: null, installedAt: Date.parse(LOCK_UPDATED_NESTED) },
+      name,
+    )
+  }
+  assert.equal(lockProvenanceOf(
+    { name: 'gpt-taste', dir: join(lockSkills, 'other') },
+    document,
+    lockSkills,
+  ), null, 'a renamed entry is still fenced by its exact install directory')
 })
 
 await check('the update block is only as fresh as its oldest tracked skill', () => {
@@ -2188,7 +2273,12 @@ await check('state borrows lock provenance for the exact install root and writes
   assert.deepEqual(byName.get('lock-root').installed, {
     source: 'github', ref: 'acme/lock', version: null, installedAt: Date.parse(LOCK_UPDATED_ROOT),
   })
-  assert.equal(byName.get('hand-made').installed, null, 'a lock entry for another folder proves nothing')
+  assert.deepEqual(byName.get('hand-made').installed, {
+    source: 'github', ref: 'acme/lock#skills/other-name', version: null, installedAt: null,
+  }, 'the lock key is the installed name, so its source folder may differ')
+  assert.deepEqual(byName.get('lark-doc').installed, {
+    source: 'well-known', ref: LARK_URL, version: null, installedAt: Date.parse(LOCK_UPDATED_LARK),
+  }, 'a well-known entry is followed through its recorded archive')
   assert.deepEqual(byName.get('broken-ref').installed, {
     source: 'skills-sh', ref: 'not a reference', version: null, installedAt: 1763000000000,
   }, 'the provenance store still wins')
@@ -2203,6 +2293,10 @@ await check('check-updates records changed paths without writing a skill file', 
     '---\nname: lock-nested\ndescription: Upstream bytes.\n---\n\nnew\n')
   putRemote('acme/lock', 'skills/lock-root/SKILL.md',
     '---\nname: lock-root\ndescription: Upstream root bytes.\n---\n\nnew\n')
+  // The lock entry for "hand-made" names this folder, but the skill it holds is
+  // another one: the only thing that can catch that is the fetched name.
+  putRemote('acme/lock', 'skills/other-name/SKILL.md',
+    '---\nname: other-name\ndescription: A different skill entirely.\n---\n')
   const before = await snapshotTree(lockSkills)
   const lockBefore = await readFile(join(lockAgents, '.skill-lock.json'), 'utf8')
   stubNetwork()
@@ -2210,26 +2304,30 @@ await check('check-updates records changed paths without writing a skill file', 
   try {
     const response = await lockAct({ action: 'check-updates', limit: 8 })
     assert.equal(response.status, 200, JSON.stringify(response.body))
-    assert.equal(response.body.total, 3, 'only installed entries with a directory are tracked')
+    assert.equal(response.body.total, 5, 'only installed entries with a directory are tracked')
     assert.equal(response.body.cursor, 0)
-    assert.equal(response.body.nextCursor, 3)
+    assert.equal(response.body.nextCursor, 5)
     assert.equal(response.body.done, true)
     assert.equal(typeof response.body.checkedAt, 'number')
     const checked = new Map(response.body.checked.map((entry) => [entry.name, entry]))
-    assert.deepEqual([...checked.keys()].sort(), ['broken-ref', 'lock-nested', 'lock-root'])
+    assert.deepEqual([...checked.keys()].sort(), ['broken-ref', 'hand-made', 'lark-doc', 'lock-nested', 'lock-root'])
     assert.equal(checked.get('broken-ref').error, 'bad-request', 'a bad stored ref is one row error, not an action failure')
     assert.equal(checked.get('broken-ref').available, false)
     assert.equal(checked.get('lock-nested').available, true)
     assert.deepEqual(checked.get('lock-nested').changedPaths, ['SKILL.md'])
     assert.equal(checked.get('lock-root').available, true)
+    assert.equal(checked.get('lark-doc').available, true, 'a well-known archive is compared like any other source')
+    assert.deepEqual(checked.get('lark-doc').changedPaths, ['SKILL.md', 'references/guide.md'])
     assert.deepEqual(await snapshotTree(lockSkills), before, 'a check writes no skill file')
     assert.equal(await readFile(join(lockAgents, '.skill-lock.json'), 'utf8'), lockBefore, 'the lock file is untouched')
     assert.equal(existsSync(join(lockSkills, 'lock-nested', '.skill-source.json')), false, 'a check writes no provenance')
     assert.equal(existsSync(join(lockSkills, 'lock-root', '.skill-source.json')), false)
+    assert.equal(existsSync(join(lockSkills, 'lark-doc', '.skill-source.json')), false)
     const persisted = JSON.parse(await readFile(join(lockHome, 'skill-dashboard', 'updates.json'), 'utf8'))
     assert.equal(persisted.version, 1)
     assert.equal(persisted.skills['lock-nested'].available, true)
     assert.deepEqual(persisted.skills['lock-nested'].changedPaths, ['SKILL.md'])
+    assert.equal(persisted.skills['lark-doc'].available, true)
     assert.equal(persisted.skills['broken-ref'].error, 'bad-request')
   } finally {
     restoreNetwork()
@@ -2239,7 +2337,7 @@ await check('check-updates records changed paths without writing a skill file', 
 await check('state lists the available checks and keeps the last run time', async () => {
   const response = await call(tenth.routes.get('/skill-dashboard/state'))
   assert.equal(response.body.updates.checkedAt > 0, true)
-  assert.deepEqual(response.body.updates.available.map((entry) => entry.name), ['lock-nested', 'lock-root'])
+  assert.deepEqual(response.body.updates.available.map((entry) => entry.name), ['hand-made', 'lark-doc', 'lock-nested', 'lock-root'])
   assert.deepEqual(response.body.updates.available[0].changedPaths, ['SKILL.md'])
 })
 
@@ -2314,6 +2412,45 @@ await check('update without a stored ref falls back to the lock entry and record
     assert.equal(record.path, join(lockSkills, 'lock-nested'))
     const updates = JSON.parse(await readFile(join(lockHome, 'skill-dashboard', 'updates.json'), 'utf8')).skills['lock-nested']
     assert.equal(updates.available, false, 'a successful update clears its available record')
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('update follows a well-known lock entry through its archive and records it', async () => {
+  stubNetwork()
+  try {
+    const updated = await lockAct({ action: 'update', name: 'lark-doc', path: join(lockSkills, 'lark-doc', 'SKILL.md') })
+    assert.equal(updated.status, 200, JSON.stringify(updated.body))
+    assert.deepEqual(updated.body, { ok: true, name: 'lark-doc', path: join(lockSkills, 'lark-doc'), changed: true })
+    assert.equal(await readFile(join(lockSkills, 'lark-doc', 'SKILL.md'), 'utf8'), LARK_SKILL, 'the archive bytes are restored')
+    assert.equal(await readFile(join(lockSkills, 'lark-doc', 'references', 'guide.md'), 'utf8'), 'upstream guide\n')
+    const sidecar = JSON.parse(await readFile(join(lockSkills, 'lark-doc', '.skill-source.json'), 'utf8'))
+    assert.deepEqual(sidecar, {
+      source: 'well-known', ref: LARK_URL, commit: null, name: 'lark-doc', version: null, installedAt: sidecar.installedAt,
+    })
+    assert.equal(typeof sidecar.installedAt, 'number')
+    assert.deepEqual(network.calls, [LARK_URL], 'an update reads the archive and nothing else')
+    await sleep(900)
+    const record = JSON.parse(await readFile(join(lockHome, 'skill-dashboard', 'installed.json'), 'utf8')).skills['lark-doc']
+    assert.equal(record.ref, LARK_URL)
+    assert.equal(record.source, 'well-known')
+    const again = await lockAct({ action: 'check-updates', limit: 8, refresh: true })
+    assert.equal(again.body.checked.find((entry) => entry.name === 'lark-doc').available, false,
+      'the restored bytes are byte-identical to the archive')
+  } finally {
+    restoreNetwork()
+  }
+})
+
+await check('a renamed lock folder that points at another skill is refused by the fetched name', async () => {
+  stubNetwork()
+  const before = await snapshotTree(lockSkills)
+  try {
+    const refused = await lockAct({ action: 'update', name: 'hand-made', path: join(lockSkills, 'hand-made', 'SKILL.md') })
+    assert.equal(refused.status, 409, JSON.stringify(refused.body))
+    assert.equal(refused.body.code, 'name-mismatch')
+    assert.deepEqual(await snapshotTree(lockSkills), before, 'a refused update writes nothing')
   } finally {
     restoreNetwork()
   }

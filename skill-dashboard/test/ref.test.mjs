@@ -91,6 +91,47 @@ test('parsing a canonical reference is a fixed point', () => {
   }
 })
 
+test('a public archive URL is one well-known reference', () => {
+  const url = 'https://open.feishu.cn/lark-cli/skills/regular/.well-known/agent-skills/lark-doc.tar.gz'
+  const value = locator(url)
+  assert.deepEqual(value, {
+    source: 'well-known',
+    ref: url,
+    url,
+    name: '',
+    slug: '',
+    owner: '',
+    repo: '',
+    path: '',
+  })
+  assert.deepEqual(locator(value.ref), value, 'an archive reference is its own canonical form')
+  assert.equal(
+    locator('  HTTPS://Open.Feishu.CN/x/LARK-DOC.TAR.GZ  ').ref,
+    'HTTPS://Open.Feishu.CN/x/LARK-DOC.TAR.GZ',
+    'the stored form keeps the spelling the lock recorded',
+  )
+})
+
+test('only a public https archive is a well-known reference', () => {
+  const refused = [
+    'http://open.feishu.cn/x.tar.gz',
+    'https://localhost/x.tar.gz',
+    'https://127.0.0.1/x.tar.gz',
+    'https://192.168.1.5/x.tar.gz',
+    'https://[::1]/x.tar.gz',
+    'https://intranet/x.tar.gz',
+    'https://open.feishu.cn/x.tar',
+    'https://open.feishu.cn/x.gz',
+    'https://open.feishu.cn/',
+    'https://open.feishu.cn',
+  ]
+  for (const input of refused) {
+    const parsed = parseRef(input)
+    assert.equal(parsed.ok, false, `${input} was accepted as ${JSON.stringify(parsed.value)}`)
+    assert.equal(parsed.code, 'bad-request', input)
+  }
+})
+
 test('malformed, unsafe and non-GitHub references are refused', () => {
   const refused = [
     '',
