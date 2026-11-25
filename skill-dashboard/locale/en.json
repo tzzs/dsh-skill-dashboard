@@ -305,5 +305,16 @@
   "error.not-installed": "This skill is not managed by an install source and cannot be updated",
   "error.not-installable": "This entry cannot be installed directly",
   "error.install-failed": "Failed to install skill; check your network and retry",
-  "error.update-failed": "Failed to update skill; check your network and retry"
+  "error.update-failed": "Failed to update skill; check your network and retry",
+  "installed.updatable": "Update available",
+  "updates.pill": "{count} to update",
+  "updates.pillChecking": "Checking {done}/{total}",
+  "updates.pillLatest": "Up to date",
+  "updates.pillInterrupted": "Check interrupted",
+  "updates.pillNone": "Check for updates",
+  "updates.panelTitle": "Skill updates",
+  "updates.panelAvailable": "{count} skills can be updated",
+  "updates.onlyAvailable": "Show updates only",
+  "updates.autoBack": "Back",
+  "updates.pillCheckingStart": "Checking…"
 }

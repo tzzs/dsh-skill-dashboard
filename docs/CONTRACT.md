@@ -374,28 +374,29 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
   Host in chunks of 4 (`check-updates`, single-flight) and patches a `updatesChecking` flag
   plus `{ done, total }` progress; a manual `检查更新` gesture passes `refresh: true`. A failed
   check stays quiet; an older Host without the action is tolerated.
-- The Installed tab shows an update bar above the toolbar: while running it reads
-  `正在检查更新 {done}/{total}`, when idle `上次检查 {time}` (or `尚未检查`). When
-  `state.updates.available` is non-empty it turns into an accent banner reading
-  `可更新 {count} 个技能` with `全部更新 ({count})`, which applies the whole available set
-  sequentially through the existing `update` path, shows `正在更新 {done}/{total}`, then one
-  state read and a succeeded/failed receipt, and `稍后`, which dismisses the banner for the
-  session. A secondary `仅更新常用 ({count})` button appears only when some available skills
-  have `usage.count > 0` and that used set is smaller than the whole; it runs the same loop
-  over those names. The loop keeps a 500-name safety bound only to stop runaway input.
-  The bar also carries an opt-in `自动更新` switch and a `选择 {count}` text button. The
-  choice lives in `window.localStorage` under `dsh-skill-dashboard:auto-update` as
-  `{ enabled: boolean, names: string[] }`, defaults to off, tolerates a missing or throwing
-  store, and keeps names that are not currently available. `选择` opens an inline picker under
-  the bar (not a modal): a scrollable checkbox list of the currently available updates with
-  `全选` / `清空` / `完成`, a hint that only checked skills apply, `Escape` to close, and a
-  save on every change; turning the switch on with nothing checked opens it. After a check
-  finishes, with the switch on, the checked names that are available are applied once per
-  finished check through the same loop and the receipt reads
-  `已自动更新 {ok} 个技能，{failed} 个失败`; a skill the user did not check is never
-  auto-applied, and nothing auto-applies while a check or a manual update is running.
-  Rows whose name is in `available` carry a quiet `可更新` badge. All strings live in the
-  four dictionaries.
+- The Installed tab carries update state in the page header, not in a separate banner. A
+  compact pill next to the refresh status reads `可更新 {count}` in the accent tone while
+  `state.updates.available` is non-empty, `已是最新` when the last check found nothing,
+  `检查中断` after a failed walk, and `检查更新` before the first result; a small dot spins
+  while checking and the count stays visible. The pill opens a small anchored popover (not a
+  modal) with `上次检查 {time}`, the available count, `全部更新 ({count})`, a secondary
+  `仅更新常用 ({count})` only when the used subset is smaller, `只看可更新` (sets the status
+  filter to `updatable`), the opt-in `自动更新` switch with `选择 {count}`, `检查更新`, and
+  `稍后` (mutes the accent for the session). Apply is the same sequential loop through the
+  existing `update` path, with per-row progress, one state read, and a succeeded/failed
+  receipt; the loop keeps a 500-name safety bound only to stop runaway input.
+  The auto-update choice lives in `window.localStorage` under
+  `dsh-skill-dashboard:auto-update` as `{ enabled: boolean, names: string[] }`, defaults to
+  off, tolerates a missing or throwing store, and keeps names that are not currently
+  available. `选择` swaps the popover body for a scrollable checkbox list of the available
+  updates with `全选` / `清空` / `完成`, a hint that only checked skills apply, and a save on
+  every change; turning the switch on with nothing checked opens it. After a completed check,
+  with the switch on, the checked names that are available are applied once through the same
+  loop and the receipt reads `已自动更新 {ok} 个技能，{failed} 个失败`; a skill the user did
+  not check is never auto-applied, and nothing auto-applies while a check or a manual update
+  is running. The `调用状态` filter gains `可更新` when the Host supports updates, so the
+  same rows can be isolated in the list; rows whose name is in `available` carry a quiet
+  `可更新` badge. All strings live in the four dictionaries.
 - The Client bounds every request at 10 s except one `check-updates` chunk, which gets 25 s
   because a cold chunk may pay a repository tree warm plus four per-skill reads. A chunk that
   still fails restarts the walk once from the first skill with no record, which costs no upstream
