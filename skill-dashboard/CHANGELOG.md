@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.6.1...v1.7.0) (2026-11-25)
+
+
+### Features
+
+* **skill-dashboard:** move update state into the header and filter ([#23](https://github.com/tzzs/dsh-skill-dashboard/issues/23)) ([5950ad4](https://github.com/tzzs/dsh-skill-dashboard/commit/5950ad407eb6fbb39db677aae13c9c49882a7e0d))
+
 ## [1.6.1](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.6.0...v1.6.1) (2026-11-25)
 
 
