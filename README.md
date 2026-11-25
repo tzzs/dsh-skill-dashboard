@@ -16,7 +16,7 @@ A DeepSeek Harness (DSH) plugin that puts every agent skill in one place. It app
 - Detects coding agents that read skill directories (including Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, and OpenCode) from their skill roots, recognizing both directory skills and flat `.md` skills in non-universal runtime roots.
 - Shows source, call count, and a `Read-only` badge for skills inside the DSH installation.
 - Provides two switches per row (**Auto-invoke** and **`/name` manual**) that edit the skill's YAML frontmatter, a `Disabled` state when both are off, and row actions for update, delete, and path.
-- Update pulls from the recorded origin (Tencent SkillHub, skills.sh, or GitHub) and swaps the skill directory atomically. A skill another tool installed can be pointed at its source once (**Link source**), then updates from it; a GitHub install records the exact commit that was written.
+- Update pulls from the recorded origin (Tencent SkillHub, skills.sh, a GitHub reference, or a well-known registry's skill archive) and swaps the skill directory atomically. A skill another tool installed can be pointed at its source once (**Link source**), then updates from it; a GitHub install records the exact commit that was written, and a skill another CLI installed is followed through its `.skill-lock.json` entry, including its renamed source folder and its archive URL.
 - Supports search, agent and invocation-status filters, and usage, name, or recency sorting.
 
 **Discover.** Install skills from two public registries or straight from GitHub, proxied through the Host process.

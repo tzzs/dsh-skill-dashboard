@@ -14,7 +14,7 @@
 - 从各自的技能根目录检测编程 Agent（Claude Code、Codex、Cursor、Gemini CLI、GitHub Copilot、OpenCode、Amp、Cline、Droid、Kilo Code、Kimi Code CLI、Pi、Warp、Zed、fx），并在每行标出读取它的 Agent。清单对齐 `skills` CLI 注册表（`vercel-labs/skills/src/agents.ts`），通用 `.agents/skills` 根目录对所有读取它的 Agent 生效，同时识别非通用 Agent 各自根目录下的单文件 `.md` 技能；DSH 始终能看到全部技能。
 - 显示来源（`user-agents`、`user-dsh`、`project-*`、`custom`、`bundled`）与调用次数；位于 DSH 安装目录（bundled 与 `app.asar` 内）的技能标为`只读`，插件不会修改。
 - 每行提供**自动调用**与 **`/name` 手动**两个开关，悬停显示说明；两者均关闭时标记为**已停用**。
-- 行菜单提供**更新**、**删除**与**查看路径**。可写但没有来源记录的技能改为显示**关联来源**：填一个引用（`multi-search-engine`、`owner/repo`、`owner/repo@分支#路径` 或 GitHub 链接），关联来源并同时完成一次更新。已有来源的技能在描述下方多一行 `来源 <ref>`。
+- 行菜单提供**更新**、**删除**与**查看路径**。可写但没有来源记录的技能改为显示**关联来源**：填一个引用（`multi-search-engine`、`owner/repo`、`owner/repo@分支#路径` 或 GitHub 链接），关联来源并同时完成一次更新。已有来源的技能在描述下方多一行 `来源 <ref>`；压缩包地址显示为「域名 + 技能名」，完整地址放在提示里。
 - `高频`标记标出调用次数 ≥ 3 且高于面板自身 75 分位的技能，无需打开统计页即可发现高频调用技能。
 
 **发现。** 通过 Host 进程代理，从两个公开技能源或直接从 GitHub 搜索并安装。
@@ -56,7 +56,7 @@
 - 首屏立即渲染完整 DSH 原生页壳（页头、状态胶囊与四页签栏），并展示 4 张 KPI 骨架卡片、筛选栏骨架与 6 行列表骨架，使用 `--dsw-alias-bg-skeleton` 脉冲动画（在 `prefers-reduced-motion` 下关闭）。
 - Host 侧 `StateCache` 在插件激活时预热，合并并发的 SWR 读取（1.5 秒 TTL），并将 `skills/change` 事件合并去抖（250 毫秒）后刷新；预设目录扫描与 `detectAgentRuntimes()` I/O 并行执行，安装根提前解析。
 - 客户端合并并发的 `refresh()` 请求；写入操作直接使用返回的权威状态，不再做盲目的 800 毫秒延迟二次拉取；后台刷新失败时保留已加载界面并显示内联重试横幅，不清空页面。
-- 更新检查默认开启且只读：首屏数据到达后自动跑一次后台检查，每次请求覆盖 4 个已跟踪技能（`check-updates`，单技能 6 秒上限），结果保留 6 小时，手动「检查更新」才绕过；同一仓库的多个技能共享 10 分钟的 tree / payload 缓存。已安装页在工具栏上方显示「可更新 N 个技能」横幅与「全部更新」（最多 10 个，顺序执行，结束后只读一次状态），可更新行带一个安静的「可更新」标记。检查既不写技能目录也不写溯源；旧版 Host 没有该 action 时不显示更新入口。
+- 更新检查默认开启且只读：首屏数据到达后自动跑一次后台检查，每次请求覆盖 4 个已跟踪技能（`check-updates`，单技能 6 秒上限），结果保留 6 小时，手动「检查更新」才绕过；同一仓库的多个技能共享 10 分钟的 tree / payload 缓存，压缩包源按地址缓存同样 10 分钟。一个分块可能包含一次冷启动的 tree 预热加四次有界读取，因此只有它拿到 25 秒的请求上限，其余请求仍是 10 秒；分块仍然失败时从第一个未记录结果的技能重新走一遍，再失败则在状态行显示「检查中断」，已落盘的判定继续可见。已安装页在工具栏上方显示「可更新 N 个技能」横幅与「全部更新」（最多 10 个，顺序执行，结束后只读一次状态），可更新行带一个安静的「可更新」标记。检查既不写技能目录也不写溯源；旧版 Host 没有该 action 时不显示更新入口。
 - 已安装列表每帧只渲染 15 行，未完成时标记 `aria-busy`，行组件做了 memo 缓存，技能很多时也不会一次性阻塞主线程；搜索输入框即时响应，过滤结果使用延迟值渲染。
 - 全部 25 个 Host 错误码均已在 `locale/en.json` 和 `locale/zh.json` 中本地化，用户界面文案不含内部 Host 术语。
 
@@ -90,10 +90,16 @@ user-invocable: false            # 从 `/skill` 手势中隐藏
 |:--|:--|:--|
 | `skills-sh` | `GET https://skills.sh/api/search?q=…&limit=50`，或「从 GitHub 安装」里直接填写的引用 | `api.github.com/.../git/trees/{rev}?recursive=1` + `raw.githubusercontent.com`，失败时退到 `data.jsdelivr.com` 列表与 `cdn.jsdelivr.net` 内容 |
 | `tencent` | `GET https://api.skillhub.cn/api/skills?page=1&pageSize=30&sortBy=score&keyword=…` | `GET /api/v1/skills/{slug}/files` + `/api/v1/skills/{slug}/file?path=…` |
+| `well-known` | 无：锁文件为每个技能记录一个压缩包地址 | `GET <sourceUrl>`，一个 gzip tar 在 Host 内解开 |
+
+`well-known` 源（飞书的 `open.feishu.cn` 就用这种方式发布技能）没有搜索也没有文件列表，
+因此不会出现在「发现」里；它只跟随 `.skill-lock.json` 记录的压缩包地址。单次下载上限 8 MiB
+（声明值与实际流均计），解压后 tar 上限 32 MiB；解析最多扫描 200 个条目，只保留路径安全且
+属于文本的技能文件，常规的 40 个文件 / 1 MiB 内容上限仍然生效。
 
 两个源 API 都不带 CORS 头，所以所有源请求都在 Host 进程里完成，浏览器只访问
 `/skill-dashboard/*`。外发请求有界（10 秒、4 MiB、并发 4），结果会缓存（搜索 60 秒、提交
-60 秒、tree 与内容 10 分钟），而更新总是重新读取来源，不复用这些缓存。失败会以 `source-unavailable` / `source-rate-limited` 报出，
+60 秒、tree 与内容 10 分钟；压缩包按地址缓存同样 10 分钟），而更新总是重新读取来源，不复用这些缓存。失败会以 `source-unavailable` / `source-rate-limited` 报出，
 页面提示改用另一个源。
 
 GitHub 提交来自 `api.github.com/repos/{o}/{r}/commits`，被限流时退到仓库的
@@ -119,7 +125,7 @@ Host 环境里已有 `GITHUB_TOKEN` / `GH_TOKEN` 时会带上。
 - `$DSH_HOME/skill-dashboard/installed.json` 保存本插件安装或关联过的技能溯源：
   `{ source, ref, commit, name, version, installedAt, path }`，同时镜像到
   `<skill>/.skill-source.json`（不含 `path`），手工复制的技能也会保留来源。记录只描述写入时所在的那个目录，同名但另一个目录的技能不会借用它。
-  由 skills CLI 安装的技能没有这份记录，因此面板还会只读 `$DSH_AGENTS_HOME/.skill-lock.json`（5 秒缓存），仅当锁文件里的 `skillPath` 对应 `<installRoot>/<name>` 时报告为 `{ source: "github", ref }`。
+  由 skills CLI 安装的技能没有这份记录，因此面板还会只读 `$DSH_AGENTS_HOME/.skill-lock.json`（5 秒缓存），当锁文件里的 `skillPath` 对应 `<installRoot>/<name>` 时报告为 `{ source: "github", ref }`。锁文件的键是安装名，所以它记录的目录可以和技能名不同（taste-skill 有十个技能装在名字不一致的目录里），多个技能也可以共用一个目录；`well-known` 条目则报告为 `{ source: "well-known", ref: <sourceUrl> }`。
 - `$DSH_HOME/skill-dashboard/updates.json` 缓存每个技能最近一次更新检查：
   `{ version: 1, skills: { "<name>": { available, changedPaths, checkedAt } | { error, checkedAt } } }`。
   结果保留 6 小时；更新成功后清除该技能的记录。
@@ -140,6 +146,7 @@ npm run test:live   # 手动集成检查：需要真实技能目录和网络，C
 - GitHub 安装会把写入内容的 40 位提交记录进 `installed.json` 与 `.skill-source.json`。更新会重新拉取跟踪的引用并逐字节比对，所以 `changed` 永远是真实比较；如果只有 jsDelivr 退路能提供内容，记录会写 `commit: null`，而不是猜一个提交。
 - 更新不会重命名技能：来源 `SKILL.md` 声明了另一个名字时返回 `name-mismatch`，不写任何文件；上游改名请删除后重新安装。扁平 `<name>.md` 技能返回 `flat-skill`；仓库里有多个技能又无法判断是哪一个时返回 `subpath-required`，最多列出 5 个候选。
 - `skills.sh` 没有版本字段也没有详情 API，所以从发现卡片更新是按文件内容比对后报告 `changed`，而不是版本升级。
+- `well-known` 更新会下载整个技能压缩包，解出其中的文本文件后按同样方式比对。压缩包没有提交，所以记录 `commit: null`；上游不再打包的文件会在整目录替换时一并消失。
 - 内容有变化的更新会整目录替换（暂存、旧树备份、换入），上游不再提供的文件会消失，手工加进该技能目录的文件也会消失；手工改过的 `SKILL.md` 会被替换，来源没变化时只重写溯源记录。本地附加内容请放在技能目录之外。
 - 已安装插件的 Host 半改动会在下次启动 App 时生效；Client 半随页面刷新生效。
 - 诊断只依据看板观察到的数据。刚装上时所有技能都是**观察中**，满 3 天后才开始出现可清理技能；

@@ -172,6 +172,9 @@ Rules:
   mount. `available` lists only names still in `skills`, sorted by name; `changedPaths` are the
   fetched relative paths whose bytes differ from the local skill directory. The block is absent
   on an older Host; the Client then renders no update affordance and starts no check.
+- `sources` lists only the registries Discover can search, so it stays skills.sh and Tencent.
+  A source without a `search` method (the well-known archive locator) is followed from a recorded
+  reference and never offered for browsing.
 
 ### `POST /skill-dashboard/action`
 
@@ -198,7 +201,11 @@ action adds a route.
 SkillHub and `<owner>/<repo>[@<rev>][#<path>]` for a GitHub source. `owner/repo/path/segments` is a
 subpath; `.git`, a trailing `/`, and a trailing `/SKILL.md` are dropped; and
 `https://github.com/<owner>/<repo>[/tree/<rev>[/<path>]]` or `/blob/<rev>/…/SKILL.md` (with optional
-`http(s)://`, `www.`, or a bare `github.com/` prefix) parse to the same canonical form. A canonical
+`http(s)://`, `www.`, or a bare `github.com/` prefix) parse to the same canonical form. A public
+`https://` URL whose path ends in `.tar.gz` is a `well-known` reference: the URL is its own
+canonical form and is both the fetch address and the stored record, so no name, revision, or path
+is derived from it. A single-label host, `localhost`, or an address literal is refused, because
+that URL is fetched on a check without a user gesture. A canonical
 `ref` is a fixed point of `parseRef`. `install` derives the source from `ref`; an explicit `source`
 that disagrees is 400 `bad-request`, and a `name` hint that contradicts the fetched `SKILL.md` name
 is 422 `invalid-skill` (the skill identity is the declared name; a contradicting hint would create a
@@ -212,11 +219,15 @@ skills and the reference names none), `flat-skill` (a flat `<name>.md` cannot be
 
 `update` falls back, in order, to `installed.json`, the skill's `.skill-source.json`, and the skills
 CLI's `<agentsHome>/.skill-lock.json`. A lock entry supplies a reference only when the catalog
-skill's directory is exactly `<installRoot>/<name>` and the entry is a GitHub source
-(`sourceType` absent or `github`, `source` is `owner/repo`, `skillPath` is `SKILL.md` at
-the repository root or ends with `/<name>/SKILL.md`). The derived folder is the prefix
-before `/SKILL.md`, and the ref is `owner/repo` or `owner/repo#<folder>`. Reading the lock
-writes nothing; its parse is reused for 5 s and revalidated by mtime.
+skill's directory is exactly `<installRoot>/<name>`. The lock key is the installed name, so the
+recorded folder may differ from it, and one entry may share a folder with another. For a GitHub
+entry (`sourceType` absent or `github`) `source` must be `owner/repo` and `skillPath` must end in
+`SKILL.md` with no `.`, `..`, or empty segment; the derived folder is the prefix before
+`/SKILL.md`, and the ref is `owner/repo` or `owner/repo#<folder>`. For a `well-known` entry the
+recorded `sourceUrl` must parse as an archive reference, and the ref is that URL. A lock entry
+that names a genuinely different skill still maps, and the fetched `SKILL.md` name is what
+refuses its update with `name-mismatch`. Reading the lock writes nothing; its parse is reused for
+5 s and revalidated by mtime.
 
 `check-updates` is a read-only comparison over the tracked skills (`state.skills` entries with a
 non-null `installed` and a resolved directory), sorted by name. One call covers
@@ -228,7 +239,9 @@ action. `done` becomes true when `nextCursor` reaches `total`. Checking writes n
 provenance; it only records the result and drops the merged-state cache so the next `GET` carries
 it. A check run refreshes each repository tree once per chunk and keys the per-skill payloads by
 that tree revision, so a moved branch is never compared against old bytes; `refresh: true` re-reads
-the payloads as well.
+the payloads as well. A source without a `warm` method (the well-known archive locator) spends no
+warm request; its per-skill archive download is cached by URL for ten minutes, and `refresh`
+bypasses that cache.
 
 `set-invocation` rewrites only the two frontmatter keys in the existing `SKILL.md`
 (or flat `<name>.md`), preserving every other line byte-for-byte; when a key must be
@@ -239,6 +252,9 @@ Refuse `install`/`update`/`remove` for `writable: false` with `code: 'read-only'
 ### `POST /skill-dashboard/discover`
 
 Body: `{ "source": "skills-sh" | "tencent", "query": string, "limit"?: number }`.
+
+Only a source with a `search` method is accepted, so the well-known archive locator answers
+400 `unknown-source` here even though `update` and `check-updates` use it.
 
 ```jsonc
 { "ok": true, "source": "skills-sh", "items": [
@@ -258,6 +274,8 @@ Installed body: `{ "path": "<exact catalog skill path>", "file"?: "references/gu
 Online body: `{ "source": "skills-sh" | "tencent", "ref": string, "name"?: string, "file"?: string }`.
 `ref` uses the same canonical grammar as `install`, so a GitHub subpath previews as
 `skills-sh` with `owner/repo@rev#path`; `name` is required only when the reference names no path.
+Only the two browsing sources carry a preview adapter, so a `well-known` archive reference is
+refused here with 400 `bad-request`.
 The omitted file defaults to `SKILL.md`, or the flat skill filename. Both body forms also
 accept `fileOnly?: boolean` and `refresh?: boolean`. `fileOnly:true` returns `ok`, `skill`,
 and `file` while omitting `files`/`truncatedFiles`; the Client merges its prior listing.
@@ -302,16 +320,18 @@ Errors include `bad-request` (400), `skill-not-found` / `file-not-found` (404),
   flush (≤1 s) and `mkdir -p`. A corrupt file must not crash the plugin: start empty.
 - **Provenance store** — same directory, `installed.json`:
   `{ version: 1, skills: { "<name>": { source, ref, commit, name, version, installedAt, path } } }`.
-  `commit` is the 40-hex commit the written files were read from, or `null` when the channel that
-  served them could not pin one; `version` is Tencent's version string and `null` for git. The same
+  `source` is `skills-sh`, `tencent`, or `well-known`. `commit` is the 40-hex commit the written
+  files were read from, or `null` when the channel that served them could not pin one (an archive
+  has no commit); `version` is Tencent's version string and `null` for git and archives. The same
   record minus `path` is mirrored into `<skill>/.skill-source.json`. A record only describes the
   directory it was written for: `update` ignores a same-named record whose `path` is another
   directory.
   `discover` marks `installed` from it; `update` uses it when the caller passes no `ref`.
   `state.skills[].installed` stays exactly `{ source, ref, version, installedAt }`. When neither
   store names an origin, a `skills.sh`-installed skill still reports its lock provenance from
-  `<agentsHome>/.skill-lock.json` as `{ source: "github", ref, version: null, installedAt }`
-  (see §4); reading it writes nothing.
+  `<agentsHome>/.skill-lock.json` as `{ source: "github", ref, version: null, installedAt }`, and a
+  well-known registry skill reports `{ source: "well-known", ref, version: null, installedAt }`
+  whose `ref` is the archive URL the lock recorded (see §4); reading it writes nothing.
 - **Update-check store** — same directory, `updates.json`:
   `{ version: 1, skills: { "<name>": { available, changedPaths, checkedAt } | { error, checkedAt } } }`.
   Written atomically; a result is authoritative for 6 h unless the caller passes `refresh: true`.
@@ -362,6 +382,13 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
   succeeded/failed receipt) and `稍后`, which dismisses the banner for the session. Rows whose
   name is in `available` carry a quiet `可更新` badge. All strings live in the four
   dictionaries.
+- The Client bounds every request at 10 s except one `check-updates` chunk, which gets 25 s
+  because a cold chunk may pay a repository tree warm plus four per-skill reads. A chunk that
+  still fails restarts the walk once from the first skill with no record, which costs no upstream
+  read for the chunks already answered. If that also fails the bar reads
+  `检查中断，已完成 {done}/{total}，可再次检查` with the Host code in its `title`, and the
+  verdicts already on disk stay visible; `checkedAt` is never written locally, so it stays 0
+  until a walk covers every tracked skill.
 - Installed tab rows: skill name, description (2 lines, ellipsis), badges
   (source label, the detected coding agent, `已调用 N 次`, `只读` when not writable), a switch for
   “模型可调用” (`modelInvocable`), a secondary “/name 可调用” switch (`userInvocable`,
@@ -369,7 +396,9 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
   and a row menu with 更新 / 删除 / 查看路径; a row that is writable but has no recorded origin
   offers 关联来源 instead of 更新 and opens one inline form that links the source and updates in the
   same Host call. A row with a recorded origin shows a quiet `来源 <ref>` line under its
-  description (`skill.origin` / `skill.originVersion`). High usage must be visually flaggable:
+  description (`skill.origin` / `skill.originVersion`); an archive URL renders as its host plus
+  the archived skill name, with the full reference in that line's `title`, so one long URL never
+  wraps the row. High usage must be visually flaggable:
   rows whose `usage.count` ≥ the panel's own 75th percentile get a subtle “高频” badge.
   The list paints in batches of 15 rows on animation frames, marks itself `aria-busy` until the
   whole filtered set is mounted, and memoizes each row, so a large library never renders in one
