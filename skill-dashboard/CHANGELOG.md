@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.6.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.5.0...v1.6.0) (2026-11-25)
+
+
+### Features
+
+* **skill-dashboard:** follow renamed and well-known lock entries ([#18](https://github.com/tzzs/dsh-skill-dashboard/issues/18)) ([34d2eaa](https://github.com/tzzs/dsh-skill-dashboard/commit/34d2eaacfca603691103698f302a31dc65eb1e7e))
+* **skill-dashboard:** follow renamed and well-known lock entries ([#18](https://github.com/tzzs/dsh-skill-dashboard/issues/18)) ([8cd9978](https://github.com/tzzs/dsh-skill-dashboard/commit/8cd9978e76a1b98800df0513509b4388d681e1a4))
+* **skill-dashboard:** update the whole library and auto-update checked skills ([#19](https://github.com/tzzs/dsh-skill-dashboard/issues/19)) ([2f91c3d](https://github.com/tzzs/dsh-skill-dashboard/commit/2f91c3da2dd2efe0cd31f0e329c3e9f5e524dbfe))
+
 ## [1.5.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.4.0...v1.5.0) (2026-11-24)
 
 
