@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.2](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.7.1...v1.7.2) (2026-11-25)
+
+
+### Performance Improvements
+
+* **skill-dashboard:** stop Discover cards re-rendering on every keystroke ([#27](https://github.com/tzzs/dsh-skill-dashboard/issues/27)) ([7527dc2](https://github.com/tzzs/dsh-skill-dashboard/commit/7527dc21573eaef9fdfb686a6de64ca21a685174))
+
 ## [1.7.1](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.7.0...v1.7.1) (2026-11-25)
 
 
