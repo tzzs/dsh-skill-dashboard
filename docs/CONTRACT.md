@@ -415,12 +415,16 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
   the archived skill name, with the full reference in that line's `title`, so one long URL never
   wraps the row. High usage must be visually flaggable:
   rows whose `usage.count` ≥ the panel's own 75th percentile get a subtle “高频” badge.
-  The list paints in batches of 15 rows on animation frames, marks itself `aria-busy` until the
-  whole filtered set is mounted, and memoizes each row, so a large library never renders in one
-  blocking task. The diagnosis queue batches the same way without the per-row memo, and restarts
-  from one batch whenever the bucket, needle or sort changes. The search input value stays urgent
-  while the filtered list reads a deferred value; both degrade to plain synchronous rendering when
-  the host React lacks the API.
+  The installed list paints in batches of 15 rows on animation frames, marks itself `aria-busy`
+  until the whole filtered set is mounted, and memoizes each row, so a large library never renders
+  in one blocking task. The diagnosis queue mounts its filtered set in one commit and memoizes each
+  row: its five buckets bound it at the catalog size, and repeated 15-row batches re-rendered every
+  mounted row while the user was already scrolling, which showed up as a stall on the queue and as
+  whole-page jank at 1.75 DPR. Offscreen diagnosis rows use `content-visibility: auto` with an
+  intrinsic block size; row callbacks are stable, so a snapshot tick (an update-check chunk, for
+  example) does not hand rows new props. The search input value stays urgent while the filtered
+  list reads a deferred value; both degrade to plain synchronous rendering when the host React
+  lacks the API.
 - The agent filter offers the detected coding agents (`runtimes`), each with its skill
   count, and hides itself when none was detected. A row badge names the agent when only
   one reads the skill (`仅 {agent}`), counts them when only some do (`{count}/{total} 个
@@ -600,6 +604,10 @@ inputs.
 A fourth tab after Usage. The Client computes: the selected bucket (default `cleanup`; `active`
 when cleanup is empty), the search needle over names, sort, and the selection set. It renders
 Host verdicts verbatim.
+
+The selection set is keyed by name and survives scrolling, search and sort. Choosing another
+bucket starts a fresh selection; the sticky rail is the persistent tally while the selected rows
+may be off screen.
 
 Structure, top to bottom:
 

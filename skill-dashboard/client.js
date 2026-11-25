@@ -1038,8 +1038,8 @@ window.__ModuleLoader__.load({
 .skd-diagnosisQueue>.skd-button{justify-self:end}
 .skd-diagnosisResults{grid-column:1;align-self:center;justify-content:flex-start}
 .skd-diagnosisNoAction{color:var(--skd-subtle);font-size:.8125rem}
-.skd-diagnosisList{background:var(--skd-bg);border-color:var(--skd-line)}
-.skd-diagnosisItem{list-style:none}
+.skd-diagnosisList{background:var(--skd-bg);border-color:var(--skd-line);overflow-anchor:none}
+.skd-diagnosisItem{list-style:none;content-visibility:auto;contain-intrinsic-size:auto 72px}
 .skd-diagnosisRow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:4px 14px;padding:10px 16px;border-block-end:1px solid var(--skd-line);transition:background-color .15s var(--skd-ease)}
 .skd-diagnosisList>li:last-child .skd-diagnosisRow{border-block-end:0}
 .skd-diagnosisCheck{position:relative;display:inline-flex;align-items:center;justify-content:center;inline-size:1.5rem;block-size:1.5rem;cursor:pointer;border-radius:4px}
@@ -3485,7 +3485,7 @@ window.__ModuleLoader__.load({
     }
 
     /** One diagnosis row: native selection, the Host's verdict, and its three verbs. */
-    function DiagnosisRow(props) {
+    function DiagnosisRowBase(props) {
       const {
         row, t, checked, busy, writesLocked, confirming, note, previewTarget, observedDays,
         onSelect, onAskRemove, onConfirmRemove, onCancelRemove, onDisable, onKeep, onPreview,
@@ -3554,6 +3554,7 @@ window.__ModuleLoader__.load({
           describeFailure(textOf(note.code) !== '' ? textOf(note.code) : null, textOf(note.message) !== '' ? textOf(note.message) : null, t)),
       );
     }
+    const DiagnosisRow = memo(DiagnosisRowBase);
 
     /**
      * The diagnosis queue. The Host supplies verdicts, counts and every `can.*` flag; this
@@ -3590,14 +3591,6 @@ window.__ModuleLoader__.load({
       const rows = useMemo(() => diagnosisRows(block, {
         bucket, query: view.query, sort: view.sort ?? 'host',
       }), [block, bucket, view.query, view.sort]);
-      // A bucket, needle or sort change starts the list over so the new first batch paints at once.
-      const [limit, setLimit] = useState(ROW_BATCH);
-      useEffect(() => { setLimit(ROW_BATCH); }, [bucket, view.query, view.sort]);
-      useEffect(() => {
-        if (limit >= rows.length) return undefined;
-        const frame = requestAnimationFrame(() => setLimit((current) => nextRowLimit(current, rows.length)));
-        return () => cancelAnimationFrame(frame);
-      }, [limit, rows.length]);
       const selected = stringsOf(view.selected);
       const tally = diagnosisTally(rows, selected);
       const selectedSet = new Set(selected);
@@ -3613,7 +3606,7 @@ window.__ModuleLoader__.load({
         }
         return entries;
       }, [catalog]);
-      const targetOf = (name) => ({ name, path: textOf(catalogByName.get(name)?.path) });
+      const targetOf = useCallback((name) => ({ name, path: textOf(catalogByName.get(name)?.path) }), [catalogByName]);
       const announcement = t('diagnosis.selectionStatus', { count: tally.names.length });
       useEffect(() => {
         const timer = setTimeout(() => setAnnounced(announcement), 350);
@@ -3621,27 +3614,28 @@ window.__ModuleLoader__.load({
       }, [announcement]);
       useEffect(() => { if (confirmingBulk) bulkCancelRef.current?.focus({ preventScroll: true }); }, [confirmingBulk]);
 
-      const settleFocus = () => {
+      const settleFocus = useCallback(() => {
         const first = listRef.current?.querySelector('.skd-diagnosisCheckInput:not(:disabled), .skd-nameButton');
         (first ?? headingRef.current)?.focus?.({ preventScroll: true });
-      };
-      const toggleRow = (name, next) => setView((current) => {
+      }, []);
+      const toggleRow = useCallback((name, next) => setView((current) => {
         const names = new Set(stringsOf(current.selected));
         if (next === true) names.add(name); else names.delete(name);
         return { ...current, selected: [...names] };
-      });
-      const dropSelection = (name) => setView((current) => ({ ...current, selected: stringsOf(current.selected).filter((entry) => entry !== name) }));
-      const clearSelection = () => setView((current) => ({ ...current, selected: [] }));
+      }), [setView]);
+      const dropSelection = useCallback((name) => setView((current) => ({ ...current, selected: stringsOf(current.selected).filter((entry) => entry !== name) })), [setView]);
+      const clearSelection = useCallback(() => setView((current) => ({ ...current, selected: [] })), [setView]);
       const toggleAll = () => setView((current) => ({
         ...current,
         selected: allSelected === true ? [] : selectable.map((row) => row.name),
       }));
-      const disableRow = (name) => { void onCleanup('disable', [targetOf(name)]).then(settleFocus); };
-      const keepRow = (name, keep) => { void onKeep([{ name, keep }]).then(settleFocus); };
-      const removeRow = (name) => {
+      const disableRow = useCallback((name) => { void onCleanup('disable', [targetOf(name)]).then(settleFocus); }, [onCleanup, targetOf, settleFocus]);
+      const keepRow = useCallback((name, keep) => { void onKeep([{ name, keep }]).then(settleFocus); }, [onKeep, settleFocus]);
+      const removeRow = useCallback((name) => {
         setConfirmingRow('');
         void onCleanup('remove', [targetOf(name)]).then(() => { dropSelection(name); settleFocus(); });
-      };
+      }, [onCleanup, dropSelection, targetOf, settleFocus]);
+      const cancelRemove = useCallback(() => { setConfirmingRow(''); }, []);
       const cancelBulk = () => { setConfirmingBulk(false); bulkRemoveRef.current?.focus({ preventScroll: true }); };
       const bulkCleanup = async (mode) => {
         const names = (mode === 'remove' ? tally.remove : tally.disable).slice(0, CLEANUP_TARGET_LIMIT);
@@ -3773,8 +3767,8 @@ window.__ModuleLoader__.load({
           }, t(allSelected === true ? 'diagnosis.clearSelection' : 'diagnosis.selectAll'))),
         empty !== null ? empty : el('ul', {
           className: 'skd-list skd-diagnosisList', ref: listRef,
-          'aria-busy': pending !== null || limit < rows.length || undefined,
-        }, rows.slice(0, limit).map((row) => {
+          'aria-busy': pending !== null || undefined,
+        }, rows.map((row) => {
           const entry = objectOf(catalogByName.get(row.name));
           const busy = pending !== null && (pending.kind === 'cleanup' || pending.kind === 'keep')
             && textOf(pending.target).split(',').includes(row.name);
@@ -3791,7 +3785,7 @@ window.__ModuleLoader__.load({
             onSelect: toggleRow,
             onAskRemove: setConfirmingRow,
             onConfirmRemove: removeRow,
-            onCancelRemove: () => setConfirmingRow(''),
+            onCancelRemove: cancelRemove,
             onDisable: disableRow,
             onKeep: keepRow,
             onPreview,
@@ -4148,6 +4142,9 @@ window.__ModuleLoader__.load({
       // Row memo compares props, so these handlers must keep their identity across renders.
       const toggleInvocation = useCallback((skill, changes) => { void setInvocation(skill, changes); }, [setInvocation]);
       const updateRow = useCallback((skill, ref) => { void updateSkill(skill, ref); }, [updateSkill]);
+      // Stable identities: a snapshot tick must not hand every memoized diagnosis row new verbs.
+      const cleanupDiagnosis = useCallback((mode, targets) => cleanupSkills(mode, targets), [cleanupSkills]);
+      const keepDiagnosis = useCallback((entries) => keepSkill(entries), [keepSkill]);
       const askRemove = useCallback((skill) => { setConfirmingPath(textOf(skill?.path)); }, []);
       const cancelRemove = useCallback(() => { setConfirmingPath(''); }, []);
       const confirmRemove = useCallback((skill, next) => {
@@ -4455,8 +4452,8 @@ window.__ModuleLoader__.load({
                 pending,
                 rowNotes: objectOf(snapshot.rowNotes),
                 onPreview: setPreviewTarget,
-                onCleanup: (mode, targets) => cleanupSkills(mode, targets),
-                onKeep: (entries) => keepSkill(entries),
+                onCleanup: cleanupDiagnosis,
+                onKeep: keepDiagnosis,
               }),
             ),
             tabs.filter((entry) => entry.id !== tab).map((entry) => el('div', {
