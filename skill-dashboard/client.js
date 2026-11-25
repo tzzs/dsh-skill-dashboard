@@ -56,6 +56,10 @@ window.__ModuleLoader__.load({
     const MIN_FREQUENT_PEERS = 3;
     /** Enough rows to fill the fold, few enough that one batch paints inside a single frame. */
     const ROW_BATCH = 15;
+    /** One more batch, never past the filtered total, so the last frame mounts only the remainder. */
+    function nextRowLimit(limit, total) {
+      return Math.min(limit + ROW_BATCH, total);
+    }
     /** One check result stays authoritative this long; the panel auto-checks once per window. */
     const UPDATES_TTL_MS = 6 * 60 * 60 * 1000;
     /** One check request covers this many tracked skills, so each route call stays inside the 10 s bound. */
@@ -680,7 +684,7 @@ window.__ModuleLoader__.load({
 
     // ---------------------------------------------------------------- css
     const CSS = `
-.skd-page,.skd-previewDialog{
+.skd-page,.skd-previewOverlay{
   --skd-bg:var(--dsw-alias-bg-base,#fff);
   --skd-surface:var(--dsw-alias-bg-layer-1,#f7f8fa);
   --skd-surface-2:var(--dsw-alias-bg-layer-2,#eff1f5);
@@ -1018,9 +1022,9 @@ window.__ModuleLoader__.load({
 .skd-diagnosisRailActions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .skd-diagnosisPolicyList{margin:0;padding-inline-start:1.25em;font-size:.75rem;line-height:1.7;color:var(--skd-muted)}
 
-.skd-previewDialog{inline-size:min(1280px,92vw);block-size:min(860px,88dvh);min-inline-size:min(640px,calc(100vw - 24px));min-block-size:min(400px,calc(100dvh - 24px));max-inline-size:calc(100vw - 24px);max-block-size:calc(100dvh - 24px);padding:0;border:1px solid var(--skd-control-line);border-radius:var(--skd-radius-lg);background:var(--skd-overlay);box-shadow:0 24px 72px rgb(0 0 0 / .24);overflow:hidden;resize:both}
-.skd-previewDialog:modal{overscroll-behavior:contain}
-.skd-previewDialog::backdrop{background:var(--skd-mask);backdrop-filter:blur(3px);overflow:hidden}
+.skd-previewOverlay{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:12px}
+.skd-previewBackdrop{position:absolute;inset:0;background:var(--skd-mask)}
+.skd-previewDialog{position:relative;z-index:1;inline-size:min(1280px,92vw);block-size:min(860px,88dvh);min-inline-size:min(640px,calc(100vw - 24px));min-block-size:min(400px,calc(100dvh - 24px));max-inline-size:calc(100vw - 24px);max-block-size:calc(100dvh - 24px);padding:0;border:1px solid var(--skd-control-line);border-radius:var(--skd-radius-lg);background:var(--skd-overlay);box-shadow:0 24px 72px rgb(0 0 0 / .24);overflow:hidden;resize:both}
 .skd-previewDialog[data-maximized]{inline-size:calc(100vw - 16px);block-size:calc(100dvh - 16px);max-inline-size:calc(100vw - 16px);max-block-size:calc(100dvh - 16px);resize:none;border-radius:var(--skd-radius)}
 .skd-previewRoot{height:100%;min-height:0;overflow:hidden;display:flex!important;flex-direction:column;background:var(--skd-overlay)}
 .skd-previewHeader{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 20px;border-bottom:1px solid var(--skd-line);flex:none}
@@ -1031,7 +1035,7 @@ window.__ModuleLoader__.load({
 .skd-previewHeader .skd-badges{margin-top:2px}
 .skd-windowTools{display:flex;align-items:center;gap:2px;flex:none;padding:3px;border:1px solid var(--skd-line);border-radius:8px;background:var(--skd-surface)}
 .skd-windowTools .skd-iconButton{border:0;width:30px;height:30px;border-radius:var(--skd-radius-sm)}
-.skd-windowTools form{margin:0;padding-inline-start:3px;border-inline-start:1px solid var(--skd-line)}
+.skd-windowTools .skd-windowToolsClose{margin:0;padding-inline-start:3px;border-inline-start:1px solid var(--skd-line)}
 .skd-previewLayout{display:grid;grid-template-columns:minmax(210px,270px) minmax(0,1fr);flex:1;min-height:0;min-width:0}
 .skd-previewFilesToggle{display:none}
 .skd-previewFiles{display:flex;flex-direction:column;min-height:0;min-width:0;border-inline-end:1px solid var(--skd-line);background:var(--skd-surface)}
@@ -1141,6 +1145,7 @@ window.__ModuleLoader__.load({
   .skd-updatesPickerItem{min-block-size:40px}
 }
 @media (max-width:700px){
+  .skd-previewOverlay{padding:0}
   .skd-previewDialog{inline-size:calc(100vw - 16px);block-size:calc(100dvh - 16px);max-inline-size:calc(100vw - 16px);max-block-size:calc(100dvh - 16px);min-inline-size:0;resize:none;border-radius:var(--skd-radius)}
   .skd-windowTools .skd-sizeStep{display:none}
   .skd-previewHeader{padding:12px 14px;gap:10px}
@@ -2536,9 +2541,27 @@ window.__ModuleLoader__.load({
       return { ...summary, file };
     }
 
-    /** Native dialog is created outside React's managed DOM; React owns only its portal contents. */
+    /** Tab order inside the preview panel: the same set the browser itself would visit. */
+    const FOCUSABLE = 'button,a[href],input,select,textarea,summary,[tabindex]:not([tabindex="-1"])';
+
+    /** The focus trap's next stop; a Tab from the last stop (or from outside) wraps around. */
+    function trapFocus(items, active, shift) {
+      if (items.length === 0) return null;
+      const index = items.indexOf(active);
+      if (index === -1) return shift ? items[items.length - 1] : items[0];
+      if (shift) return items[index === 0 ? items.length - 1 : index - 1];
+      return items[index === items.length - 1 ? 0 : index + 1];
+    }
+
+    /**
+     * The preview is an in-page portal overlay, not a native <dialog>. The Electron renderer
+     * fails to paint a top-layer dialog and a blurred backdrop, leaving the page modal and
+     * half-painted; a fixed overlay paints inside the page's own layer.
+     */
     function SkillPreview({ target, t, runtimes, onClose }) {
-      const [dialog, setDialog] = useState(null);
+      const panelRef = useRef(null);
+      const closeButtonRef = useRef(null);
+      const returnFocus = useRef(null);
       const [file, setFile] = useState('');
       const [mode, setMode] = useState('read');
       const [retry, setRetry] = useState(0);
@@ -2555,33 +2578,48 @@ window.__ModuleLoader__.load({
       const closeRef = useRef(onClose);
       closeRef.current = onClose;
       const titleId = 'skd-preview-title-' + useId();
-      useEffect(() => {
-        const node = document.createElement('dialog');
-        node.className = 'skd-previewDialog';
-        node.setAttribute('aria-labelledby', titleId);
-        node.setAttribute('closedby', 'closerequest');
-        const closed = () => closeRef.current();
-        node.addEventListener('close', closed);
-        document.body.appendChild(node);
-        setDialog(node);
+      // The remembered window size is applied before paint, and the observer records every later one.
+      useLayoutEffect(() => {
+        const panel = panelRef.current;
+        if (panel === null) return undefined;
         if (previewWindowSize && window.innerWidth > 700) {
-          node.style.width = Math.min(previewWindowSize.width, window.innerWidth - 24) + 'px';
-          node.style.height = Math.min(previewWindowSize.height, window.innerHeight - 24) + 'px';
+          panel.style.width = Math.min(previewWindowSize.width, window.innerWidth - 24) + 'px';
+          panel.style.height = Math.min(previewWindowSize.height, window.innerHeight - 24) + 'px';
         }
-        node.showModal();
-        const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
-          if (!node.hasAttribute('data-maximized') && window.innerWidth > 700) {
-            const rect = node.getBoundingClientRect();
+        if (typeof ResizeObserver !== 'function') return undefined;
+        const observer = new ResizeObserver(() => {
+          if (!panel.hasAttribute('data-maximized') && window.innerWidth > 700) {
+            const rect = panel.getBoundingClientRect();
             previewWindowSize = { width: rect.width, height: rect.height };
           }
-        }) : null;
-        observer?.observe(node);
-        return () => {
-          observer?.disconnect();
-          node.removeEventListener('close', closed);
-          if (node.open) node.close();
-          node.remove();
+        });
+        observer.observe(panel);
+        return () => observer.disconnect();
+      }, []);
+      // The old native dialog returned focus to its trigger on close, so the overlay does too.
+      useEffect(() => {
+        returnFocus.current = document.activeElement;
+        closeButtonRef.current?.focus({ preventScroll: true });
+        return () => { returnFocus.current?.focus?.({ preventScroll: true }); };
+      }, []);
+      useEffect(() => {
+        const onKeyDown = (event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            closeRef.current();
+            return;
+          }
+          if (event.key !== 'Tab' || panelRef.current === null) return;
+          const items = [...panelRef.current.querySelectorAll(FOCUSABLE)]
+            .filter((node) => node.disabled !== true && node.getClientRects().length > 0);
+          const next = trapFocus(items, document.activeElement, event.shiftKey);
+          if (next === null) return;
+          event.preventDefault();
+          next.focus();
         };
+        document.addEventListener('keydown', onKeyDown, true);
+        return () => document.removeEventListener('keydown', onKeyDown, true);
       }, []);
       useEffect(() => {
         const force = refreshPreview.current;
@@ -2615,20 +2653,22 @@ window.__ModuleLoader__.load({
         return () => { active = false; clearTimeout(timeout); controller.abort(); };
       }, [target, file, retry]);
       const changeSize = (step) => {
-        if (!dialog) return;
-        const rect = dialog.getBoundingClientRect();
-        dialog.removeAttribute('data-maximized'); setMaximized(false);
-        dialog.style.width = Math.min(window.innerWidth - 24, Math.max(Math.min(680, window.innerWidth - 24), rect.width + step * 120)) + 'px';
-        dialog.style.height = Math.min(window.innerHeight - 24, Math.max(Math.min(400, window.innerHeight - 24), rect.height + step * 80)) + 'px';
+        const panel = panelRef.current;
+        if (panel === null) return;
+        const rect = panel.getBoundingClientRect();
+        panel.removeAttribute('data-maximized'); setMaximized(false);
+        panel.style.width = Math.min(window.innerWidth - 24, Math.max(Math.min(680, window.innerWidth - 24), rect.width + step * 120)) + 'px';
+        panel.style.height = Math.min(window.innerHeight - 24, Math.max(Math.min(400, window.innerHeight - 24), rect.height + step * 80)) + 'px';
       };
       const toggleMaximized = () => {
-        if (!dialog) return;
+        const panel = panelRef.current;
+        if (panel === null) return;
         if (maximized) {
-          dialog.removeAttribute('data-maximized');
-          if (normalSize.current) { dialog.style.width = normalSize.current.width + 'px'; dialog.style.height = normalSize.current.height + 'px'; }
+          panel.removeAttribute('data-maximized');
+          if (normalSize.current) { panel.style.width = normalSize.current.width + 'px'; panel.style.height = normalSize.current.height + 'px'; }
         } else {
-          const rect = dialog.getBoundingClientRect(); normalSize.current = { width: rect.width, height: rect.height };
-          dialog.style.width = ''; dialog.style.height = ''; dialog.setAttribute('data-maximized', '');
+          const rect = panel.getBoundingClientRect(); normalSize.current = { width: rect.width, height: rect.height };
+          panel.style.width = ''; panel.style.height = ''; panel.setAttribute('data-maximized', '');
         }
         setMaximized(!maximized);
       };
@@ -2652,8 +2692,7 @@ window.__ModuleLoader__.load({
           setFilesExpanded(false);
         }
       };
-      if (!dialog) return null;
-      return createPortal(el('div', { className: 'skd-page skd-previewRoot' },
+      const panelContent = el('div', { className: 'skd-previewRoot' },
         el('header', { className: 'skd-previewHeader' },
           el('div', { className: 'skd-previewIdentity' },
             el('span', { className: 'skd-previewEyebrow' }, t('preview.title')),
@@ -2673,9 +2712,10 @@ window.__ModuleLoader__.load({
             el(Button, { className: 'skd-iconButton skd-sizeStep', 'aria-label': t('preview.grow'), title: t('preview.grow'), onClick: () => changeSize(1) }, el(Glyph, { name: 'plus', size: 16 })),
             el(Button, { className: 'skd-iconButton skd-sizeStep', 'aria-label': t(maximized ? 'preview.restore' : 'preview.maximize'), title: t(maximized ? 'preview.restore' : 'preview.maximize'), onClick: toggleMaximized },
               el(Glyph, { name: maximized ? 'restore' : 'maximize', size: 16 })),
-            el('form', { method: 'dialog' }, el(Button, {
-              type: 'submit', autoFocus: true, className: 'skd-iconButton', 'aria-label': t('preview.close'), title: t('preview.close'),
-            }, el(Glyph, { name: 'close', size: 20 })))), 
+            el('div', { className: 'skd-windowToolsClose' }, el(Button, {
+              className: 'skd-iconButton', ref: closeButtonRef,
+              'aria-label': t('preview.close'), title: t('preview.close'), onClick: onClose,
+            }, el(Glyph, { name: 'close', size: 20 })))),
         ),
         el('div', { className: 'skd-previewLayout', 'data-files-expanded': filesExpanded ? '' : undefined },
           el(Button, {
@@ -2730,7 +2770,14 @@ window.__ModuleLoader__.load({
           el('span', { title: textOf(skill.path) || textOf(target.ref) }, textOf(skill.path) || textOf(target.ref) || name),
           agentTitles.length > 0 && el('span', { title: agentTitles.join(' · ') }, agentTitles.join(' · ')),
           el('span', null, t('preview.readOnlyNotice'))),
-      ), dialog);
+      );
+      return createPortal(el('div', { className: 'skd-previewOverlay' },
+        el('div', { className: 'skd-previewBackdrop', 'aria-hidden': true, onClick: onClose }),
+        el('div', {
+          className: 'skd-page skd-previewDialog', role: 'dialog', 'aria-modal': 'true',
+          'aria-labelledby': titleId, ref: panelRef, tabIndex: -1,
+        }, panelContent),
+      ), document.body);
     }
 
     /** One installed skill: identity, description, calls, both switches, and its menu. */
@@ -2931,7 +2978,7 @@ window.__ModuleLoader__.load({
       // blocks on the whole list.
       useEffect(() => {
         if (limit >= skills.length) return undefined;
-        const frame = requestAnimationFrame(() => setLimit((current) => current + ROW_BATCH));
+        const frame = requestAnimationFrame(() => setLimit((current) => nextRowLimit(current, skills.length)));
         return () => cancelAnimationFrame(frame);
       }, [limit, skills.length]);
 
@@ -3506,6 +3553,14 @@ window.__ModuleLoader__.load({
       const rows = useMemo(() => diagnosisRows(block, {
         bucket, query: view.query, sort: view.sort ?? 'host',
       }), [block, bucket, view.query, view.sort]);
+      // A bucket, needle or sort change starts the list over so the new first batch paints at once.
+      const [limit, setLimit] = useState(ROW_BATCH);
+      useEffect(() => { setLimit(ROW_BATCH); }, [bucket, view.query, view.sort]);
+      useEffect(() => {
+        if (limit >= rows.length) return undefined;
+        const frame = requestAnimationFrame(() => setLimit((current) => nextRowLimit(current, rows.length)));
+        return () => cancelAnimationFrame(frame);
+      }, [limit, rows.length]);
       const selected = stringsOf(view.selected);
       const tally = diagnosisTally(rows, selected);
       const selectedSet = new Set(selected);
@@ -3680,8 +3735,9 @@ window.__ModuleLoader__.load({
             onClick: toggleAll,
           }, t(allSelected === true ? 'diagnosis.clearSelection' : 'diagnosis.selectAll'))),
         empty !== null ? empty : el('ul', {
-          className: 'skd-list skd-diagnosisList', ref: listRef, 'aria-busy': pending !== null || undefined,
-        }, rows.map((row) => {
+          className: 'skd-list skd-diagnosisList', ref: listRef,
+          'aria-busy': pending !== null || limit < rows.length || undefined,
+        }, rows.slice(0, limit).map((row) => {
           const entry = objectOf(catalogByName.get(row.name));
           const busy = pending !== null && (pending.kind === 'cleanup' || pending.kind === 'keep')
             && textOf(pending.target).split(',').includes(row.name);
@@ -3776,6 +3832,9 @@ window.__ModuleLoader__.load({
           scrollContainer()?.scrollTo({ top: scrollPositions.current.get(tab) ?? 0 });
         }
       }, [tab]);
+
+      // A preview belongs to the tab that opened it, so a tab switch drops it.
+      useEffect(() => { setPreviewTarget(null); }, [tab]);
 
       useEffect(() => {
         if (tab === 'installed') scrollRef.current?.scrollTo({ top: 0 });

@@ -416,8 +416,10 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
   rows whose `usage.count` ≥ the panel's own 75th percentile get a subtle “高频” badge.
   The list paints in batches of 15 rows on animation frames, marks itself `aria-busy` until the
   whole filtered set is mounted, and memoizes each row, so a large library never renders in one
-  blocking task. The search input value stays urgent while the filtered list reads a deferred
-  value; both degrade to plain synchronous rendering when the host React lacks the API.
+  blocking task. The diagnosis queue batches the same way without the per-row memo, and restarts
+  from one batch whenever the bucket, needle or sort changes. The search input value stays urgent
+  while the filtered list reads a deferred value; both degrade to plain synchronous rendering when
+  the host React lacks the API.
 - The agent filter offers the detected coding agents (`runtimes`), each with its skill
   count, and hides itself when none was detected. A row badge names the agent when only
   one reads the skill (`仅 {agent}`), counts them when only some do (`{count}/{total} 个
@@ -429,9 +431,18 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
   third source in the selector.
 - Usage tab: summary cards (总调用, 活跃技能, 今日调用), a 14-day bar chart, and the recent
   activity list. The chart is plain divs sized from the data — no chart library.
+- The skill preview is one in-page overlay, never a native `<dialog>` or top layer: `createPortal`
+  mounts `.skd-previewOverlay` (fixed, inset 0, above the app chrome) on `<body>`, holding a plain
+  translucent `.skd-previewBackdrop` mask with no `backdrop-filter`, and a
+  `.skd-page.skd-previewDialog` panel with `role="dialog"`, `aria-modal="true"` and
+  `aria-labelledby`. Nothing in the host page turns inert. Focus moves to the close button when it
+  opens, Tab and Shift+Tab stay inside the panel, `Escape` or a backdrop click closes it, focus
+  returns to the triggering row, and a tab switch closes it. The Electron renderer fails to paint a
+  top-layer dialog with a blurred backdrop, which is why the overlay is drawn in the page's layer.
 - Every visible string comes from the locale dictionaries. Use only `--dsw-alias-*` theme
   tokens for colors, borders, surfaces, text and focus rings; no literal colors, no
-  `!important` overrides of host selectors, no `document.body` writes.
+  `!important` overrides of host selectors, and no host-DOM writes outside the preview
+  overlay's own portal into `<body>`.
 - Load styles once through the module's `styles.insert(css)` builtin (it is cleaned up with
   the client run) and prefix every class with `skd-`.
 - Do not `require` any `@deepseek-ai/*` package.
@@ -597,7 +608,7 @@ Structure, top to bottom:
    Disabled buckets are not hidden: `观察中` and `已保留` are real answers.
 4. Queue toolbar: bucket count, search with a visible label, and select-all for the rows that
    carry the bucket's action.
-5. Rows: checkbox, name button opening the existing preview dialog, badges (verdict, `只读`,
+5. Rows: checkbox, name button opening the existing preview overlay, badges (verdict, `只读`,
    `已停用`), an evidence line built only from wire numbers, and actions in the order
    `停用` (primary, no confirmation), `删除` (inline confirmation), `保留`.
 6. Sticky bulk rail while a selection exists: tally (`已选 N · 可停用 N · 可删除 N · 只读 N`),

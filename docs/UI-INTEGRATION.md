@@ -88,9 +88,9 @@ DSH ThemePresenter 更新 html.style.colorScheme、body[data-ds-dark-theme]、bo
 
 点击已安装列表或发现卡片中的技能名称，可打开技能详情与文件阅读弹层。窄面板默认展示正文，目录可通过「技能文件」展开。左侧按目录树展示文件，文件夹使用原生 details/summary，可独立展开/折叠，缩进和连线表现层级；右侧默认显示主说明；Markdown 提供阅读/原文切换，其他文本使用代码原文视图。阅读视图仅处理基本标题、列表、粗体、行内代码和代码块；其他 Markdown 语法保留文本，不注入 HTML、不加载远程图片、不执行脚本。
 
-使用原生 dialog.showModal()，通过 ReactDOM portal 渲染内容。dialog 节点不由 React 管理，避免 top-layer 节点与渲染树发生重挂载冲突。关闭按钮使用 form method=dialog；浏览器提供 Esc、背景 inert 与焦点返回，未添加自定义键盘焦点陷阱。语言变更不会重建弹层或重置文件选择。
+使用 ReactDOM portal 把 `.skd-previewOverlay` 挂到 `document.body`，内部是固定定位的遮罩与 `.skd-previewDialog` 面板；不再创建原生 `<dialog>`，也不调用 `showModal()`。原因：在 Electron 渲染器里，top-layer 弹层加 `::backdrop` 的 `backdrop-filter: blur()` 会出现弹层内容不绘制、整页被模态遮罩卡住且半重绘的故障，用户只能在重启后恢复。普通固定定位浮层走页面自己的合成层，绘制稳定。关闭按钮是普通 Button，Esc 由组件捕获，点击遮罩关闭；Tab/Shift+Tab 在浮层内循环，打开时聚焦关闭按钮，关闭后焦点回到触发按钮。语言变更不会重建浮层或重置文件选择。
 
-Modern Web Guidance 的 dialog 指南要求 “The browser returns it to the invoker”，因此让浏览器处理焦点返回；prevent-page-scroll-under-modal-dialog 指南要求在弹层和遮罩上设置 overscroll-behavior，并让遮罩形成 scroll container，因此设置 dialog:modal 的 contain 与 backdrop 的 overflow:hidden/contain，没有改动 html/body 的 overflow。滚动隔离作为渐进增强，旧浏览器仍保留原生模态语义。
+滚动隔离由遮罩的固定定位和 `overscroll-behavior: contain` 提供，不修改 html/body 的 overflow；页面本身不被设为 inert，指针由遮罩拦截。旧浏览器不支持 `createPortal` 之外的特性时仍按同一路径工作。
 
 预览浏览器检查现覆盖真实本地 Host 接口、目录层级与原生折叠键盘操作、文件切换及重复打开零请求缓存、只读当前文件响应、刷新绕过缓存、原生拖拽缩放与按钮缩放、最大化/还原、Markdown/原文、二进制及截断、异步竞态、失败重试、焦点/背景滚动、语言/配色、窄屏及 320px 大文字、Esc 返回焦点和发现技能预览。弹层 axe 扫描零违规；图片为 `_verify/skill-preview-desktop.png`、`_verify/skill-preview-desktop-dark.png`、`_verify/skill-preview-mobile.png`。预览接口有 17 项测试，周期统计接口有 4 项测试；远程请求使用 mock。
 
@@ -100,7 +100,7 @@ Modern Web Guidance 的 dialog 指南要求 “The browser returns it to the inv
 
 客户端缓存 30 秒，最多六个技能、每技能八个文件。返回已读文件或重新打开近期技能可零请求显示；刷新按钮发送 refresh:true 绕过两层缓存，成功修改技能后清除客户端缓存。测试通过 fs 调用计数证明首次只打开所选文件、缓存切换不重新 opendir；远程首次仅目录+当前文件两次请求，未选文件零下载。这里验证的是读取/请求工作量，没有宣称固定网络时延。
 
-桌面默认窗口上限 1440px/94vw，高度 92dvh；右下角原生 resize:both，另有缩小、放大、最大化、还原按钮，避免只能拖拽。尺寸受视口约束，常规尺寸在当前页面会话内保留；窄屏接近全屏且不提供拖拽手柄。
+桌面默认窗口上限 1280px/92vw，高度 860px/88dvh；右下角原生 resize:both，另有缩小、放大、最大化、还原按钮，避免只能拖拽。尺寸受视口约束，常规尺寸在当前页面会话内保留；窄屏接近全屏且不提供拖拽手柄。
 
 ## 按周期逐技能统计
 
@@ -108,6 +108,6 @@ Host 在兼容原 14 天响应的基础上新增 60 天 usage.history 与 usage.
 
 五组周期浏览器检查使用真实 Host summarizeUsage 生成样本，核对所有预设、自定义范围、零调用技能、当前库外记录、占比、搜索和趋势独立性、排序后行节点/焦点保留、语言切换保留选择、真实 DSH 浅深配色 axe 与窄屏内滚动。图片为 `_verify/period-statistics.png`、`_verify/period-skill-table.png`、`_verify/period-statistics-mobile.png`。
 
-本轮 Modern Web Guidance 应用：accordion 指南 “Do not add arrow key navigation”——目录用原生 disclosure，保留 Enter/Space 和正常 Tab，而不冒充需要 roving tabindex 的 ARIA tree；dialog 指南 “The browser returns it to the invoker”——调整尺寸时沿用原生模态语义和焦点返回；responsive-table 指南 “people using only a keyboard can consistently scroll the table”——给内滚动区域名称和键盘入口；sortable-table 指南 “currently sorted column only”——仅活动表头设置 aria-sort，支持原生自定义命令和不支持 Invoker 时的点击回退，React 稳定 key 保留行节点身份。
+本轮 Modern Web Guidance 应用：accordion 指南 “Do not add arrow key navigation”——目录用原生 disclosure，保留 Enter/Space 和正常 Tab，而不冒充需要 roving tabindex 的 ARIA tree；dialog 指南 “The browser returns it to the invoker”——浮层改为记录触发按钮并在关闭时手动返回焦点；responsive-table 指南 “people using only a keyboard can consistently scroll the table”——给内滚动区域名称和键盘入口；sortable-table 指南 “currently sorted column only”——仅活动表头设置 aria-sort，支持原生自定义命令和不支持 Invoker 时的点击回退，React 稳定 key 保留行节点身份。
 
 完整接口和上限见 `docs/CONTRACT.md`，使用说明见插件 README。本轮包含 Host 变更，已安装实例需要重启 DSH 加载新代码；仅刷新页面不会可靠地重载 Host 模块。

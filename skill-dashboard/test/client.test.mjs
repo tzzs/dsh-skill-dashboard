@@ -15,7 +15,7 @@ function loadClient(fetch = async () => ({ ok: true, json: async () => ({ ok: tr
     fetch, AbortController, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, console, URL,
   };
   vm.runInNewContext(source.replace('    // ---------------------------------------------------------------- mount',
-    '    return { filterSkills, runtimeBadge, createRuntime, shouldAutoCheck, readAutoUpdateSettings, writeAutoUpdateSettings, commonUpdateNames, autoUpdateTargets, Segmented, TabBar, usagePeriodProjection, diagnosisRows, diagnosisTally, previewFileTree, cachedPreview, rememberPreview, PREVIEW_MEMORY, originLabel, REQUEST_TIMEOUT_MS, UPDATE_CHECK_REQUEST_TIMEOUT_MS, zh, en };\n    // ---------------------------------------------------------------- mount'), context);
+    '    return { filterSkills, runtimeBadge, createRuntime, shouldAutoCheck, readAutoUpdateSettings, writeAutoUpdateSettings, commonUpdateNames, autoUpdateTargets, Segmented, TabBar, usagePeriodProjection, diagnosisRows, diagnosisTally, previewFileTree, cachedPreview, rememberPreview, PREVIEW_MEMORY, originLabel, REQUEST_TIMEOUT_MS, UPDATE_CHECK_REQUEST_TIMEOUT_MS, ROW_BATCH, nextRowLimit, trapFocus, zh, en };\n    // ---------------------------------------------------------------- mount'), context);
   return api;
 }
 const { filterSkills, runtimeBadge, originLabel, REQUEST_TIMEOUT_MS, UPDATE_CHECK_REQUEST_TIMEOUT_MS, zh, en } = loadClient();
@@ -207,6 +207,27 @@ test('preview hierarchy retains paths and cached file-only responses retain the 
   assert.equal(cachedPreview('demo', 'references/quick.md').files.find((f) => f.path === 'references/quick.md').kind, 'binary');
   PREVIEW_MEMORY.get('demo').at = Date.now() - 31_000;
   assert.equal(cachedPreview('demo', ''), null);
+});
+
+test('both lists grow in fixed batches that stop at the filtered total', () => {
+  const { ROW_BATCH, nextRowLimit } = loadClient();
+  assert.equal(ROW_BATCH, 15);
+  assert.equal(nextRowLimit(ROW_BATCH, 130), 30, 'the first paint is one fold, not the whole queue');
+  assert.equal(nextRowLimit(120, 130), 130, 'the last frame mounts only the remainder');
+  assert.equal(nextRowLimit(130, 130), 130, 'a complete list stops growing');
+  assert.equal(nextRowLimit(15, 3), 3, 'a short list never asks for more rows than it has');
+});
+
+test('the preview focus trap wraps Tab and Shift+Tab inside the panel', () => {
+  const { trapFocus } = loadClient();
+  const items = ['refresh', 'close', 'file', 'retry'];
+  assert.equal(trapFocus(items, 'refresh', false), 'close', 'Tab moves on');
+  assert.equal(trapFocus(items, 'retry', false), 'refresh', 'Tab from the last stop wraps');
+  assert.equal(trapFocus(items, 'refresh', true), 'retry', 'Shift+Tab from the first stop wraps');
+  assert.equal(trapFocus(items, 'close', true), 'refresh');
+  assert.equal(trapFocus(items, null, false), 'refresh', 'a Tab from outside the panel enters at the start');
+  assert.equal(trapFocus(items, null, true), 'retry', 'a Shift+Tab from outside enters at the end');
+  assert.equal(trapFocus([], null, false), null, 'nothing focusable leaves the browser to it');
 });
 
 test('both shipped dictionaries stay synchronized with runtime strings in both directions', async () => {
