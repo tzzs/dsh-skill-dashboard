@@ -1317,6 +1317,16 @@ const act = (body) => call(eighth.routes.get('/skill-dashboard/action'), {
 })
 const installedStoreFile = join(githubHome, 'skill-dashboard', 'installed.json')
 
+/** Wait for the debounced provenance store to include one skill instead of guessing a delay. */
+const installedRecord = async (name) => {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const parsed = JSON.parse(await readFile(installedStoreFile, 'utf8').catch(() => '{}'))
+    if (parsed?.skills?.[name] !== undefined) return parsed.skills[name]
+    await sleep(50)
+  }
+  return undefined
+}
+
 await check('install from a /tree/ URL pins the commit in both records', async () => {
   stubNetwork()
   try {
@@ -1326,8 +1336,7 @@ await check('install from a /tree/ URL pins the commit in both records', async (
     assert.equal(await readFile(join(githubSkills, 'pdf', 'SKILL.md'), 'utf8'), pdfSkill)
     assert.equal(await readFile(join(githubSkills, 'pdf', 'references', 'guide.md'), 'utf8'), 'PDF guide.\n')
     assert.equal(network.calls.filter((url) => url.includes('/commits')).length, 1, 'the head commit is asked for once')
-    await sleep(900)
-    const record = JSON.parse(await readFile(installedStoreFile, 'utf8')).skills.pdf
+    const record = await installedRecord('pdf')
     assert.deepEqual(Object.keys(record), ['source', 'ref', 'commit', 'name', 'version', 'installedAt', 'path'])
     assert.equal(record.source, 'skills-sh')
     assert.equal(record.ref, 'anthropics/skills@main#skills/pdf')
