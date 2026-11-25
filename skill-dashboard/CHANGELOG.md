@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.6.0...v1.6.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* **skill-dashboard:** paint the skill preview as an in-page overlay ([#21](https://github.com/tzzs/dsh-skill-dashboard/issues/21)) ([5b9bf52](https://github.com/tzzs/dsh-skill-dashboard/commit/5b9bf52ae3eb1822eda126bbe4f91639e08a5140))
+
 ## [1.6.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.5.0...v1.6.0) (2026-11-25)
 
 
