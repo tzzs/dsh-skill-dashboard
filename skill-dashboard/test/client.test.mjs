@@ -5,19 +5,20 @@ import test from 'node:test';
 
 // Exercise the shipped factory without a browser or an additional test dependency.
 const source = await readFile(new URL('../client.js', import.meta.url), 'utf8');
-function loadClient(fetch = async () => ({ ok: true, json: async () => ({ ok: true }) })) {
+/** Load the shipped factory in a sandbox; `timers` can record the request fences. */
+function loadClient(fetch = async () => ({ ok: true, json: async () => ({ ok: true }) }), timers = { setTimeout, clearTimeout }) {
   let api;
   const context = {
     window: { __ModuleLoader__: { load(module) {
       api = module.factory(() => ({ createElement() {}, forwardRef: (render) => render, Component: class {} }));
     } } },
-    fetch, AbortController, setTimeout, clearTimeout, console,
+    fetch, AbortController, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, console, URL,
   };
   vm.runInNewContext(source.replace('    // ---------------------------------------------------------------- mount',
-    '    return { filterSkills, runtimeBadge, createRuntime, shouldAutoCheck, Segmented, TabBar, usagePeriodProjection, diagnosisRows, diagnosisTally, previewFileTree, cachedPreview, rememberPreview, PREVIEW_MEMORY, zh, en };\n    // ---------------------------------------------------------------- mount'), context);
+    '    return { filterSkills, runtimeBadge, createRuntime, shouldAutoCheck, Segmented, TabBar, usagePeriodProjection, diagnosisRows, diagnosisTally, previewFileTree, cachedPreview, rememberPreview, PREVIEW_MEMORY, originLabel, REQUEST_TIMEOUT_MS, UPDATE_CHECK_REQUEST_TIMEOUT_MS, zh, en };\n    // ---------------------------------------------------------------- mount'), context);
   return api;
 }
-const { filterSkills, runtimeBadge, zh, en } = loadClient();
+const { filterSkills, runtimeBadge, originLabel, REQUEST_TIMEOUT_MS, UPDATE_CHECK_REQUEST_TIMEOUT_MS, zh, en } = loadClient();
 const skills = [
   { name: 'beta', description: 'PDF tools', source: 'user-agents', agents: ['a'], runtimes: ['claude-code', 'codex', 'dsh'], modelInvocable: true, writable: true, usage: { count: 12, lastUsedAt: 5 } },
   { name: 'Alpha', description: '文档处理', source: 'bundled', agents: ['a', 'b'], runtimes: ['codex', 'dsh'], modelInvocable: false, writable: false, usage: { count: 2, lastUsedAt: 20 } },
@@ -59,6 +60,18 @@ test('the agent badge names the only agent, counts the rest, and stays away othe
   assert.equal(some.title, 'Codex · DSH', 'the title names every agent');
   assert.equal(runtimeBadge({ runtimes: [] }, runtimes).kind, 'none');
   assert.equal(runtimeBadge({ runtimes: ['dsh'] }, []).kind, 'none', 'without a detected agent there is no badge');
+});
+
+test('the origin line shortens an archive URL and leaves a repository reference alone', () => {
+  assert.equal(originLabel('acme/lock#skills/taste-skill'), 'acme/lock#skills/taste-skill');
+  assert.equal(originLabel('multi-search-engine'), 'multi-search-engine');
+  const lark = 'https://open.feishu.cn/lark-cli/skills/regular/.well-known/agent-skills/lark-doc.tar.gz';
+  assert.equal(originLabel(lark), 'open.feishu.cn/lark-doc');
+  assert.ok(originLabel(lark).length < lark.length / 2, 'the label fits one short line');
+  assert.equal(originLabel('https://example.com'), 'example.com', 'a URL without a path is its host');
+  assert.equal(originLabel('HTTPS://Example.COM/a/Skill.tar.gz'), 'example.com/Skill', 'the host is normalized by URL');
+  assert.equal(originLabel(''), '');
+  assert.equal(originLabel(undefined), '');
 });
 
 test('switching discovery source invalidates pending success and failure responses', async () => {
@@ -401,6 +414,96 @@ test('a transiently empty chunk is retried instead of ending the walk early', as
     assert.equal(await runtime.checkUpdates(), true);
     assert.deepEqual(cursors, [0, 4, 4], 'the collapsed cursor is retried before the walk ends');
     assert.equal(runtime.store.getSnapshot().updatesProgress.done, 8);
+  } finally {
+    runtime.dispose();
+  }
+});
+
+test('one check chunk runs on a wider request envelope than every other route', async () => {
+  const delays = [];
+  const timers = {
+    setTimeout: (callback, ms) => {
+      delays.push(ms);
+      return setTimeout(callback, ms);
+    },
+    clearTimeout,
+  };
+  const { createRuntime } = loadClient(async (url) => {
+    if (url.endsWith('/action')) {
+      return { ok: true, json: async () => ({ ok: true, total: 4, cursor: 0, nextCursor: 4, done: true, checked: [] }) };
+    }
+    return { ok: true, json: async () => ({ ok: true, skills: [], updates: { checkedAt: 5, available: [] } }) };
+  }, timers);
+  const runtime = createRuntime();
+  try {
+    delays.length = 0;
+    await runtime.checkUpdates();
+    assert.equal(delays.filter((ms) => ms === UPDATE_CHECK_REQUEST_TIMEOUT_MS).length, 1, 'the chunk request gets 25 s');
+    assert.equal(delays.filter((ms) => ms === REQUEST_TIMEOUT_MS).length, 1, 'only the state read after it keeps 10 s');
+    assert.equal(UPDATE_CHECK_REQUEST_TIMEOUT_MS, 25000);
+    assert.equal(REQUEST_TIMEOUT_MS, 10000);
+
+    delays.length = 0;
+    await runtime.refresh();
+    assert.deepEqual(delays.filter((ms) => ms === UPDATE_CHECK_REQUEST_TIMEOUT_MS), [], 'no other route widens its fence');
+    assert.equal(delays.filter((ms) => ms === REQUEST_TIMEOUT_MS).length, 1);
+  } finally {
+    runtime.dispose();
+  }
+});
+
+test('a chunk the Host cannot answer restarts the walk once and then completes', async () => {
+  const cursors = [];
+  const urls = [];
+  let failed = false;
+  const { createRuntime } = loadClient(async (url, init) => {
+    urls.push(url);
+    if (url.endsWith('/action')) {
+      const body = JSON.parse(init.body);
+      cursors.push(body.cursor);
+      if (body.cursor === 4 && failed === false) {
+        failed = true;
+        return { ok: false, status: 502, json: async () => ({ ok: false, code: 'source-unavailable' }) };
+      }
+      const nextCursor = Math.min(body.cursor + 4, 8);
+      return { ok: true, json: async () => ({ ok: true, total: 8, cursor: body.cursor, nextCursor, done: nextCursor >= 8, checked: [] }) };
+    }
+    return { ok: true, json: async () => ({ ok: true, skills: [], updates: { checkedAt: 5, available: [] } }) };
+  });
+  const runtime = createRuntime();
+  try {
+    assert.equal(await runtime.checkUpdates(), true);
+    assert.deepEqual(cursors, [0, 4, 0, 4], 'the failed chunk resumes from the first unchecked skill');
+    const snapshot = runtime.store.getSnapshot();
+    assert.equal(snapshot.updatesError, null);
+    assert.equal(snapshot.updatesChecking, false);
+    assert.equal(urls.filter((url) => url === 'skill-dashboard/state').length, 1, 'one state read lands the new block');
+  } finally {
+    runtime.dispose();
+  }
+});
+
+test('a walk that keeps failing leaves a visible note instead of a silent stop', async () => {
+  const cursors = [];
+  const { createRuntime } = loadClient(async (url, init) => {
+    if (url.endsWith('/action')) {
+      const body = JSON.parse(init.body);
+      cursors.push(body.cursor);
+      if (body.cursor === 4) {
+        return { ok: false, status: 502, json: async () => ({ ok: false, code: 'source-rate-limited' }) };
+      }
+      return { ok: true, json: async () => ({ ok: true, total: 8, cursor: 0, nextCursor: 4, done: false, checked: [] }) };
+    }
+    return { ok: true, json: async () => ({ ok: true, skills: [], updates: { checkedAt: 0, available: [] } }) };
+  });
+  const runtime = createRuntime();
+  try {
+    assert.equal(await runtime.checkUpdates(), false);
+    assert.deepEqual(cursors, [0, 4, 0, 4], 'the retry walks the recorded chunks again and stops on the same cursor');
+    const snapshot = runtime.store.getSnapshot();
+    assert.equal(snapshot.updatesError, 'source-rate-limited', 'the panel keeps the failure so the next check is not a surprise');
+    assert.equal(snapshot.updatesChecking, false);
+    assert.equal(snapshot.updatesProgress.done, 4, 'the verdicts already written stay visible');
   } finally {
     runtime.dispose();
   }

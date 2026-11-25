@@ -41,6 +41,12 @@ window.__ModuleLoader__.load({
     /** A tab switch reloads only when the snapshot is older than this. */
     const STALE_AFTER_MS = 5000;
     const REQUEST_TIMEOUT_MS = 10000;
+    /**
+     * One check chunk may legitimately run to a cold tree warm plus a bounded
+     * per-skill read, so it gets a wider envelope than every other route. A chunk
+     * that hits this bound is retried once from the start of the walk.
+     */
+    const UPDATE_CHECK_REQUEST_TIMEOUT_MS = 25000;
     const DISCOVER_LIMIT = 20;
     /** The Host accepts at most this many cleanup targets in one call (§4). */
     const CLEANUP_TARGET_LIMIT = 100;
@@ -120,6 +126,7 @@ window.__ModuleLoader__.load({
       'updates.checking': '正在检查更新 {done}/{total}',
       'updates.lastChecked': '上次检查 {time}',
       'updates.never': '尚未检查',
+      'updates.interrupted': '检查中断，已完成 {done}/{total}，可再次检查',
       'updates.available': '可更新 {count} 个技能',
       'updates.applyAll': '全部更新',
       'updates.applying': '正在更新 {done}/{total}',
@@ -415,6 +422,7 @@ window.__ModuleLoader__.load({
       'updates.checking': 'Checking for updates {done}/{total}',
       'updates.lastChecked': 'Last checked {time}',
       'updates.never': 'Not checked yet',
+      'updates.interrupted': 'Check stopped after {done}/{total}; check again',
       'updates.available': '{count} updates available',
       'updates.applyAll': 'Update all',
       'updates.applying': 'Updating {done}/{total}',
@@ -1147,6 +1155,26 @@ window.__ModuleLoader__.load({
       return Array.isArray(value) ? value.filter((entry) => typeof entry === 'string') : [];
     }
 
+    /**
+     * The short readable form of one recorded origin.
+     *
+     * A repository reference is already short and is shown verbatim. A well-known
+     * source is the whole archive URL, long enough to wrap the row into a
+     * paragraph, so it reads as the host plus the archived skill name instead.
+     */
+    function originLabel(ref) {
+      const text = textOf(ref);
+      if (!/^https:\/\//i.test(text)) return text;
+      try {
+        const url = new URL(text);
+        const last = url.pathname.split('/').filter((segment) => segment !== '').pop() ?? '';
+        const name = last.replace(/\.tar\.gz$/i, '');
+        return name === '' ? url.host : url.host + '/' + name;
+      } catch {
+        return text;
+      }
+    }
+
     function formatNumber(value) {
       const lang = typeof document === 'object' ? document.documentElement?.lang : undefined;
       try { return new Intl.NumberFormat(lang || undefined).format(countOf(value)); }
@@ -1300,10 +1328,10 @@ window.__ModuleLoader__.load({
 
     // ---------------------------------------------------------------- transport
     /** Same-origin JSON, returning { ok: true, value } or a { ok: false, … } failure instead of throwing. */
-    async function requestJson(route, init) {
-      // A hung route must not wedge the panel; abort after ten seconds.
+    async function requestJson(route, init, timeoutMs = REQUEST_TIMEOUT_MS) {
+      // A hung route must not wedge the panel; abort after `timeoutMs`.
       const controller = typeof AbortController === 'function' ? new AbortController() : null;
-      const timer = controller === null ? null : setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      const timer = controller === null ? null : setTimeout(() => controller.abort(), timeoutMs);
       try {
         const response = await fetch(route, controller === null ? init : { ...init, signal: controller.signal });
         let payload = null;
@@ -1353,6 +1381,7 @@ window.__ModuleLoader__.load({
         rowNotes: {},
         updatesChecking: false,
         updatesProgress: { done: 0, total: 0 },
+        updatesError: null,
         updatingAll: null,
         discover: { source: null, query: '', status: 'idle', items: [], error: null, note: null, at: 0 },
       });
@@ -1518,51 +1547,64 @@ window.__ModuleLoader__.load({
        */
       const checkUpdates = ({ refresh: force = false } = {}) => {
         if (inFlightCheck !== null) return inFlightCheck;
-        patch({ updatesChecking: true, updatesProgress: { done: 0, total: 0 } });
+        patch({ updatesChecking: true, updatesProgress: { done: 0, total: 0 }, updatesError: null });
         const run = (async () => {
-          let cursor = 0;
           let total = 0;
-          let stalls = 0;
-          let ok = true;
-          for (;;) {
-            const result = await requestJson(ROUTE_ACTION, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({
-                action: 'check-updates',
-                cursor,
-                limit: UPDATE_CHECK_CHUNK,
-                ...(force ? { refresh: true } : {}),
-              }),
-            });
-            if (result.ok !== true) {
-              ok = false;
-              break;
-            }
-            const value = objectOf(result.value) ?? {};
-            const reported = countOf(value.total);
-            const next = countOf(value.nextCursor);
-            // A tracked count that collapses between chunks is a transient Host
-            // read, not the end of the walk: retry that cursor before giving up.
-            if ((reported === 0 && cursor > 0) || (total > cursor && next <= cursor)) {
-              stalls += 1;
-              if (stalls > 2) {
-                ok = false;
+          let failure = null;
+          // A chunk the Host cannot answer must not end the walk silently: every
+          // verdict it already wrote is on disk, and a fresh record costs no
+          // upstream read, so one restart resumes at the first unchecked skill.
+          for (let pass = 0; pass < 2; pass += 1) {
+            let cursor = 0;
+            let stalls = 0;
+            failure = null;
+            for (;;) {
+              const result = await requestJson(ROUTE_ACTION, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'check-updates',
+                  cursor,
+                  limit: UPDATE_CHECK_CHUNK,
+                  ...(force ? { refresh: true } : {}),
+                }),
+              }, UPDATE_CHECK_REQUEST_TIMEOUT_MS);
+              if (result.ok !== true) {
+                failure = textOf(result.code) !== '' ? result.code : 'unavailable';
                 break;
               }
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-              continue;
+              const value = objectOf(result.value) ?? {};
+              const reported = countOf(value.total);
+              const next = countOf(value.nextCursor);
+              // A tracked count that collapses between chunks is a transient Host
+              // read, not the end of the walk: retry that cursor before giving up.
+              if ((reported === 0 && cursor > 0) || (total > cursor && next <= cursor)) {
+                stalls += 1;
+                if (stalls > 2) {
+                  failure = 'unavailable';
+                  break;
+                }
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+                continue;
+              }
+              stalls = 0;
+              total = reported;
+              const done = value.done === true || next >= total || next <= cursor;
+              cursor = next;
+              patch({ updatesProgress: { done: Math.min(cursor, total), total } });
+              if (done) break;
             }
-            stalls = 0;
-            total = reported;
-            const done = value.done === true || next >= total || next <= cursor;
-            cursor = next;
-            patch({ updatesProgress: { done: Math.min(cursor, total), total } });
-            if (done) break;
+            if (failure === null) break;
+            // The one retry gets a fresh envelope and starts over; the chunks the
+            // first pass answered are reused from disk, so only the rest is read.
+            if (pass === 0) await new Promise((resolve) => setTimeout(resolve, 600));
           }
-          patch({ updatesChecking: false });
-          if (ok) await refresh();
-          return ok;
+          const complete = failure === null;
+          patch({ updatesChecking: false, ...(complete ? {} : { updatesError: failure }) });
+          // The Host persisted every chunk it answered, so the panel re-reads the
+          // state even after a failure: partial progress and the note both show.
+          await refresh();
+          return complete;
         })().finally(() => {
           if (inFlightCheck === run) inFlightCheck = null;
         });
@@ -2589,6 +2631,7 @@ window.__ModuleLoader__.load({
       const closed = modelInvocable === false && userInvocable === false;
       const installed = objectOf(skill?.installed);
       const origin = installed === null ? '' : textOf(installed.ref);
+      const originShort = originLabel(origin);
       const originVersion = installed === null ? '' : textOf(installed.version);
       // A writable row always offers the action; a row without a stored origin links one first.
       const canUpdate = writable === true;
@@ -2635,8 +2678,8 @@ window.__ModuleLoader__.load({
             ),
           ),
           description !== '' && el('p', { className: 'skd-rowDesc', title: description }, description),
-          origin !== '' && el('p', { className: 'skd-noteLine' },
-            t(originVersion !== '' ? 'skill.originVersion' : 'skill.origin', { ref: origin, version: originVersion })),
+          origin !== '' && el('p', { className: 'skd-noteLine', title: originShort === origin ? undefined : origin },
+            t(originVersion !== '' ? 'skill.originVersion' : 'skill.origin', { ref: originShort, version: originVersion })),
         ),
         el('div', { className: 'skd-rowRail' },
           el('div', { className: 'skd-metric' },
@@ -3670,6 +3713,7 @@ window.__ModuleLoader__.load({
         [availableUpdates],
       );
       const updatesProgress = objectOf(snapshot.updatesProgress) ?? { done: 0, total: 0 };
+      const updatesError = textOf(snapshot.updatesError);
       const updatingAll = objectOf(snapshot.updatingAll);
       const updatesCheckedAt = countOf(updates.checkedAt);
       const showUpdatesBanner = availableUpdates.length > 0 && updatesDismissed === false;
@@ -3949,11 +3993,17 @@ window.__ModuleLoader__.load({
                   type: 'button', className: 'skd-button', 'data-variant': 'text',
                   onClick: () => setUpdatesDismissed(true),
                 }, t('updates.dismiss')),
-                el('span', { className: 'skd-updatesStatus', role: 'status' },
+                el('span', {
+                  className: 'skd-updatesStatus',
+                  role: 'status',
+                  title: updatesError === '' ? undefined : updatesError,
+                },
                   snapshot.updatesChecking === true
                     ? t('updates.checking', { done: countOf(updatesProgress.done), total: countOf(updatesProgress.total) })
-                    : updatesCheckedAt > 0 ? t('updates.lastChecked', { time: formatClock(updatesCheckedAt) })
-                      : t('updates.never')),
+                    : updatesError !== ''
+                      ? t('updates.interrupted', { done: countOf(updatesProgress.done), total: countOf(updatesProgress.total) })
+                      : updatesCheckedAt > 0 ? t('updates.lastChecked', { time: formatClock(updatesCheckedAt) })
+                        : t('updates.never')),
                 el(Button, {
                   type: 'button', className: 'skd-button', 'data-variant': 'outline',
                   disabled: snapshot.updatesChecking === true || updatingAll !== null,

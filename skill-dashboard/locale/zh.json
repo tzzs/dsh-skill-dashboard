@@ -64,6 +64,7 @@
   "updates.checking": "正在检查更新 {done}/{total}",
   "updates.lastChecked": "上次检查 {time}",
   "updates.never": "尚未检查",
+  "updates.interrupted": "检查中断，已完成 {done}/{total}，可再次检查",
   "updates.available": "可更新 {count} 个技能",
   "updates.applyAll": "全部更新",
   "updates.applying": "正在更新 {done}/{total}",

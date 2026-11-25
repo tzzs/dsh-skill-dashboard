@@ -64,6 +64,7 @@
   "updates.checking": "Checking for updates {done}/{total}",
   "updates.lastChecked": "Last checked {time}",
   "updates.never": "Not checked yet",
+  "updates.interrupted": "Check stopped after {done}/{total}; check again",
   "updates.available": "{count} updates available",
   "updates.applyAll": "Update all",
   "updates.applying": "Updating {done}/{total}",
