@@ -16,7 +16,7 @@
 - 从各自的技能根目录检测编程 Agent（包括 Claude Code、Codex、Cursor、Gemini CLI、GitHub Copilot、OpenCode 等），同时识别目录型技能与非通用 Agent 根目录下的单文件 `.md` 技能。
 - 显示来源与调用次数；位于 DSH 安装目录内的技能标为`只读`，插件不会修改。
 - 每行提供**自动调用**与 **`/name` 手动**两个开关，直接修改技能的 YAML frontmatter；两者都关闭时显示`已停用`。行菜单提供更新、删除和查看路径。
-- 更新从记录的来源（腾讯 SkillHub、skills.sh 或 GitHub）整目录原子替换。别的工具装的技能可以先「关联来源」，之后持续更新；从 GitHub 安装会记录写入的准确提交。
+- 更新从记录的来源（腾讯 SkillHub、skills.sh、GitHub 引用，或 well-known 源的技能压缩包）整目录原子替换。别的工具装的技能可以先「关联来源」，之后持续更新；从 GitHub 安装会记录写入的准确提交，别的 CLI 装的技能则按 `.skill-lock.json` 的条目跟随，包括改名过的来源目录和压缩包地址。
 - 支持关键词搜索、按 Agent 与调用状态筛选，以及按调用次数、名称或最近使用排序。
 
 **发现。** 通过 Host 进程代理，从两个公开技能源或直接从 GitHub 搜索并安装技能。

@@ -12,7 +12,7 @@ It appears as **Skills Manager / 技能管理** in the Plugins page, adds a **Sk
 - Detects coding agents that read skill directories (Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode, Amp, Cline, Droid, Kilo Code, Kimi Code CLI, Pi, Warp, Zed, and fx) from their own skill roots, and labels each row with the agents that read it. The table mirrors the `skills` CLI registry (`vercel-labs/skills/src/agents.ts`). Canonical `.agents/skills` roots count for every agent that reads them, flat `.md` skills inside non-universal runtimes' own roots are recognized, and DSH sees every catalog skill.
 - Shows source (`user-agents`, `user-dsh`, `project-*`, `custom`, `bundled`), call count, and a `Read-only` (`只读`) badge for skills inside the DSH installation (bundled skills and `app.asar` entries), which the plugin refuses to modify.
 - Provides two switches per row (**Auto-invoke / 自动调用** and **`/name` manual / `/name` 手动**), each with a hover hint, and marks skills as **Disabled / 已停用** when both paths are off.
-- Row menu actions include **Update / 更新**, **Delete / 删除**, and **Show path / 查看路径**. A writable row with no recorded origin offers **Link source / 关联来源** instead: one reference (`multi-search-engine`, `owner/repo`, `owner/repo@branch#path`, or a GitHub URL) links the skill to its source and updates it in the same call. A tracked row shows a quiet `From <ref>` line under its description.
+- Row menu actions include **Update / 更新**, **Delete / 删除**, and **Show path / 查看路径**. A writable row with no recorded origin offers **Link source / 关联来源** instead: one reference (`multi-search-engine`, `owner/repo`, `owner/repo@branch#path`, or a GitHub URL) links the skill to its source and updates it in the same call. A tracked row shows a quiet `From <ref>` line under its description; an archive URL reads as its host plus the archived skill name, with the full URL in the tooltip.
 - A `Frequent` (`高频`) badge marks skills above the 75th percentile with at least three calls, so an over-eager skill stands out without opening the Usage tab.
 
 **Discover (发现).** Install skills from two public sources or directly from GitHub, proxied through the Host.
@@ -90,7 +90,12 @@ then reloading the page.
 - Update checks are on by default and read-only. The first successful load runs one background
   check in chunks of four tracked skills (`check-updates`, 6 s per skill), reuses a recorded
   result for six hours unless the user refreshes, and shares the 10-minute repository caches
-  across the skills of one repo. The installed tab gains an “N updates available” banner with
+  across the skills of one repo; an archive source caches its download per URL for the same ten
+  minutes. One chunk may take a cold tree warm plus four bounded reads, so it alone gets a 25 s
+  request fence while every other route stays at 10 s; a chunk that still fails restarts the walk
+  once from the first skill without a record, and a second failure leaves `检查中断` in the bar
+  with the verdicts already on disk still shown. The installed tab gains an “N updates available”
+  banner with
   Update all (at most 10 rows, sequential, one state read at the end) and a quiet badge on each
   available row. Checking never writes a skill tree or provenance; an older Host without the
   action simply shows no update affordance.
@@ -136,6 +141,13 @@ coding agents read it before you flip the switch.
 |:--|:--|:--|
 | `skills-sh` | `GET https://skills.sh/api/search?q=…&limit=50`, or a reference typed into Install from GitHub | `api.github.com/.../git/trees/{rev}?recursive=1` + `raw.githubusercontent.com`, with `data.jsdelivr.com` listing and `cdn.jsdelivr.net` bytes as the fallback |
 | `tencent` | `GET https://api.skillhub.cn/api/skills?page=1&pageSize=30&sortBy=score&keyword=…` | `GET /api/v1/skills/{slug}/files` + `/api/v1/skills/{slug}/file?path=…` |
+| `well-known` | none: the lock file records one archive URL per skill | `GET <sourceUrl>`, one gzipped tar unpacked in the Host |
+
+A `well-known` registry (Lark's `open.feishu.cn` publishes its skills this way) offers no search
+and no file listing, so this source is never shown in Discover; it only follows the archive URL a
+`.skill-lock.json` entry records. One download is capped at 8 MiB declared or streamed and
+decompresses to at most 32 MiB of tar; the reader scans at most 200 entries, keeps only regular
+text files with safe relative paths, and the usual 40-file / 1 MiB payload limits still apply.
 
 Neither registry API sends CORS headers, which is why every registry call runs in the Host process
 and the browser only talks to `/skill-dashboard/*`. Outbound requests are bounded (10 s, 4 MiB,
@@ -175,7 +187,10 @@ no handler can throw into the carrier.
   only describes the directory it was written for; a same-named skill elsewhere is unaffected.
   Skills the skills CLI installed carry no such record, so the panel also reads
   `$DSH_AGENTS_HOME/.skill-lock.json` read-only, for 5 seconds at a time, and reports the entry as
-  `{ source: "github", ref }` only when the lock's `skillPath` matches `<installRoot>/<name>`.
+  `{ source: "github", ref }` when the lock's `skillPath` matches `<installRoot>/<name>`. The lock
+  key is the installed name, so the folder it records may differ from it (ten taste-skill entries
+  install under names their folders do not carry) and several entries may share one folder; a
+  `well-known` entry reports `{ source: "well-known", ref: <sourceUrl> }` instead.
 - `$DSH_HOME/skill-dashboard/updates.json` caches the last check per skill:
   `{ version: 1, skills: { "<name>": { available, changedPaths, checkedAt } | { error, checkedAt } } }`.
   A result is trusted for six hours; a successful update clears that skill's record.
@@ -206,6 +221,9 @@ does not run it.
   path answers `subpath-required` with up to five candidates.
 - `skills.sh` has no version field and no detail API, so an update from a discovered card
   compares file contents and reports `changed` rather than a version bump.
+- A `well-known` update downloads the skill's whole archive, unpacks the text files it holds, and
+  compares them the same way. It records `commit: null` because a tarball has no commit, and a file
+  the archive no longer ships is dropped from the skill directory on the same wholesale swap.
 - A **changed** update replaces the skill directory wholesale (stage, move the old tree aside,
   swap), so files the upstream no longer ships disappear and a hand-added file inside that skill
   folder would too. Put local additions outside the skill directory. The same means a hand-edited
