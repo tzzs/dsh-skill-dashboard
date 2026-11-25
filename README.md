@@ -41,12 +41,12 @@ A DeepSeek Harness (DSH) plugin that puts every agent skill in one place. It app
 **Preview.** Open any installed skill row or Discover card to inspect its files.
 
 - Shows a collapsible folder tree, Markdown reader or raw source view, and binary or size-limit notices.
-- Renders a top indeterminate progress bar plus file-tree and document skeletons while loading, with bounded Host and client caches in a resizable, maximizable `<dialog>`.
+- Renders a top indeterminate progress bar plus file-tree and document skeletons while loading, with bounded Host and client caches in a resizable, maximizable overlay panel.
 - Never executes skill files; HTML renders as plain text.
 
 **DSH integration.** Follows DSH language, theme, and typography with zero extra configuration.
 
-- Uses single-pass CSS bound directly to DSH `--dsw-*` and `--ds-*` tokens across both the page and the modal `<dialog>`.
+- Uses single-pass CSS bound directly to DSH `--dsw-*` and `--ds-*` tokens across both the page and the preview overlay.
 - Renders the full page shell with DSH-native skeleton cards and rows on initial load, and keeps loaded data visible with an inline retry banner if a background refresh fails.
 - Localizes all UI copy and all 25 service error codes in English and Chinese, with keyboard access across every control.
 
@@ -103,7 +103,7 @@ excluded from CI because it needs a real DSH installation and live registries.
 | Path | Role |
 |:--|:--|
 | `skill-dashboard/index.js` | Host half: `StateCache` SWR lifecycle, parallel catalog and runtime scans, frontmatter edits, usage store, registries, four HTTP routes |
-| `skill-dashboard/client.js` | Client half: panel, tabs, skeleton loaders, preview dialog, single-pass DSH-native styles (no build step, no JSX) |
+| `skill-dashboard/client.js` | Client half: panel, tabs, skeleton loaders, preview overlay, single-pass DSH-native styles (no build step, no JSX) |
 | `skill-dashboard/locale/*.json` | Bilingual UI dictionaries, localized error codes, and Plugins page metadata |
 | `skill-dashboard/test/*.mjs` | Offline regression suites and the manual live sweep |
 | `.github/workflows/` | CI and release automation |

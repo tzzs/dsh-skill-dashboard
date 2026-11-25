@@ -45,7 +45,7 @@ It appears as **Skills Manager / 技能管理** in the Plugins page, adds a **Sk
 
 Select a skill row in Installed or a result card in Discover to open its preview. On a narrow screen,
 choose **Skill files** to browse the file tree. Refresh reloads the selected file if it is still available.
-The dialog shows the description, source, available version and local path, an expandable
+The panel shows the description, source, available version and local path, an expandable
 folder tree, and a reader that opens `SKILL.md` by default. Folder disclosures support native
 Enter/Space operation; file labels are short while their full relative paths remain available. Markdown supports basic headings, lists,
 bold text and code blocks; **阅读 / Read** and **原文 / Source** switch views. Other text
@@ -66,8 +66,10 @@ A bounded 30-second client cache reuses visited files and repeat opens. Switchin
 `fileOnly:true`, omitting the unchanged listing. **刷新预览 / Refresh preview** bypasses
 both caches; successful dashboard mutations invalidate the client cache.
 
-The native `<dialog>` supports Escape, close button, focus return, and independent file and
-content scrolling. It mounts directly to `document.body` and inherits all `--skd-*` DSH tokens.
+The preview is an in-page overlay panel, not a native `<dialog>`, mounted directly on
+`document.body` so it inherits all `--skd-*` DSH tokens. Escape, the close button and a
+backdrop click all close it; Tab and Shift+Tab stay inside the panel, focus returns to the
+skill row, and file and content scrolling stay independent. Switching tabs closes it.
 While loading, it renders a top indeterminate progress bar along with file-tree and document
 skeletons. Its desktop default is up to 1280px (92vw) wide and up to 860px (88dvh) tall. Drag
 the bottom-right corner to resize, use shrink or enlarge buttons without dragging, or maximize
@@ -168,7 +170,7 @@ request. `GITHUB_TOKEN` / `GH_TOKEN` is sent when the Host environment already h
 | File | Role |
 |:--|:--|
 | `index.js` | Host half: `StateCache` SWR lifecycle, parallel catalog/runtime reads, frontmatter edits, usage store, registry adapters, four exact HTTP routes |
-| `client.js` | Client half: rail icon, panel, tabs, skeleton loaders, preview dialog, single-pass DSH-native styles (no build step, no JSX) |
+| `client.js` | Client half: rail icon, panel, tabs, skeleton loaders, preview overlay, single-pass DSH-native styles (no build step, no JSX) |
 | `locale/*.json` | `meta.title` / `meta.description` for the Plugins page, UI dictionaries, and all 25 localized error codes |
 | `icon.svg` | Original artwork: transparent 36×36, drawn onto the host's tile so light and dark themes both match |
 | `cordis.patch.yml` | Inserts the `skill-dashboard` Host row |
