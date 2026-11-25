@@ -113,6 +113,8 @@ then reloading the page.
   The diagnosis queue instead mounts once, memoizes its rows, and uses `content-visibility` for
   offscreen rows; its row callbacks stay stable, so a snapshot tick never hands every row new
   props, and scrolling never writes React state.
+  Discover result cards are memoized with stable install and preview verbs; typing a query or a
+  snapshot tick does not re-render them. An empty-query popular listing is labeled separately.
 - All 25 Host error codes are localized in `locale/en.json` and `locale/zh.json`, and
   user-facing copy avoids internal Host terminology.
 
