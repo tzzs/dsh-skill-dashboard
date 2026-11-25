@@ -15,7 +15,7 @@ function loadClient(fetch = async () => ({ ok: true, json: async () => ({ ok: tr
     fetch, AbortController, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, console, URL,
   };
   vm.runInNewContext(source.replace('    // ---------------------------------------------------------------- mount',
-    '    return { filterSkills, runtimeBadge, createRuntime, shouldAutoCheck, Segmented, TabBar, usagePeriodProjection, diagnosisRows, diagnosisTally, previewFileTree, cachedPreview, rememberPreview, PREVIEW_MEMORY, originLabel, REQUEST_TIMEOUT_MS, UPDATE_CHECK_REQUEST_TIMEOUT_MS, zh, en };\n    // ---------------------------------------------------------------- mount'), context);
+    '    return { filterSkills, runtimeBadge, createRuntime, shouldAutoCheck, readAutoUpdateSettings, writeAutoUpdateSettings, commonUpdateNames, autoUpdateTargets, Segmented, TabBar, usagePeriodProjection, diagnosisRows, diagnosisTally, previewFileTree, cachedPreview, rememberPreview, PREVIEW_MEMORY, originLabel, REQUEST_TIMEOUT_MS, UPDATE_CHECK_REQUEST_TIMEOUT_MS, zh, en };\n    // ---------------------------------------------------------------- mount'), context);
   return api;
 }
 const { filterSkills, runtimeBadge, originLabel, REQUEST_TIMEOUT_MS, UPDATE_CHECK_REQUEST_TIMEOUT_MS, zh, en } = loadClient();
@@ -340,6 +340,62 @@ test('the automatic update check runs once per window and only when a skill is t
   assert.equal(shouldAutoCheck(undefined, [], now), false);
 });
 
+test('auto-update settings parse a stored blob, tolerate a broken store, and survive a save', () => {
+  const { readAutoUpdateSettings, writeAutoUpdateSettings } = loadClient();
+  const key = 'dsh-skill-dashboard:auto-update';
+  const memory = (seed) => {
+    const entries = new Map(seed === undefined ? [] : [[key, seed]]);
+    return {
+      getItem: (name) => entries.get(name) ?? null,
+      setItem: (name, value) => { entries.set(name, value); },
+    };
+  };
+  // The helpers live in the VM realm, so both directions are copied into this one before comparing.
+  const shape = (settings) => ({ enabled: settings.enabled, names: Array.from(settings.names) });
+  const off = { enabled: false, names: [] };
+
+  assert.deepEqual(shape(readAutoUpdateSettings(undefined)), off, 'a vm without localStorage stays off');
+  assert.deepEqual(shape(readAutoUpdateSettings(null)), off);
+  assert.deepEqual(shape(readAutoUpdateSettings({ getItem() { throw new Error('blocked'); } })), off, 'a throwing store stays off');
+  assert.deepEqual(shape(readAutoUpdateSettings(memory('not json'))), off, 'corrupt JSON stays off');
+  assert.deepEqual(shape(readAutoUpdateSettings(memory('[1,2]'))), off, 'a non-object payload stays off');
+  assert.deepEqual(shape(readAutoUpdateSettings(memory('{"enabled":true,"names":[" pdf ","pdf","",3],"extra":1}'))),
+    { enabled: true, names: ['pdf'] }, 'unknown fields are ignored, names are trimmed and deduped');
+
+  const storage = memory();
+  const saved = writeAutoUpdateSettings(storage, { enabled: true, names: ['alpha', 'alpha', 'beta'], extra: true });
+  assert.deepEqual(shape(saved), { enabled: true, names: ['alpha', 'beta'] });
+  assert.deepEqual(shape(readAutoUpdateSettings(storage)), shape(saved), 'a save survives a read');
+  assert.deepEqual(shape(writeAutoUpdateSettings(undefined, { enabled: true, names: ['alpha'] })),
+    { enabled: true, names: ['alpha'] }, 'a blocked write still reports the choice');
+});
+
+test('common-only names are the available skills the catalog says were called', () => {
+  const { commonUpdateNames } = loadClient();
+  const catalog = [
+    { name: 'pdf', usage: { count: 4, lastUsedAt: 5 } },
+    { name: 'idle', usage: { count: 0, lastUsedAt: 9 } },
+    { name: 'unrecorded', usage: null },
+    { name: 'other', usage: { count: 2 } },
+  ];
+  assert.deepEqual(Array.from(commonUpdateNames(catalog, ['pdf', 'idle', 'unrecorded', 'ghost'])), ['pdf']);
+  assert.deepEqual(Array.from(commonUpdateNames(catalog, new Set(['other', 'pdf']))), ['other', 'pdf'],
+    'a Set works and the available order decides');
+  assert.deepEqual(Array.from(commonUpdateNames(catalog, ['idle', 'unrecorded'])), [], 'an unused library has no 常用 subset');
+  assert.deepEqual(Array.from(commonUpdateNames([], ['pdf'])), []);
+});
+
+test('auto-update targets are only the checked names that are still available', () => {
+  const { autoUpdateTargets } = loadClient();
+  const settings = { enabled: true, names: ['pdf', 'removed-since', 'alpha'] };
+  assert.deepEqual(Array.from(autoUpdateTargets(settings, ['alpha', 'pdf', 'gamma'])), ['alpha', 'pdf'],
+    'an unchecked available skill is never a target');
+  assert.deepEqual(Array.from(autoUpdateTargets({ enabled: false, names: ['pdf'] }, ['pdf'])), [], 'the switch decides');
+  assert.deepEqual(Array.from(autoUpdateTargets(settings, [])), []);
+  assert.deepEqual(Array.from(autoUpdateTargets(null, ['pdf'])), []);
+  assert.deepEqual(Array.from(autoUpdateTargets({ enabled: true, names: [] }, ['pdf'])), []);
+});
+
 test('an update check walks the Host in bounded chunks and refreshes once at the end', async () => {
   const posts = [];
   const urls = [];
@@ -369,6 +425,7 @@ test('an update check walks the Host in bounded chunks and refreshes once at the
     assert.equal(snapshot.updatesChecking, false);
     assert.equal(snapshot.updatesProgress.done, 10);
     assert.equal(snapshot.updatesProgress.total, 10);
+    assert.equal(snapshot.updatesCheckSeq, 1, 'a finished check arms the automatic apply');
     assert.equal(snapshot.data.updates.checkedAt, 2);
   } finally {
     runtime.dispose();
@@ -387,6 +444,7 @@ test('an older Host without the check action fails quietly and clears its flag',
     assert.equal(await runtime.checkUpdates({ refresh: true }), false);
     const snapshot = runtime.store.getSnapshot();
     assert.equal(snapshot.updatesChecking, false);
+    assert.equal(snapshot.updatesCheckSeq, 0, 'a failed check arms nothing');
     assert.equal(snapshot.note, null, 'a failed check adds no error note');
   } finally {
     runtime.dispose();
@@ -504,6 +562,76 @@ test('a walk that keeps failing leaves a visible note instead of a silent stop',
     assert.equal(snapshot.updatesError, 'source-rate-limited', 'the panel keeps the failure so the next check is not a surprise');
     assert.equal(snapshot.updatesChecking, false);
     assert.equal(snapshot.updatesProgress.done, 4, 'the verdicts already written stay visible');
+  } finally {
+    runtime.dispose();
+  }
+});
+
+test('a bulk update applies every name rather than the first ten and reports its failures', async () => {
+  const list = Array.from({ length: 12 }, (_, index) => `skill-${index}`);
+  const catalog = { skills: list.map((name) => ({ name, path: `/skills/${name}` })) };
+  const posts = [];
+  const stateReads = [];
+  const { createRuntime } = loadClient(async (url, init) => {
+    if (url.endsWith('/action')) {
+      const body = JSON.parse(init.body);
+      posts.push(body);
+      if (body.action === 'update' && body.name === 'skill-7') {
+        return { ok: false, status: 502, json: async () => ({ ok: false, code: 'update-failed', message: 'source unavailable' }) };
+      }
+      // A write answers with the authoritative state, so a row needs no read of its own.
+      return { ok: true, json: async () => ({ ok: true, name: body.name, changed: true, state: catalog }) };
+    }
+    stateReads.push(url);
+    return { ok: true, json: async () => ({ ok: true, ...catalog }) };
+  });
+  const runtime = createRuntime();
+  const progress = [];
+  runtime.store.subscribe(() => {
+    const running = runtime.store.getSnapshot().updatingAll;
+    if (running !== null && progress.at(-1) !== running.done) progress.push(running.done);
+  });
+  try {
+    assert.equal(await runtime.refresh(), true);
+    stateReads.length = 0;
+    assert.equal(await runtime.applyUpdates(list), false, 'one failed row makes the receipt a failure');
+    assert.deepEqual(posts.map((body) => body.name), list, 'all twelve names are posted, not the first ten');
+    assert.deepEqual(progress, Array.from({ length: list.length + 1 }, (_, index) => index),
+      'the bar advances once per row');
+    assert.equal(stateReads.length, 1, 'one state read at the end, not one per row');
+    assert.equal(stateReads[0], 'skill-dashboard/state');
+    const snapshot = runtime.store.getSnapshot();
+    assert.equal(snapshot.updatingAll, null);
+    assert.deepEqual(
+      { key: snapshot.note.key, params: { ...snapshot.note.params } },
+      { key: 'updates.applied', params: { ok: 11, failed: 1 } },
+    );
+  } finally {
+    runtime.dispose();
+  }
+});
+
+test('an automatic apply touches only its names and keeps its own receipt', async () => {
+  const posts = [];
+  const { createRuntime } = loadClient(async (url, init) => {
+    if (url.endsWith('/action')) {
+      const body = JSON.parse(init.body);
+      posts.push(body);
+      return { ok: true, json: async () => ({ ok: true, name: body.name, changed: true }) };
+    }
+    return {
+      ok: true,
+      json: async () => ({ ok: true, skills: ['alpha', 'beta', 'gamma'].map((name) => ({ name, path: `/skills/${name}` })) }),
+    };
+  });
+  const runtime = createRuntime();
+  try {
+    await runtime.refresh();
+    assert.equal(await runtime.applyUpdates(['alpha'], { auto: true }), true);
+    assert.deepEqual(posts.map((body) => body.name), ['alpha'], 'the unchecked rows are not posted');
+    const note = runtime.store.getSnapshot().note;
+    assert.equal(note.key, 'updates.appliedAuto');
+    assert.deepEqual({ ...note.params }, { ok: 1, failed: 0 });
   } finally {
     runtime.dispose();
   }

@@ -95,10 +95,13 @@ then reloading the page.
   request fence while every other route stays at 10 s; a chunk that still fails restarts the walk
   once from the first skill without a record, and a second failure leaves `检查中断` in the bar
   with the verdicts already on disk still shown. The installed tab gains an “N updates available”
-  banner with
-  Update all (at most 10 rows, sequential, one state read at the end) and a quiet badge on each
-  available row. Checking never writes a skill tree or provenance; an older Host without the
-  action simply shows no update affordance.
+  banner with Update all (N), which applies the whole available set sequentially and shows
+  row-by-row progress, a Common only (M) button for the available skills you have actually
+  called, and Later. An Auto-update switch stores `{ enabled, names }` in `localStorage`: choose
+  the skills in the inline picker (a checkbox list with select all, clear, and done, closed by
+  Escape) and each finished check applies just those, with its own receipt; nothing else is ever
+  touched automatically. Checking never writes a skill tree or provenance; an older Host without
+  the action simply shows no update affordance.
 - The installed list paints 15 rows per animation frame with `aria-busy` until it is complete, and
   each row is memoized, so a large skill library never renders in one blocking task. The search
   input updates urgently while the filtered list reads a deferred value.

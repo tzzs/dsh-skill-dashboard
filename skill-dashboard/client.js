@@ -60,8 +60,10 @@ window.__ModuleLoader__.load({
     const UPDATES_TTL_MS = 6 * 60 * 60 * 1000;
     /** One check request covers this many tracked skills, so each route call stays inside the 10 s bound. */
     const UPDATE_CHECK_CHUNK = 4;
-    /** `全部更新` applies at most this many available skills in one gesture. */
-    const UPDATE_APPLY_MAX = 10;
+    /** A runaway name list must not lock the panel; one gesture applies the whole available set. */
+    const UPDATE_APPLY_LIMIT = 500;
+    /** The window-level home of the opt-in auto-update choice; one key, one shape. */
+    const AUTO_UPDATE_KEY = 'dsh-skill-dashboard:auto-update';
 
     // ---------------------------------------------------------------- locale
     const zh = {
@@ -128,10 +130,20 @@ window.__ModuleLoader__.load({
       'updates.never': '尚未检查',
       'updates.interrupted': '检查中断，已完成 {done}/{total}，可再次检查',
       'updates.available': '可更新 {count} 个技能',
-      'updates.applyAll': '全部更新',
+      'updates.applyAll': '全部更新 ({count})',
+      'updates.applyCommon': '仅更新常用 ({count})',
       'updates.applying': '正在更新 {done}/{total}',
       'updates.dismiss': '稍后',
       'updates.applied': '已更新 {ok} 个技能，{failed} 个失败',
+      'updates.appliedAuto': '已自动更新 {ok} 个技能，{failed} 个失败',
+      'updates.autoToggle': '自动更新',
+      'updates.autoChoose': '选择 {count}',
+      'updates.autoPicker': '自动更新技能',
+      'updates.autoHint': '只自动更新勾选的技能，每次检查结束后执行一次。',
+      'updates.autoAll': '全选',
+      'updates.autoNone': '清空',
+      'updates.autoDone': '完成',
+      'updates.autoEmpty': '当前没有可勾选的更新。',
       'skill.runtimesOne': '仅 {agent}',
       'skill.runtimesSome': '{count}/{total} 个 Agent',
       'skill.callsLabel': '调用',
@@ -424,10 +436,20 @@ window.__ModuleLoader__.load({
       'updates.never': 'Not checked yet',
       'updates.interrupted': 'Check stopped after {done}/{total}; check again',
       'updates.available': '{count} updates available',
-      'updates.applyAll': 'Update all',
+      'updates.applyAll': 'Update all ({count})',
+      'updates.applyCommon': 'Common only ({count})',
       'updates.applying': 'Updating {done}/{total}',
       'updates.dismiss': 'Later',
       'updates.applied': 'Updated {ok} skills, {failed} failed',
+      'updates.appliedAuto': 'Auto-updated {ok} skills, {failed} failed',
+      'updates.autoToggle': 'Auto-update',
+      'updates.autoChoose': 'Choose {count}',
+      'updates.autoPicker': 'Auto-update skills',
+      'updates.autoHint': 'Only checked skills update automatically, once after each check.',
+      'updates.autoAll': 'Select all',
+      'updates.autoNone': 'Clear',
+      'updates.autoDone': 'Done',
+      'updates.autoEmpty': 'No updates to choose from right now.',
       'skill.runtimesOne': '{agent} only',
       'skill.runtimesSome': '{count}/{total} agents',
       'skill.callsLabel': 'Calls',
@@ -739,6 +761,16 @@ window.__ModuleLoader__.load({
 .skd-updatesBar[data-tone=accent]{border-color:color-mix(in srgb,var(--skd-accent) 32%,transparent);background:var(--skd-accent-bg)}
 .skd-updatesText{font-weight:600;color:var(--skd-fg)}
 .skd-updatesStatus{margin-inline-start:auto;color:var(--skd-muted);font-size:.75rem}
+.skd-updatesAuto{display:flex;align-items:center;gap:8px;flex:none}
+.skd-updatesBar .skd-switchControl{width:auto}
+.skd-updatesPicker{display:flex;flex-direction:column;gap:8px;margin:0 0 14px;padding:10px 12px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-surface)}
+.skd-updatesPicker:focus-visible{outline:2px solid var(--skd-accent);outline-offset:2px}
+.skd-updatesPickerHead{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap}
+.skd-updatesPickerHead .skd-updatesText{margin-inline-end:auto}
+.skd-updatesPickerHint,.skd-updatesPickerEmpty{margin:0;color:var(--skd-muted);font-size:.75rem;line-height:1.5}
+.skd-updatesPickerList{display:flex;flex-direction:column;gap:2px;margin:0;padding:0;list-style:none;max-block-size:212px;overflow:auto}
+.skd-updatesPickerItem{display:flex;align-items:center;gap:8px;min-block-size:28px;font-size:.8125rem;line-height:1.5;cursor:pointer}
+.skd-updatesCheckInput{flex:none;margin:0;inline-size:1rem;block-size:1rem;accent-color:var(--skd-accent);cursor:inherit}
 
 .skd-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:16px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-surface);overflow:hidden}
 .skd-overviewItem{display:flex;flex-direction:column;gap:2px;padding:12px 16px;border-inline-end:1px solid var(--skd-line)}
@@ -1106,6 +1138,7 @@ window.__ModuleLoader__.load({
 }
 @media (pointer:coarse){
   .skd-switchControl{min-block-size:44px}
+  .skd-updatesPickerItem{min-block-size:40px}
 }
 @media (max-width:700px){
   .skd-previewDialog{inline-size:calc(100vw - 16px);block-size:calc(100dvh - 16px);max-inline-size:calc(100vw - 16px);max-block-size:calc(100dvh - 16px);min-inline-size:0;resize:none;border-radius:var(--skd-radius)}
@@ -1126,7 +1159,7 @@ window.__ModuleLoader__.load({
   .skd-page *,.skd-previewDialog *{transition:none!important}
 }
 @media (forced-colors:active){
-  .skd-previewDialog,.skd-diagnosisRail,.skd-menu{border-color:CanvasText;box-shadow:none}
+  .skd-previewDialog,.skd-diagnosisRail,.skd-menu,.skd-updatesPicker{border-color:CanvasText;box-shadow:none}
   .skd-button[data-variant=primary]{background:ButtonFace;color:ButtonText;border-color:ButtonText}
   .skd-tab[aria-selected=true]{border-bottom:2px solid Highlight}
   .skd-segment[data-active]{border-color:Highlight;background:Highlight;color:HighlightText}
@@ -1173,6 +1206,68 @@ window.__ModuleLoader__.load({
       } catch {
         return text;
       }
+    }
+
+    /** The page's localStorage, or null where the browser refuses it (private mode throws on access). */
+    function storageOf() {
+      try {
+        return typeof window === 'undefined' ? null : window.localStorage ?? null;
+      } catch {
+        return null;
+      }
+    }
+
+    /** The stored skill names, in the order the user picked them, without blanks or repeats. */
+    function autoUpdateNames(value) {
+      const names = [];
+      for (const entry of Array.isArray(value) ? value : []) {
+        const name = textOf(entry).trim();
+        if (name !== '' && names.includes(name) === false) names.push(name);
+      }
+      return names;
+    }
+
+    /** Auto-update settings cross the storage boundary, so they are parsed and narrowed here. */
+    function readAutoUpdateSettings(storage) {
+      let raw = null;
+      try {
+        raw = objectOf(storage) === null ? null : storage.getItem(AUTO_UPDATE_KEY);
+      } catch {
+        raw = null;
+      }
+      let parsed = null;
+      try {
+        parsed = typeof raw === 'string' ? JSON.parse(raw) : null;
+      } catch {
+        parsed = null;
+      }
+      const block = objectOf(parsed);
+      return {
+        enabled: block !== null && block.enabled === true,
+        names: block === null ? [] : autoUpdateNames(block.names),
+      };
+    }
+
+    /** Persist the narrowed settings and return them, so the caller renders what was saved. */
+    function writeAutoUpdateSettings(storage, settings) {
+      const block = objectOf(settings);
+      const next = {
+        enabled: block !== null && block.enabled === true,
+        names: block === null ? [] : autoUpdateNames(block.names),
+      };
+      try {
+        if (objectOf(storage) !== null) storage.setItem(AUTO_UPDATE_KEY, JSON.stringify(next));
+      } catch {
+        // A blocked store still leaves the session's choice in memory.
+      }
+      return next;
+    }
+
+    /** Skill names from an array or a Set, dropping blanks; the given order is kept. */
+    function nameListOf(value) {
+      const listed = Array.isArray(value) ? value
+        : objectOf(value) !== null && typeof value.forEach === 'function' ? Array.from(value) : [];
+      return listed.map((entry) => textOf(entry)).filter((name) => name !== '');
     }
 
     function formatNumber(value) {
@@ -1382,6 +1477,7 @@ window.__ModuleLoader__.load({
         updatesChecking: false,
         updatesProgress: { done: 0, total: 0 },
         updatesError: null,
+        updatesCheckSeq: 0,
         updatingAll: null,
         discover: { source: null, query: '', status: 'idle', items: [], error: null, note: null, at: 0 },
       });
@@ -1604,6 +1700,8 @@ window.__ModuleLoader__.load({
           // The Host persisted every chunk it answered, so the panel re-reads the
           // state even after a failure: partial progress and the note both show.
           await refresh();
+          // Only a completed check arms the auto-update path, and only against the state it produced.
+          if (complete) patch({ updatesCheckSeq: countOf(store.getSnapshot().updatesCheckSeq) + 1 });
           return complete;
         })().finally(() => {
           if (inFlightCheck === run) inFlightCheck = null;
@@ -1612,12 +1710,12 @@ window.__ModuleLoader__.load({
         return run;
       };
 
-      /** Apply the available updates by name, sequentially, at most UPDATE_APPLY_MAX. */
-      const applyUpdates = async (names) => {
+      /** Apply the given updates by name, sequentially; `auto` only changes the receipt. */
+      const applyUpdates = async (names, { auto = false } = {}) => {
         const targets = (Array.isArray(names) ? names : [])
           .map((name) => textOf(name))
           .filter((name) => name !== '')
-          .slice(0, UPDATE_APPLY_MAX);
+          .slice(0, UPDATE_APPLY_LIMIT);
         if (targets.length === 0 || store.getSnapshot().updatingAll !== null) return false;
         patch({ updatingAll: { done: 0, total: targets.length }, note: null });
         let succeeded = 0;
@@ -1628,11 +1726,18 @@ window.__ModuleLoader__.load({
           else failed += 1;
           patch({ updatingAll: { done: index + 1, total: targets.length } });
         }
+        patch({ updatingAll: { done: targets.length, total: targets.length } });
+        // The count reaches the total on screen before the receipt replaces it: the trailing
+        // state read yields the frame the last row's patch would otherwise be batched away with.
+        await refresh();
         patch({
           updatingAll: null,
-          note: { tone: failed === 0 ? 'ok' : 'idle', key: 'updates.applied', params: { ok: succeeded, failed } },
+          note: {
+            tone: failed === 0 ? 'ok' : 'idle',
+            key: auto === true ? 'updates.appliedAuto' : 'updates.applied',
+            params: { ok: succeeded, failed },
+          },
         });
-        await refresh();
         return failed === 0;
       };
 
@@ -1973,6 +2078,24 @@ window.__ModuleLoader__.load({
       const block = objectOf(updates);
       const checkedAt = countOf(block?.checkedAt);
       return checkedAt === 0 || now - checkedAt >= UPDATES_TTL_MS;
+    }
+
+    /** Available names the catalog says were called at least once; an unused library has no 常用 subset. */
+    function commonUpdateNames(skills, available) {
+      const used = new Set();
+      for (const entry of Array.isArray(skills) ? skills : []) {
+        const skill = objectOf(entry);
+        if (skill !== null && countOf(objectOf(skill.usage)?.count) > 0) used.add(textOf(skill.name));
+      }
+      return nameListOf(available).filter((name) => used.has(name));
+    }
+
+    /** The checked names this check can still apply; a skill the user did not check is never touched. */
+    function autoUpdateTargets(settings, available) {
+      const block = objectOf(settings);
+      if (block === null || block.enabled !== true) return [];
+      const checked = new Set(autoUpdateNames(block.names));
+      return nameListOf(available).filter((name) => checked.has(name));
     }
 
     /** The five buckets in the strip's order; their membership is decided by the Host. */
@@ -3619,6 +3742,11 @@ window.__ModuleLoader__.load({
       const [usageView, setUsageView] = useState({ period: '7', start: '', end: '', query: '', selected: '', sort: { key: 'count', direction: 'descending' } });
       const [diagnosisView, setDiagnosisView] = useState({ bucket: 'cleanup', query: '', selected: [] });
       const [updatesDismissed, setUpdatesDismissed] = useState(false);
+      const [autoUpdate, setAutoUpdate] = useState(() => readAutoUpdateSettings(storageOf()));
+      const [pickerOpen, setPickerOpen] = useState(false);
+      const pickerRef = useRef(null);
+      const chooseRef = useRef(null);
+      const autoAppliedSeq = useRef(0);
       const autoChecked = useRef(false);
       const scrollRef = useRef(null);
       const libraryInputRef = useRef(null);
@@ -3716,7 +3844,38 @@ window.__ModuleLoader__.load({
       const updatesError = textOf(snapshot.updatesError);
       const updatingAll = objectOf(snapshot.updatingAll);
       const updatesCheckedAt = countOf(updates.checkedAt);
+      const updatesCheckSeq = countOf(snapshot.updatesCheckSeq);
       const showUpdatesBanner = availableUpdates.length > 0 && updatesDismissed === false;
+      const availableNameList = useMemo(
+        () => availableUpdates.map((entry) => textOf(entry.name)),
+        [availableUpdates],
+      );
+      const commonNames = useMemo(() => commonUpdateNames(skills, availableNameList), [skills, availableNameList]);
+      const autoTargets = useMemo(
+        () => autoUpdateTargets(autoUpdate, availableNameList),
+        [autoUpdate, availableNameList],
+      );
+      const autoBusy = pending !== null || updatingAll !== null || snapshot.updatesChecking === true;
+      const saveAutoUpdate = (next) => { setAutoUpdate(writeAutoUpdateSettings(storageOf(), next)); };
+      const closePicker = () => {
+        setPickerOpen(false);
+        chooseRef.current?.focus({ preventScroll: true });
+      };
+
+      // One attempt per finished check. A settings edit is not a check, so ticking a name
+      // never writes on its own, and a row that failed is not retried until the next check.
+      useEffect(() => {
+        if (updatesCheckSeq <= autoAppliedSeq.current) return;
+        if (snapshot.updatesChecking === true || updatingAll !== null) return;
+        autoAppliedSeq.current = updatesCheckSeq;
+        if (autoUpdate.enabled !== true || autoTargets.length === 0) return;
+        void applyUpdates(autoTargets, { auto: true });
+      }, [updatesCheckSeq, autoUpdate, autoTargets, snapshot.updatesChecking, updatingAll, applyUpdates]);
+
+      // The picker is inline, not a modal: opening it moves focus into the panel so Escape reaches it.
+      useEffect(() => {
+        if (pickerOpen === true) pickerRef.current?.focus({ preventScroll: true });
+      }, [pickerOpen]);
 
       // One automatic check after the first successful load, when nothing was
       // checked in the last six hours and the Host tracks at least one skill.
@@ -3984,14 +4143,21 @@ window.__ModuleLoader__.load({
                   t('updates.available', { count: availableUpdates.length })),
                 showUpdatesBanner && el(Button, {
                   type: 'button', className: 'skd-button', 'data-variant': 'primary',
-                  disabled: pending !== null || updatingAll !== null || snapshot.updatesChecking === true,
-                  onClick: () => { void applyUpdates(availableUpdates.map((entry) => textOf(entry.name))); },
+                  disabled: autoBusy,
+                  onClick: () => { void applyUpdates(availableNameList); },
                 }, updatingAll !== null
                   ? t('updates.applying', { done: countOf(updatingAll.done), total: countOf(updatingAll.total) })
-                  : t('updates.applyAll')),
+                  : t('updates.applyAll', { count: availableUpdates.length })),
+                // Only offered when the used subset is a real subset: the count is the disclosure.
+                showUpdatesBanner && commonNames.length > 0 && commonNames.length < availableUpdates.length
+                  && el(Button, {
+                    type: 'button', className: 'skd-button', 'data-variant': 'outline',
+                    disabled: autoBusy,
+                    onClick: () => { void applyUpdates(commonNames); },
+                  }, t('updates.applyCommon', { count: commonNames.length })),
                 showUpdatesBanner && el(Button, {
                   type: 'button', className: 'skd-button', 'data-variant': 'text',
-                  onClick: () => setUpdatesDismissed(true),
+                  onClick: () => { setUpdatesDismissed(true); if (pickerOpen === true) closePicker(); },
                 }, t('updates.dismiss')),
                 el('span', {
                   className: 'skd-updatesStatus',
@@ -4004,11 +4170,71 @@ window.__ModuleLoader__.load({
                       ? t('updates.interrupted', { done: countOf(updatesProgress.done), total: countOf(updatesProgress.total) })
                       : updatesCheckedAt > 0 ? t('updates.lastChecked', { time: formatClock(updatesCheckedAt) })
                         : t('updates.never')),
+                el('span', { className: 'skd-updatesAuto' },
+                  el(Switch, {
+                    checked: autoUpdate.enabled === true,
+                    label: t('updates.autoToggle'),
+                    hint: t('updates.autoHint'),
+                    onChange: (checked) => {
+                      saveAutoUpdate({ enabled: checked, names: autoUpdate.names });
+                      if (checked && autoUpdate.names.length === 0) setPickerOpen(true);
+                    },
+                  }, t('updates.autoToggle')),
+                  el(Button, {
+                    type: 'button', className: 'skd-button', 'data-variant': 'text', ref: chooseRef,
+                    'aria-expanded': pickerOpen === true,
+                    onClick: () => { if (pickerOpen === true) closePicker(); else setPickerOpen(true); },
+                  }, t('updates.autoChoose', { count: autoUpdate.names.length }))),
                 el(Button, {
                   type: 'button', className: 'skd-button', 'data-variant': 'outline',
                   disabled: snapshot.updatesChecking === true || updatingAll !== null,
                   onClick: () => { void checkUpdates({ refresh: true }); },
                 }, t('updates.check')),
+              ),
+              tab === 'installed' && updatesSupported && pickerOpen === true && el('div', {
+                className: 'skd-updatesPicker',
+                role: 'group',
+                'aria-label': t('updates.autoPicker'),
+                ref: pickerRef,
+                tabIndex: -1,
+                onKeyDown: (event) => { if (event.key === 'Escape') { event.preventDefault(); closePicker(); } },
+              },
+                el('div', { className: 'skd-updatesPickerHead' },
+                  el('span', { className: 'skd-updatesText' }, t('updates.autoPicker')),
+                  el(Button, {
+                    type: 'button', className: 'skd-button', 'data-variant': 'text',
+                    onClick: () => saveAutoUpdate({
+                      enabled: autoUpdate.enabled,
+                      names: [...autoUpdate.names, ...availableNameList],
+                    }),
+                  }, t('updates.autoAll')),
+                  el(Button, {
+                    type: 'button', className: 'skd-button', 'data-variant': 'text',
+                    onClick: () => saveAutoUpdate({ enabled: autoUpdate.enabled, names: [] }),
+                  }, t('updates.autoNone')),
+                  el(Button, {
+                    type: 'button', className: 'skd-button', 'data-variant': 'outline',
+                    onClick: () => closePicker(),
+                  }, t('updates.autoDone'))),
+                el('p', { className: 'skd-updatesPickerHint' }, t('updates.autoHint')),
+                availableUpdates.length === 0
+                  ? el('p', { className: 'skd-updatesPickerEmpty' }, t('updates.autoEmpty'))
+                  : el('ul', { className: 'skd-updatesPickerList' }, availableUpdates.map((entry) => {
+                    const name = textOf(entry.name);
+                    return el('li', { key: name },
+                      el('label', { className: 'skd-updatesPickerItem' },
+                        el(Input, {
+                          type: 'checkbox', className: 'skd-updatesCheckInput',
+                          checked: autoUpdate.names.includes(name),
+                          onChange: (event) => saveAutoUpdate({
+                            enabled: autoUpdate.enabled,
+                            names: event.target.checked
+                              ? [...autoUpdate.names, name]
+                              : autoUpdate.names.filter((selected) => selected !== name),
+                          }),
+                        }),
+                        el('span', null, name)));
+                  })),
               ),
               tab === 'installed' && el('search', { className: 'skd-toolbar skd-filterBar', 'aria-label': t('installed.search') },
                 el('div', { className: 'skd-searchField' },
