@@ -27,9 +27,6 @@ window.__ModuleLoader__.load({
     function Badge({ className = 'skd-badge', ...props }) {
       return h('span', { ...props, className, 'data-slot': 'badge' });
     }
-    function Card({ className = 'skd-card', ...props }) {
-      return h('article', { ...props, className, 'data-slot': 'card' });
-    }
 
     // ---------------------------------------------------------------- constants
     const PACKAGE_ID = '@local/dsh-skill-dashboard';
@@ -224,7 +221,10 @@ window.__ModuleLoader__.load({
       'discover.installed': '已安装',
       'discover.version': 'v{version}',
       'discover.updated': '更新于 {date}',
-      'discover.installs': '{count} 次安装',
+      'discover.installsUnit': '次安装',
+      'discover.columnRank': '排名',
+      'discover.columnSkill': '技能',
+      'discover.columnInstalls': '安装量',
       'discover.note.suggestions': '当前展示热门技能',
       'usage.title': '使用统计',
       'usage.periodBody': '按所选时段查看每个技能的调用趋势与占比，统计覆盖全部 Agent。',
@@ -543,7 +543,10 @@ window.__ModuleLoader__.load({
       'discover.installed': 'Installed',
       'discover.version': 'v{version}',
       'discover.updated': 'Updated {date}',
-      'discover.installs': '{count} installs',
+      'discover.installsUnit': 'installs',
+      'discover.columnRank': 'Rank',
+      'discover.columnSkill': 'Skill',
+      'discover.columnInstalls': 'Installs',
       'discover.note.suggestions': 'Showing popular skills',
       'usage.title': 'Usage',
       'usage.periodBody': 'View per-skill call trends and shares over a selected period across all agents.',
@@ -885,7 +888,7 @@ window.__ModuleLoader__.load({
 .skd-filterBar{display:grid;grid-template-columns:minmax(14rem,1fr) auto auto auto;align-items:end;gap:10px 12px;padding:0 0 14px;border:0;border-bottom:1px solid var(--skd-line);border-radius:0;background:none}
 .skd-filterBar>.skd-field>.skd-select{inline-size:100%;min-inline-size:8.5rem;max-inline-size:15rem}
 
-.skd-tableHeading{display:grid;grid-template-columns:minmax(0,1fr) 3.75rem 10.5rem 2.25rem;gap:0 18px;padding:0 16px 4px;margin-bottom:-10px;color:var(--skd-subtle);font-size:.6875rem;font-weight:500;letter-spacing:.01em}
+.skd-tableHeading{display:grid;grid-template-columns:minmax(0,1fr) 3.75rem 10.5rem 2.25rem;gap:0 18px;padding:0 16px 4px;margin-bottom:-10px;color:var(--skd-muted);font-size:.6875rem;font-weight:500;letter-spacing:.01em}
 .skd-tableHeading span:nth-child(2){text-align:end}
 .skd-list{margin:0;padding:0;list-style:none;border:1px solid var(--skd-line);border-radius:var(--skd-radius);overflow:hidden;background:var(--skd-bg)}
 .skd-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 3.75rem 10.5rem 2.25rem;gap:4px 18px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--skd-line);transition:background-color .15s var(--skd-ease)}
@@ -950,9 +953,6 @@ window.__ModuleLoader__.load({
 .skd-skelRow:last-child{border-bottom:0}
 .skd-skelRowMain{display:flex;flex-direction:column;gap:8px;min-width:0}
 .skd-skelSwitches{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
-.skd-skelCard{display:flex;flex-direction:column;gap:12px;padding:18px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-bg)}
-.skd-skelCardHead{display:flex;align-items:center;gap:10px}
-.skd-skelCardFoot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:auto;padding-top:12px;border-top:1px solid var(--skd-line)}
 .skd-previewProgress{position:relative;height:2px;width:100%;overflow:hidden;background:var(--skd-line);flex:none}
 .skd-previewProgress::after{content:"";position:absolute;inset:0 auto 0 0;width:35%;background:var(--skd-accent);animation:skd-indeterminate 1.2s var(--skd-ease) infinite}
 .skd-previewSkelTree{display:flex;flex-direction:column;gap:10px;padding:8px 14px 16px}
@@ -961,24 +961,28 @@ window.__ModuleLoader__.load({
 .skd-searchRow{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;padding:14px;background:var(--skd-surface);border:1px solid var(--skd-line);border-radius:var(--skd-radius)}
 .skd-sourceField{display:flex;flex-direction:column;flex:none}
 .skd-searchRow>.skd-button{min-height:36px}
-.skd-cardList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:0;padding:0}
-.skd-card{position:relative;display:flex;flex-direction:column;gap:10px;min-width:0;padding:18px;border:1px solid var(--skd-line);border-radius:var(--skd-radius);background:var(--skd-bg);transition:border-color .15s var(--skd-ease),background-color .15s var(--skd-ease)}
-.skd-cardHead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-.skd-cardIdentity{display:flex;gap:10px;align-items:center;min-width:0;flex:1}
-.skd-skillMark{display:grid;place-items:center;flex:none;inline-size:34px;block-size:34px;border:1px solid var(--skd-line);border-radius:8px;background:var(--skd-surface);color:var(--skd-muted)}
-.skd-cardTitleWrap{display:block;min-width:0;flex:1}
-.skd-cardName{margin:0;font-size:.875rem;line-height:1.45;font-weight:600;overflow-wrap:anywhere}
-.skd-cardName .skd-nameButton{display:-webkit-box;max-inline-size:100%;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:clip;color:var(--skd-fg)}
-.skd-cardName .skd-nameButton::after{content:"";position:absolute;inset:0;border-radius:inherit}
-.skd-card:has(.skd-nameButton:focus-visible){outline:2px solid var(--skd-accent);outline-offset:2px}
-.skd-cardVersion{flex:none;padding-top:2px;color:var(--skd-subtle);font-size:.6875rem}
-.skd-cardDesc{margin:0;color:var(--skd-muted);font-size:.8125rem;line-height:1.6;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.skd-cardFoot{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:auto;padding-top:12px;border-top:1px solid var(--skd-line)}
-.skd-card .skd-noteLine{position:relative;z-index:1}
-.skd-cardFoot .skd-button{min-height:30px;padding:4px 11px;font-size:.75rem}
-.skd-metaList{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.skd-rankHead{display:grid;grid-template-columns:2.25rem minmax(0,1fr) 9.5rem 6.5rem;gap:0 16px;padding:0 16px 6px;color:var(--skd-muted);font-size:.6875rem;font-weight:500}
+.skd-rankHead span:nth-child(1),.skd-rankHead span:nth-child(3){text-align:end}
+.skd-rankList{margin:0;padding:0;list-style:none;border:1px solid var(--skd-line);border-radius:var(--skd-radius);overflow:hidden;background:var(--skd-bg)}
+.skd-rankItem{position:relative;display:grid;grid-template-columns:2.25rem minmax(0,1fr) 9.5rem 6.5rem;gap:0 16px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--skd-line);transition:background-color .15s var(--skd-ease)}
+.skd-rankList>li:last-child{border-bottom:0}
+.skd-rankNo{justify-self:end;align-self:start;padding-block-start:2px;color:var(--skd-muted);font-size:.75rem;font-variant-numeric:tabular-nums;letter-spacing:.04em}
+.skd-rankItem[data-top] .skd-rankNo{color:var(--skd-fg);font-weight:600}
+.skd-rankMain{display:flex;flex-direction:column;gap:3px;min-width:0}
+.skd-rankTitle{display:flex;align-items:baseline;gap:8px;min-width:0}
+.skd-rankName{margin:0;font-size:.875rem;line-height:1.45;font-weight:600;overflow-wrap:anywhere}
+.skd-rankTitle .skd-nameButton::after{content:"";position:absolute;inset:0;border-radius:inherit}
+.skd-rankVersion{flex:none;color:var(--skd-muted);font-size:.6875rem;line-height:1.45}
+.skd-rankDesc{margin:0;max-width:90ch;color:var(--skd-muted);font-size:.8125rem;line-height:1.55;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:1;line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.skd-rankMeta{display:flex;align-items:baseline;gap:10px;min-width:0}
+.skd-rankMeta .skd-micro{white-space:nowrap}
+.skd-rankInstalls{display:flex;align-items:baseline;justify-content:flex-end;gap:4px;text-align:end;white-space:nowrap}
+.skd-rankInstalls b{font-size:.8125rem;line-height:1.45;font-weight:500;font-variant-numeric:tabular-nums}
+.skd-rankInstalls[data-empty] b,.skd-rankInstalls[data-empty]{color:var(--skd-muted);font-weight:400}
+.skd-rankUnit{color:var(--skd-muted);font-size:.6875rem}
+.skd-rankAction{position:relative;z-index:1;justify-self:end}
+.skd-rankItem .skd-nameButton{overflow-wrap:anywhere}
 .skd-slug{min-width:0;max-width:100%;color:var(--skd-muted);font-size:.6875rem;line-height:1.45;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.skd-cardDownloads{font-size:.6875rem;color:var(--skd-subtle)}
 
 .skd-periodControls{display:flex;flex-direction:row;flex-wrap:wrap;align-items:flex-end;justify-content:flex-start;gap:12px}
 .skd-periodField{display:flex;flex-direction:column;align-items:stretch;gap:4px;min-inline-size:0;font-size:.75rem;color:var(--skd-muted)}
@@ -1130,16 +1134,13 @@ window.__ModuleLoader__.load({
   .skd-button[data-variant=text]:not(:disabled):hover{background:none;text-decoration:underline;text-underline-offset:3px}
   .skd-row:hover,.skd-diagnosisRow:hover{background:var(--skd-hover)}
   .skd-row:hover .skd-rowName,.skd-nameButton:hover,.skd-periodSkill:hover{color:var(--skd-accent);text-decoration:underline;text-underline-offset:3px}
-  .skd-card:hover{border-color:var(--skd-control-line);background:var(--skd-surface)}
+  .skd-rankItem:hover{background:var(--skd-hover)}
   .skd-input:hover,.skd-select:hover{border-color:var(--skd-subtle)}
   .skd-chartCol:hover .skd-bar{background:var(--skd-accent)}
   .skd-chartCol:hover::after{opacity:1}
   .skd-windowTools .skd-iconButton:hover{background:var(--skd-bg)}
 }
 
-@container dashboard (min-width:1060px){
-  .skd-cardList{grid-template-columns:repeat(3,minmax(0,1fr))}
-}
 @container dashboard (max-width:820px){
   .skd-filterBar,.skd-skelFilterBar{grid-template-columns:repeat(3,minmax(0,1fr))}
   .skd-searchField{grid-column:1 / -1}
@@ -1167,7 +1168,11 @@ window.__ModuleLoader__.load({
   .skd-metric .skd-micro{display:block}
   .skd-switchGroup{flex:1;max-width:220px;gap:6px}
   .skd-switchControl{min-block-size:40px}
-  .skd-cardList{grid-template-columns:minmax(0,1fr)}
+  .skd-rankHead{display:none}
+  .skd-rankItem{grid-template-columns:auto minmax(0,1fr) auto;gap:6px 12px;padding:12px}
+  .skd-rankNo{justify-self:start}
+  .skd-rankInstalls{grid-column:2;justify-self:start}
+  .skd-rankAction{grid-column:3;grid-row:1 / span 3;align-self:center}
   .skd-searchRow{display:grid;grid-template-columns:minmax(0,1fr) auto}
   .skd-searchRow>.skd-sourceField{grid-column:1 / -1}
   .skd-stats{grid-template-columns:minmax(0,1fr)}
@@ -3072,10 +3077,11 @@ window.__ModuleLoader__.load({
     /**
      * One discover result with its one-click install. The heading is the display title
      * when the source sends one (Tencent sends a Chinese name), and the install identity
-     * (`name`, the kebab slug) always appears as the mono sub-label, so a card can never
-     * hide what would actually be installed.
+     * (`name`, the kebab slug) always appears as the mono sub-label, so a row can never
+     * hide what would actually be installed. `memoKey` is read by memo's comparison only:
+     * the translator's identity survives a language switch, and the key changes then.
      */
-    function DiscoverCardBase({ item, t, installing, writesLocked, onInstall, onPreview }) {
+    function DiscoverRowBase({ item, t, rank, installing, writesLocked, onInstall, onPreview }) {
       const slug = textOf(item?.name);
       const heading = textOf(item?.title) !== '' ? textOf(item.title) : slug !== '' ? slug : '—';
       const description = textOf(item?.description);
@@ -3093,39 +3099,45 @@ window.__ModuleLoader__.load({
         ? t(installed ? 'discover.installed' : 'discover.installing') + ' · ' + heading
         : blocked ? t('discover.installBlockedAria', { name: heading, reason })
           : t('discover.installAria', { name: heading });
-      return el(Card, { className: 'skd-card' },
-        el('div', { className: 'skd-cardHead' },
-          el('div', { className: 'skd-cardIdentity' },
-            el('span', { className: 'skd-skillMark', 'aria-hidden': true }, el(Glyph, { name: 'library', size: 18 })),
-            el('div', { className: 'skd-cardTitleWrap' }, el('h3', { className: 'skd-cardName' }, el(Button, {
+      return el('li', { className: 'skd-rankItem', 'data-top': rank <= 3 ? '' : undefined },
+        el('span', { className: 'skd-rankNo', 'aria-hidden': true }, String(rank).padStart(2, '0')),
+        el('div', { className: 'skd-rankMain' },
+          el('div', { className: 'skd-rankTitle' },
+            el('h3', { className: 'skd-rankName' }, el(Button, {
               className: 'skd-nameButton', title: t('preview.open', { name: heading }),
               'aria-label': t('preview.open', { name: heading }), onClick: () => onPreview(item),
-            }, heading)))),
-          version !== '' && el('span', { className: 'skd-cardVersion' }, t('discover.version', { version })),
-        ),
-        description !== '' && el('p', { className: 'skd-cardDesc', title: description }, description),
-        blocked && el('p', { className: 'skd-noteLine' }, reason),
-        el('div', { className: 'skd-cardFoot' },
-          el('div', { className: 'skd-metaList' },
+            }, heading)),
+            version !== '' && el('span', { className: 'skd-rankVersion' }, t('discover.version', { version })),
+          ),
+          description !== '' && el('p', { className: 'skd-rankDesc', title: description }, description),
+          blocked && el('p', { className: 'skd-noteLine' }, reason),
+          (ref !== '' || slug !== '' || updatedAt !== '') && el('div', { className: 'skd-rankMeta' },
             ref !== '' && el('span', { className: 'skd-slug', title: ref }, ref),
             slug !== '' && slug !== ref && el('span', { className: 'skd-slug', title: slug }, slug),
-            installs > 0 && el('span', { className: 'skd-cardDownloads' }, t('discover.installs', { count: formatNumber(installs) })),
             updatedAt !== '' && el('span', { className: 'skd-micro' }, t('discover.updated', { date: updatedAt })),
           ),
-          el(Button, {
-            type: 'button', className: 'skd-button',
-            'data-variant': 'outline',
-            'data-done': installed ? '' : undefined,
-            'aria-label': buttonLabel, 'aria-busy': installing || undefined,
-            title: blocked ? buttonLabel : undefined,
-            disabled: installed || blocked || writesLocked,
-            onClick: () => onInstall(item),
-          }, !installed && !installing && !blocked && el(Glyph, { name: 'plus', size: 14 }),
-          installed ? t('discover.installed') : installing ? t('discover.installing') : t('discover.install')),
         ),
+        el('div', { className: 'skd-rankInstalls', 'data-empty': installs > 0 ? undefined : '' },
+          installs > 0
+            ? [
+              el('b', { key: 'count' }, formatNumber(installs)),
+              el('span', { key: 'unit', className: 'skd-rankUnit' }, ' ' + t('discover.installsUnit')),
+            ]
+            : '—',
+        ),
+        el('div', { className: 'skd-rankAction' }, el(Button, {
+          type: 'button', className: 'skd-button',
+          'data-variant': 'outline',
+          'data-done': installed ? '' : undefined,
+          'aria-label': buttonLabel, 'aria-busy': installing || undefined,
+          title: blocked ? buttonLabel : undefined,
+          disabled: installed || blocked || writesLocked,
+          onClick: () => onInstall(item),
+        }, !installed && !installing && !blocked && el(Glyph, { name: 'plus', size: 14 }),
+        installed ? t('discover.installed') : installing ? t('discover.installing') : t('discover.install'))),
       );
     }
-    const DiscoverCard = memo(DiscoverCardBase);
+    const DiscoverRow = memo(DiscoverRowBase);
 
     /** Discover: pick a source, search it, install a result; every state is explicit. */
     function DiscoverTab(props) {
@@ -3154,18 +3166,16 @@ window.__ModuleLoader__.load({
 
       let body;
       if (discover.status === 'loading') {
-        body = el('div', { className: 'skd-cardList', role: 'status', 'aria-busy': true, 'aria-label': t('discover.loading') },
-          [0, 1, 2, 3, 4, 5].map((index) => el('div', { key: index, className: 'skd-skelCard', 'aria-hidden': true },
-            el('div', { className: 'skd-skelCardHead' },
-              el('span', { className: 'skd-skelBlock', style: { width: '34px', height: '34px', borderRadius: '8px', flex: 'none' } }),
-              el('span', { className: 'skd-skelBlock', style: { height: '16px', width: index % 2 === 0 ? '58%' : '46%' } }),
+        body = el('ol', { className: 'skd-rankList', role: 'status', 'aria-busy': true, 'aria-label': t('discover.loading') },
+          [0, 1, 2, 3, 4, 5, 6, 7].map((index) => el('li', { key: index, className: 'skd-rankItem', 'aria-hidden': true },
+            el('span', { className: 'skd-skelBlock', style: { height: '12px', width: '18px', justifySelf: 'end' } }),
+            el('div', { className: 'skd-rankMain' },
+              el('span', { className: 'skd-skelBlock', style: { height: '15px', width: index % 2 === 0 ? '41%' : '33%' } }),
+              el('span', { className: 'skd-skelBlock', style: { height: '13px', width: index % 2 === 0 ? '88%' : '72%' } }),
+              el('span', { className: 'skd-skelBlock', style: { height: '12px', width: '26%' } }),
             ),
-            el('span', { className: 'skd-skelBlock', style: { height: '13px', width: '94%' } }),
-            el('span', { className: 'skd-skelBlock', style: { height: '13px', width: index % 2 === 0 ? '72%' : '80%' } }),
-            el('div', { className: 'skd-skelCardFoot' },
-              el('span', { className: 'skd-skelBlock', style: { height: '12px', width: '44%' } }),
-              el('span', { className: 'skd-skelBlock', style: { height: '28px', width: '64px' } }),
-            ),
+            el('span', { className: 'skd-skelBlock', style: { height: '14px', width: '68px', justifySelf: 'end' } }),
+            el('span', { className: 'skd-skelBlock', style: { height: '30px', width: '76px', justifySelf: 'end' } }),
           )),
         );
       } else if (discover.status === 'error') {
@@ -3196,12 +3206,14 @@ window.__ModuleLoader__.load({
           el('p', { className: 'skd-stateBody' }, t('discover.empty.body')),
         );
       } else if (discover.status === 'ready') {
-        body = el('div', { className: 'skd-cardList' }, items.map((item) => {
+        body = el('ol', { className: 'skd-rankList', role: 'list' }, items.map((item, index) => {
           const key = textOf(item?.id) !== '' ? textOf(item.id) : textOf(item?.name);
-          return el(DiscoverCard, {
+          return el(DiscoverRow, {
             key,
             item,
             t,
+            rank: index + 1,
+            memoKey: t('tab.discover'),
             installing: installingName !== '' && textOf(item?.name) === installingName,
             writesLocked: pending !== null,
             onInstall: installOne,
@@ -3293,6 +3305,11 @@ window.__ModuleLoader__.load({
         // A Host hint about how these results were chosen (an empty query falls back to a listing);
         // the popular header already says that, so keep the note for actual searches only.
         discover.status === 'ready' && note !== '' && popular === false && el('p', { className: 'skd-noteLine', role: 'note' }, note),
+        discover.status === 'ready' && items.length > 0 && el('div', { className: 'skd-rankHead', 'aria-hidden': true },
+          el('span', null, t('discover.columnRank')),
+          el('span', null, t('discover.columnSkill')),
+          el('span', null, t('discover.columnInstalls')),
+          el('span')),
         body,
       );
     }

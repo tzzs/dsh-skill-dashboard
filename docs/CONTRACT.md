@@ -429,9 +429,10 @@ ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
   count, and hides itself when none was detected. A row badge names the agent when only
   one reads the skill (`仅 {agent}`), counts them when only some do (`{count}/{total} 个
   Agent`), and stays away when they all do.
-- Discover tab: source selector (skills.sh / 腾讯), search input with Enter-to-search,
-  result cards with install button and installed state, plus loading / empty / error states.
-  Result cards are memoized and receive stable install/preview verbs, so typing a query or a
+- Discover tab: source selector (skills.sh / 腾讯), search input with Enter-to-search, a ranked
+  result list with install button and installed state, plus loading / empty / error states. The
+  list numbers rows in the Host's returned order and carries a 排名 / 技能 / 安装量 column header.
+  Result rows are memoized and receive stable install/preview verbs, so typing a query or a
   snapshot tick (an update-check chunk, for example) does not re-render them. An empty query is
   the source's popular listing and reads `{source} · 热门技能` / `{count} 个热门技能`; the Host's
   `suggestions` note is suppressed for it because the header already says the same thing. Search

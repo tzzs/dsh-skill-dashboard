@@ -4,7 +4,7 @@
 
 插件继续使用宿主 React、React.createElement 和 Module Loader，样式在面板内隔离，没有独立 React 实例、Tailwind 编译器或第三方运行时主题管理器。
 
-本轮新增本地 Button / Input / Badge / Card 组件适配层，按钮与输入框通过 forwardRef 保留原生 ref；所有页面统一走这层组件。设计借鉴 shadcn/ui 的源码自持模式、语义颜色令牌及 default/outline/ghost 等变体思路，按 DSH 环境用普通 CSS 实现。它是 shadcn 风格的本地 React 适配，**没有宣称安装了原版 Radix/Base UI 组件库**。
+本轮新增本地 Button / Input / Badge 组件适配层，按钮与输入框通过 forwardRef 保留原生 ref；所有页面统一走这层组件。设计借鉴 shadcn/ui 的源码自持模式、语义颜色令牌及 default/outline/ghost 等变体思路，按 DSH 环境用普通 CSS 实现。它是 shadcn 风格的本地 React 适配，**没有宣称安装了原版 Radix/Base UI 组件库**。
 
 官方参考：
 
@@ -55,6 +55,18 @@ DSH 的 require 是模块表查找，不是 Node npm 解析；平台已有 React
 
 这一轮按 Modern Web Guidance 的 `tabs`（下划线用伪元素边框绘制，不用 `box-shadow` 或背景）、`css-layout`（行截断与 `scrollbar-gutter: stable`）、`improve-text-layout-and-legibility`（`text-wrap: pretty`）和 `switch`（原生 `switch` 属性与 `.checked`）执行。
 
+## 本轮：发现热门排行改为列表
+
+发现页此前把搜索结果与热门排行都渲染成三列卡片网格。卡片适合并列浏览，不适合排行榜：每张卡都要容纳三行描述、来源标识、安装量与按钮，名次顺序不可见，描述在三行处被截断，安装量与按钮在每张卡里重复一次，读者要在三列之间来回比较数字。
+
+处理方式：结果改为单列排行列表。列头为**排名 / 技能 / 安装量**；每行是两位名次、标题与版本号、单行截断的说明、来源标识与更新日期、右对齐的安装量与单位、安装按钮。前三名的名次用前景色加粗，其余为次级色。客户端按服务端返回的顺序编号，不重排行；数字列使用 `tabular-nums` 对齐。整行可点打开预览，安装按钮在其上方保持独立。
+
+行内的小字号文字改用次级标签色（`--skd-muted`），因为三级标签色在浅色主题下与白底只有 3.71:1，11–12px 的文字达不到 AA；已安装列表的列头一起改过来，两处列表头保持一致。
+
+取舍：描述截成一行后每条少看到约两行文字，完整描述仍在 `title` 与预览弹层里；20 条从 7 行网格变成 20 行列表，纵向更长，但安装量在同一列可以直接比较。移除了卡片里的统一图标，20 个技能共用同一个图标不携带信息，已安装列表行也没有它。
+
+验证见 `docs/UI-DESIGN.md` 的验证一节与 `_verify/rank-list-check.mjs`。
+
 ## 语言跟随
 
 `locale: NS` 的 DSH 插槽通过 renderer 订阅宿主语言修订，为页面注入实时 t。ctx.locale.bind 本身读取当前语言；不会绑定为首次加载时的语言。继续使用这一机制，不建立第二套语言设置。
@@ -86,7 +98,7 @@ DSH ThemePresenter 更新 html.style.colorScheme、body[data-ds-dark-theme]、bo
 
 ## 技能详情与文件预览
 
-点击已安装列表或发现卡片中的技能名称，可打开技能详情与文件阅读弹层。窄面板默认展示正文，目录可通过「技能文件」展开。左侧按目录树展示文件，文件夹使用原生 details/summary，可独立展开/折叠，缩进和连线表现层级；右侧默认显示主说明；Markdown 提供阅读/原文切换，其他文本使用代码原文视图。阅读视图仅处理基本标题、列表、粗体、行内代码和代码块；其他 Markdown 语法保留文本，不注入 HTML、不加载远程图片、不执行脚本。
+点击已安装列表行或发现结果行中的技能名称，可打开技能详情与文件阅读弹层。窄面板默认展示正文，目录可通过「技能文件」展开。左侧按目录树展示文件，文件夹使用原生 details/summary，可独立展开/折叠，缩进和连线表现层级；右侧默认显示主说明；Markdown 提供阅读/原文切换，其他文本使用代码原文视图。阅读视图仅处理基本标题、列表、粗体、行内代码和代码块；其他 Markdown 语法保留文本，不注入 HTML、不加载远程图片、不执行脚本。
 
 使用 ReactDOM portal 把 `.skd-previewOverlay` 挂到 `document.body`，内部是固定定位的遮罩与 `.skd-previewDialog` 面板；不再创建原生 `<dialog>`，也不调用 `showModal()`。原因：在 Electron 渲染器里，top-layer 弹层加 `::backdrop` 的 `backdrop-filter: blur()` 会出现弹层内容不绘制、整页被模态遮罩卡住且半重绘的故障，用户只能在重启后恢复。普通固定定位浮层走页面自己的合成层，绘制稳定。关闭按钮是普通 Button，Esc 由组件捕获，点击遮罩关闭；Tab/Shift+Tab 在浮层内循环，打开时聚焦关闭按钮，关闭后焦点回到触发按钮。语言变更不会重建浮层或重置文件选择。
 
