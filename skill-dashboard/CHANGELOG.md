@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.7.2...v1.8.0) (2026-11-27)
+
+
+### Features
+
+* **skill-dashboard:** render Discover results as a ranked list ([#29](https://github.com/tzzs/dsh-skill-dashboard/issues/29)) ([2ddfb8a](https://github.com/tzzs/dsh-skill-dashboard/commit/2ddfb8a563bf5d4367f3cafa37f5692204410586))
+
 ## [1.7.2](https://github.com/tzzs/dsh-skill-dashboard/compare/v1.7.1...v1.7.2) (2026-11-25)
 
 
