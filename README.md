@@ -23,7 +23,7 @@ A DeepSeek Harness (DSH) plugin that puts every agent skill in one place. It app
 
 - Searches `skills.sh` (Git repositories) and Tencent SkillHub (`api.skillhub.cn`) on the server side because neither API sends CORS headers.
 - Installs directly from GitHub with `owner/repo`, a GitHub URL, a branch/tag/commit (`owner/repo@rev`), or a subpath (`owner/repo#skills/pdf`). Files come from `raw.githubusercontent.com`; when that or the API is refused, listing and bytes fall back to jsDelivr and the record says it is unpinned.
-- Checks installed status against the live skill catalog union and renders a 6-card skeleton grid while loading.
+- Checks installed status against the live skill catalog union and renders a skeleton list while loading.
 - Stages installs outside watched skill roots and moves them in atomically so file watchers never see a half-written skill.
 
 **Usage.** Inspect activity for today, the last 7/14/30/60 days, or a custom date range.
@@ -38,7 +38,7 @@ A DeepSeek Harness (DSH) plugin that puts every agent skill in one place. It app
 - Partitions the catalog into five counted buckets (`Clean up`, `Disabled`, `In use`, `Kept`, `Observing`), with a cleanup count badge on the tab and evidence on each row.
 - Lets you disable (reversible), delete (confirmed), or keep (pauses reminders) a single row or a batch selection. Batches degrade per row, read-only skills offer keep only, and invocation toggles or disable cleanup recompute diagnosis state atomically.
 
-**Preview.** Open any installed skill row or Discover card to inspect its files.
+**Preview.** Open any installed skill row or Discover result row to inspect its files.
 
 - Shows a collapsible folder tree, Markdown reader or raw source view, and binary or size-limit notices.
 - Renders a top indeterminate progress bar plus file-tree and document skeletons while loading, with bounded Host and client caches in a resizable, maximizable overlay panel.

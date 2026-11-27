@@ -20,7 +20,7 @@ It appears as **Skills Manager / 技能管理** in the Plugins page, adds a **Sk
 - **skills.sh.** Community skills directory indexing Git repositories. Entries install from `owner/repo` via `raw.githubusercontent.com`, with paths discovered through the GitHub tree API (cached 10 min).
 - **Tencent SkillHub** (`api.skillhub.cn`). Domestic source with Chinese titles, versions, download counts, and per-file raw downloads.
 - **Install from GitHub (从 GitHub 安装).** A direct reference field under the search form: `owner/repo`, `owner/repo@rev`, `owner/repo#skills/pdf`, a `/tree/<rev>/<path>` URL, or a `/blob/…/SKILL.md` URL. A repository holding several skills with no named path answers `subpath-required` with the candidates instead of guessing, and the installed record pins the exact commit the files came from.
-- Checks installed state against the live catalog union, and renders a 6-card skeleton grid matching the result card layout while loading.
+- Checks installed state against the live catalog union, and renders eight skeleton rows in the result list's grid while loading.
 - Stages installs outside every watched skill root, then moves them into pre-resolved `$DSH_AGENTS_HOME` (usually `~/.agents/skills`) with retries so file watchers never observe a half-written skill.
 
 **Usage (统计).** Measure real skill usage over time.
@@ -43,7 +43,7 @@ It appears as **Skills Manager / 技能管理** in the Plugins page, adds a **Sk
 
 ## Skill details and file preview
 
-Select a skill row in Installed or a result card in Discover to open its preview. On a narrow screen,
+Select a skill row in Installed or a result row in Discover to open its preview. On a narrow screen,
 choose **Skill files** to browse the file tree. Refresh reloads the selected file if it is still available.
 The panel shows the description, source, available version and local path, an expandable
 folder tree, and a reader that opens `SKILL.md` by default. Folder disclosures support native
@@ -113,7 +113,7 @@ then reloading the page.
   The diagnosis queue instead mounts once, memoizes its rows, and uses `content-visibility` for
   offscreen rows; its row callbacks stay stable, so a snapshot tick never hands every row new
   props, and scrolling never writes React state.
-  Discover result cards are memoized with stable install and preview verbs; typing a query or a
+  Discover result rows are memoized with stable install and preview verbs; typing a query or a
   snapshot tick does not re-render them. An empty-query popular listing is labeled separately.
 - All 25 Host error codes are localized in `locale/en.json` and `locale/zh.json`, and
   user-facing copy avoids internal Host terminology.
@@ -232,7 +232,7 @@ does not run it.
   answers `name-mismatch` and writes nothing. Remove and install again for an upstream rename. A
   flat `<name>.md` skill answers `flat-skill`, and a repository with several skills and no named
   path answers `subpath-required` with up to five candidates.
-- `skills.sh` has no version field and no detail API, so an update from a discovered card
+- `skills.sh` has no version field and no detail API, so an update from a discovered row
   compares file contents and reports `changed` rather than a version bump.
 - A `well-known` update downloads the skill's whole archive, unpacks the text files it holds, and
   compares them the same way. It records `commit: null` because a tarball has no commit, and a file
